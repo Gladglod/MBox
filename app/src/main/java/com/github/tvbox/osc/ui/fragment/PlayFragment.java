@@ -204,6 +204,23 @@ public class PlayFragment extends BaseLazyFragment {
         checkDanmu(danmu, null);
     }
 
+    /** 打开「在线弹幕」搜索对话框（播放器设置抽屉里的「更换」） */
+    private void openDanmuSearch() {
+        if (!isAdded()) return;
+        SearchDanmuDialog searchDanmuDialog = new SearchDanmuDialog(requireContext());
+        searchDanmuDialog.setDanmuLoader(new SearchDanmuDialog.DanmuLoader() {
+            @Override
+            public void loadDanmu(String danmu) {
+                if (!isAdded()) return;
+                checkDanmu(danmu);
+            }
+        });
+        VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);
+        searchDanmuDialog.setEpisode(series == null ? "" : series.name);
+        searchDanmuDialog.setSearchWord(mVodInfo == null ? "" : mVodInfo.name);
+        searchDanmuDialog.show();
+    }
+
     private void checkDanmu(String danmu, DanmuLoadController.LoadCallback callback) {
         if (danmuLoadController != null) {
             VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);
@@ -336,21 +353,15 @@ public class PlayFragment extends BaseLazyFragment {
                 dialog.setDanmuSearchListener(new DanmuSettingDialog.DanmuSearchListener() {
                     @Override
                     public void openSearchDanmuDialog() {
-                        SearchDanmuDialog searchDanmuDialog = new SearchDanmuDialog(requireContext());
-                        searchDanmuDialog.setDanmuLoader(new SearchDanmuDialog.DanmuLoader() {
-                            @Override
-                            public void loadDanmu(String danmu) {
-                                if (!isAdded()) return;
-                                checkDanmu(danmu);
-                            }
-                        });
-                        VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);
-                        searchDanmuDialog.setEpisode(series == null ? "" : series.name);
-                        searchDanmuDialog.setSearchWord(mVodInfo == null ? "" : mVodInfo.name);
-                        searchDanmuDialog.show();
+                        PlayFragment.this.openDanmuSearch();
                     }
                 });
                 dialog.show();
+            }
+
+            @Override
+            public void openSearchDanmuDialog() {
+                PlayFragment.this.openDanmuSearch();
             }
 
             @Override
@@ -1407,15 +1418,10 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     public boolean onBackPressed() {
-        int requestedOrientation = requireActivity().getRequestedOrientation();
-        if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT || requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT || requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT) {
-            requireActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-            mController.mLandscapePortraitBtn.setText("竖屏");
-        }
-        if (mController.onBackPressed()) {
-            return true;
-        }
-        return false;
+        // 注意：这里不要再强制 setRequestedOrientation(SENSOR_LANDSCAPE)。
+        // 竖屏下按返回本来是想退出播放，旧逻辑会先把画面转成横屏再退出，
+        // 于是出现"返回时闪一下横屏"的问题。
+        return mController.onBackPressed();
     }
 
     public void setExitingPreview(boolean exitingPreview) {

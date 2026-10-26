@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 手机端：点击遮罩用于进入全屏，不再绘制 TV 焦点框 -->
     <item android:state_focused="true">
         <shape>
             <corners android:radius="@dimen/preview_player_radius" />
             <solid android:color="@android:color/transparent" />
-            <stroke android:width="2mm" android:color="@android:color/white" />
         </shape>
     </item>
     <item android:state_focused="false">

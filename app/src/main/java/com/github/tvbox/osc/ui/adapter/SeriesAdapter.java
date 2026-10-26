@@ -9,7 +9,7 @@ import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.chad.library.adapter.base.BaseViewHolder;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.bean.VodInfo;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
+import androidx.recyclerview.widget.GridLayoutManager;
 
 import java.util.ArrayList;
 
@@ -19,8 +19,8 @@ import java.util.ArrayList;
  * @description:
  */
 public class SeriesAdapter extends BaseQuickAdapter<VodInfo.VodSeries, BaseViewHolder> {
-    private V7GridLayoutManager mGridLayoutManager;
-    public SeriesAdapter(V7GridLayoutManager gridLayoutManager) {
+    private GridLayoutManager mGridLayoutManager;
+    public SeriesAdapter(GridLayoutManager gridLayoutManager) {
         super(R.layout.item_series, new ArrayList<>());
         this.mGridLayoutManager = gridLayoutManager;
     }
@@ -30,8 +30,10 @@ public class SeriesAdapter extends BaseQuickAdapter<VodInfo.VodSeries, BaseViewH
         TextView tvSeries = helper.getView(R.id.tvSeries);
         if (item.selected) {
             tvSeries.setTextColor(mContext.getResources().getColor(R.color.color_02F8E1));
+            helper.itemView.setBackgroundResource(R.drawable.bg_chip_selected);
         } else {
             tvSeries.setTextColor(Color.WHITE);
+            helper.itemView.setBackgroundResource(R.drawable.bg_chip);
         }
         helper.setText(R.id.tvSeries, item.name);
 

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.view.animation.BounceInterpolator;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
@@ -43,9 +42,9 @@ import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
-import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -70,7 +69,7 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
     private LinearLayout tvPush;
     public static HomeHotVodAdapter homeHotVodAdapter;
     private List<Movie.Video> homeSourceRec;
-    public static TvRecyclerView tvHotList;
+    public static RecyclerView tvHotList;
     private SourceViewModel sourceViewModel;
 
     public static UserFragment newInstance() {
@@ -89,26 +88,18 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
     @Override
     protected void onFragmentResume() {
         super.onFragmentResume();
+        tvHotList.setVisibility(View.VISIBLE);
+        tvHotList.setHasFixedSize(true);
+        int padding = getResources().getDimensionPixelSize(R.dimen.vs_8);
         if (Hawk.get(HawkConfig.HOME_REC_STYLE, false)) {
-            tvHotList.setVisibility(View.VISIBLE);
-            tvHotList.setHasFixedSize(true);
-            int spanCount = 5;
-            if(style!=null && Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1)spanCount=ImgUtil.spanCountByStyle(style,spanCount);
-            tvHotList.setLayoutManager(new V7GridLayoutManager(this.mContext, spanCount));
-            int paddingLeft = -tvHotList.mHorizontalSpacingWithMargins / 2 + getResources().getDimensionPixelSize(R.dimen.vs_6);
-            int paddingTop = getResources().getDimensionPixelSize(R.dimen.vs_20);
-            int paddingRight = -tvHotList.mHorizontalSpacingWithMargins / 2 + getResources().getDimensionPixelSize(R.dimen.vs_6);
-            int paddingBottom = getResources().getDimensionPixelSize(R.dimen.vs_20);
-            tvHotList.setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom);
+            int spanCount = 3;
+            if (style != null && Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1)
+                spanCount = ImgUtil.spanCountByStyle(style, spanCount);
+            tvHotList.setLayoutManager(new GridLayoutManager(this.mContext, spanCount));
         } else {
-            tvHotList.setVisibility(View.VISIBLE);
-            tvHotList.setLayoutManager(new V7LinearLayoutManager(this.mContext, V7LinearLayoutManager.HORIZONTAL, false));
-            int paddingLeft = -tvHotList.mHorizontalSpacingWithMargins / 2 + getResources().getDimensionPixelSize(R.dimen.vs_6);
-            int paddingTop = getResources().getDimensionPixelSize(R.dimen.vs_20);
-            int paddingRight = -tvHotList.mHorizontalSpacingWithMargins / 2 + getResources().getDimensionPixelSize(R.dimen.vs_6);
-            int paddingBottom = getResources().getDimensionPixelSize(R.dimen.vs_20);
-            tvHotList.setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom);
+            tvHotList.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
         }
+        tvHotList.setPadding(padding, padding, padding, padding);
         if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 2) {
             List<VodInfo> allVodRecord = RoomDataManger.getAllVodRecord(20);
             List<Movie.Video> vodList = new ArrayList<>();
@@ -134,9 +125,9 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        TvRecyclerView hotList = view.findViewById(R.id.tvHotList);
+        RecyclerView hotList = view.findViewById(R.id.tvHotList);
         if (hotList != null && hotList.getLayoutManager() == null) {
-            hotList.setLayoutManager(new V7LinearLayoutManager(mContext, V7LinearLayoutManager.HORIZONTAL, false));
+            hotList.setLayoutManager(new LinearLayoutManager(mContext, LinearLayoutManager.HORIZONTAL, false));
         }
     }
 
@@ -169,12 +160,6 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
         tvHistory.setOnClickListener(this);
         tvPush.setOnClickListener(this);
         tvCollect.setOnClickListener(this);
-        tvLive.setOnFocusChangeListener(focusChangeListener);
-        tvSearch.setOnFocusChangeListener(focusChangeListener);
-        tvSetting.setOnFocusChangeListener(focusChangeListener);
-        tvHistory.setOnFocusChangeListener(focusChangeListener);
-        tvPush.setOnFocusChangeListener(focusChangeListener);
-        tvCollect.setOnFocusChangeListener(focusChangeListener);
         tvHotList = findViewById(R.id.tvHotList);
         if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1 && homeSourceRec!=null) {
             style=ImgUtil.initStyle();
@@ -244,22 +229,6 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
             }    
         });
 
-        tvHotList.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                itemView.animate().scaleX(1.0f).scaleY(1.0f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                itemView.animate().scaleX(1.05f).scaleY(1.05f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-
-            }
-        });
         tvHotList.setAdapter(homeHotVodAdapter);
 
         initHomeHotVod(homeHotVodAdapter);
@@ -354,16 +323,6 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
         }
         return result;
     }
-
-    private View.OnFocusChangeListener focusChangeListener = new View.OnFocusChangeListener() {
-        @Override
-        public void onFocusChange(View v, boolean hasFocus) {
-            if (hasFocus)
-                v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
-            else
-                v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
-        }
-    };
 
     @Override
     public void onClick(View v) {

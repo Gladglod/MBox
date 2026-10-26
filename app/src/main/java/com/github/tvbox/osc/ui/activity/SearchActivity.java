@@ -23,6 +23,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.catvod.crawler.JsLoader;
@@ -36,9 +39,7 @@ import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.event.ServerEvent;
 import com.github.tvbox.osc.ui.adapter.PinyinAdapter;
 import com.github.tvbox.osc.ui.adapter.SearchAdapter;
-import com.github.tvbox.osc.ui.dialog.RemoteDialog;
 import com.github.tvbox.osc.ui.dialog.SearchCheckboxDialog;
-import com.github.tvbox.osc.ui.tv.widget.SearchKeyboard;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
@@ -53,9 +54,6 @@ import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
-import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -101,16 +99,14 @@ public class SearchActivity extends BaseActivity {
     };
     private LinearLayout llLayout;
     private LinearLayout llHistoryWord;
-    private TvRecyclerView mGridView;
-    private TvRecyclerView mGridViewWord;
+    private RecyclerView mGridView;
+    private RecyclerView mGridViewWord;
     private GridLayout historyWordGrid;
     SourceViewModel sourceViewModel;
-    private RemoteDialog remoteDialog;
     private EditText etSearch;
     private TextView tvSearch;
     private TextView tvClear;
     private ImageView tvHistoryClear;
-    private SearchKeyboard keyboard;
     private SearchAdapter searchAdapter;
     private PinyinAdapter wordAdapter;
     private PinyinAdapter hotWordAdapter;
@@ -160,14 +156,20 @@ public class SearchActivity extends BaseActivity {
     }
 
     private void requestSearchFocusWhenReady() {
-        final View focusView = hasKeyBoard || isSearchBack ? tvSearch : etSearch;
-        if (focusView == null) return;
-        focusView.post(new Runnable() {
+        if (etSearch == null) return;
+        etSearch.post(new Runnable() {
             @Override
             public void run() {
                 if (isFinishing()) return;
-                focusView.requestFocus();
-                focusView.requestFocusFromTouch();
+                etSearch.requestFocus();
+                etSearch.requestFocusFromTouch();
+                // 竖屏使用系统软键盘：输入框为空时自动弹出
+                if (TextUtils.isEmpty(etSearch.getText().toString())) {
+                    InputMethodManager imm = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.showSoftInput(etSearch, InputMethodManager.SHOW_IMPLICIT);
+                    }
+                }
             }
         });
     }
@@ -181,8 +183,15 @@ public class SearchActivity extends BaseActivity {
         tvSearchCheckboxBtn = findViewById(R.id.tvSearchCheckboxBtn);
         tvClear = findViewById(R.id.tvClear);
         mGridView = findViewById(R.id.mGridView);
-        keyboard = findViewById(R.id.keyBoardRoot);
         mGridViewWord = findViewById(R.id.mGridViewWord);
+        ImageView ivBack = findViewById(R.id.ivBack);
+        ivBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                finish();
+            }
+        });
         historyWordGrid = findViewById(R.id.historyWordGrid);
         tvHistoryClear = findViewById(R.id.tvHistoryClear);
         mGridViewWord.setHasFixedSize(true);
@@ -205,10 +214,10 @@ public class SearchActivity extends BaseActivity {
         mGridView.setHasFixedSize(true);
         // lite
         if (Hawk.get(HawkConfig.SEARCH_VIEW, 0) == 0)
-            mGridView.setLayoutManager(new V7LinearLayoutManager(this.mContext, 1, false));
+            mGridView.setLayoutManager(new LinearLayoutManager(this.mContext));
             // with preview
         else
-            mGridView.setLayoutManager(new V7GridLayoutManager(this.mContext, 3));
+            mGridView.setLayoutManager(new GridLayoutManager(this.mContext, 3));
         searchAdapter = new SearchAdapter();
         mGridView.setAdapter(searchAdapter);
         searchAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
@@ -331,31 +340,6 @@ public class SearchActivity extends BaseActivity {
                 return false;
             }
         });
-        keyboard.setOnSearchKeyListener(new SearchKeyboard.OnSearchKeyListener() {
-            @Override
-            public void onSearchKey(int pos, String key) {
-                if (pos > 1) {
-                    String text = etSearch.getText().toString().trim();
-                    text += key;
-                    etSearch.setText(text);
-                    if (text.length() > 0) {
-                        loadRec(text);
-                    }
-                } else if (pos == 1) {
-                    String text = etSearch.getText().toString().trim();
-                    if (text.length() > 0) {
-                        text = text.substring(0, text.length() - 1);
-                        etSearch.setText(text);
-                    }
-                    if (text.length() > 0) {
-                        loadRec(text);
-                    }
-                } else if (pos == 0) {
-                    remoteDialog = new RemoteDialog(mContext);
-                    remoteDialog.show();
-                }
-            }
-        });
         setLoadSir(llLayout);
         tvSearchCheckboxBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -428,7 +412,7 @@ public class SearchActivity extends BaseActivity {
             setAggregateHotTitle();
             wordsSwitch.setFocusable(false);
             wordsSwitch.setBackground(null);
-            mGridViewWord.setLayoutManager(new V7LinearLayoutManager(this.mContext, 1, false));
+            mGridViewWord.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
             mGridViewWord.setAdapter(hotWordAdapter);
             refreshSearchHistoryWords();
         } else {
@@ -440,7 +424,7 @@ public class SearchActivity extends BaseActivity {
             setNormalWordTitle();
             wordsSwitch.setFocusable(true);
             wordsSwitch.setBackgroundResource(R.drawable.shape_user_focus);
-            mGridViewWord.setLayoutManager(new V7LinearLayoutManager(this.mContext, 1, false));
+            mGridViewWord.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
             mGridViewWord.setAdapter(wordAdapter);
         }
     }
@@ -460,7 +444,7 @@ public class SearchActivity extends BaseActivity {
                 if (!aggregateSearchMode) return;
                 ArrayList<String> history = Hawk.get(HawkConfig.SEARCH_HISTORY, new ArrayList<String>());
                 historyWordGrid.removeAllViews();
-                int itemHeight = getResources().getDimensionPixelSize(R.dimen.vs_50);
+                int itemHeight = getResources().getDimensionPixelSize(R.dimen.vs_80);
                 int itemMargin = getResources().getDimensionPixelSize(R.dimen.vs_5);
                 int paddingH = getResources().getDimensionPixelSize(R.dimen.vs_10);
                 int minWidth = getResources().getDimensionPixelSize(R.dimen.vs_80);
@@ -482,7 +466,7 @@ public class SearchActivity extends BaseActivity {
                     item.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize);
                     item.setMinWidth(minWidth);
                     item.setPadding(paddingH, 0, paddingH, 0);
-                    item.setBackgroundResource(R.drawable.shape_user_focus);
+                    item.setBackgroundResource(R.drawable.bg_chip);
                     item.measure(
                             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                             View.MeasureSpec.makeMeasureSpec(itemHeight, View.MeasureSpec.EXACTLY));
@@ -746,10 +730,6 @@ public class SearchActivity extends BaseActivity {
 
     private void search(String title) {
         cancel();
-        if (remoteDialog != null) {
-            remoteDialog.dismiss();
-            remoteDialog = null;
-        }
         showLoading();
         etSearch.setText(title);
 

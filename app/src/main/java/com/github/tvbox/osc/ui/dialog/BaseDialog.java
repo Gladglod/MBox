@@ -51,15 +51,6 @@ public class BaseDialog extends Dialog {
     }
 
     private void hideSysBar() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            int uiOptions = getWindow().getDecorView().getSystemUiVisibility();
-            uiOptions |= View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
-            uiOptions |= View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
-            uiOptions |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
-            uiOptions |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
-            uiOptions |= View.SYSTEM_UI_FLAG_FULLSCREEN;
-            uiOptions |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
-            getWindow().getDecorView().setSystemUiVisibility(uiOptions);
-        }
+        // 手机端：不再强制沉浸式全屏（会把系统栏顶掉、弹窗高度异常），交给系统默认处理
     }
 }

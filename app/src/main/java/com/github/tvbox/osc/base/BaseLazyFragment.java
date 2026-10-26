@@ -227,6 +227,27 @@ public abstract class BaseLazyFragment extends Fragment implements CustomAdapt {
     public void onDestroyView() {
         super.onDestroyView();
         isViewCreated = false;
+        if (!isKeepViewOnDestroy()) {
+            // ViewPager 里的页面被 detach 时，把整棵视图树一起释放，
+            // 否则 fragment 实例会一直强引用 RecyclerView / ImageView 里的 bitmap。
+            rootView = null;
+            mLoadService = null;
+        }
+        onFragmentViewDestroyed();
+    }
+
+    /**
+     * 视图销毁时是否保留 rootView。默认保留（兼容老逻辑）；
+     * 放在 ViewPager 里、数量多的列表页应返回 false 以释放内存。
+     */
+    protected boolean isKeepViewOnDestroy() {
+        return true;
+    }
+
+    /**
+     * 视图已销毁回调，子类可在这里释放与视图绑定的重资源。
+     */
+    protected void onFragmentViewDestroyed() {
     }
 
     @SuppressWarnings("unchecked")

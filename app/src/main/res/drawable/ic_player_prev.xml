@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 上一集：竖线 + 左三角 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,5.5h2.2v13h-2.2z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18,5.6v12.8c0,0.72 -0.79,1.16 -1.4,0.79l-8.3,-6.4c-0.52,-0.4 -0.52,-1.18 0,-1.58l8.3,-6.4c0.61,-0.37 1.4,0.07 1.4,0.79z" />
+</vector>

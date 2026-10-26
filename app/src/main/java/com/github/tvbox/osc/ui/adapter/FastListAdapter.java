@@ -16,14 +16,13 @@ public class FastListAdapter extends BaseQuickAdapter<String, BaseViewHolder> {
     private String selectedName = "\u5168\u90e8";
 
     public FastListAdapter() {
-        super(R.layout.item_search_word_hot, new ArrayList<>());
+        super(R.layout.item_search_word_chip, new ArrayList<>());
     }
 
     @Override
     protected void convert(BaseViewHolder helper, String item) {
         TextView textView = helper.getView(R.id.tvSearchWord);
         textView.setText(item);
-        textView.setBackgroundResource(R.drawable.bg_fast_site_word);
         updateSelection(textView, item);
     }
 
@@ -45,5 +44,6 @@ public class FastListAdapter extends BaseQuickAdapter<String, BaseViewHolder> {
         boolean selected = TextUtils.equals(item, selectedName);
         textView.setSelected(selected);
         textView.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
+        textView.setTextColor(mContext.getResources().getColor(selected ? R.color.color_02F8E1 : R.color.color_FFFFFF));
     }
 }

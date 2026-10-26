@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶部渐变遮罩：上深下透明 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:endColor="#00000000"
+        android:startColor="#A6000000"
+        android:type="linear" />
+</shape>

@@ -21,14 +21,11 @@
         android:textSize="@dimen/ts_24"
         tools:text="11111111111" />
 
-    <com.owen.tvrecyclerview.widget.TvRecyclerView
+    <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/mFilterKv"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:clipChildren="false"
-        android:clipToPadding="false"
-        app:tv_horizontalSpacingWithMargins="@dimen/vs_5"
-        app:tv_selectedItemIsCentered="true"
-        app:tv_verticalSpacingWithMargins="@dimen/vs_5" />
+        android:clipToPadding="false" />
 
 </LinearLayout>

@@ -2,12 +2,11 @@ package com.github.tvbox.osc.ui.adapter;
 
 
 import android.annotation.SuppressLint;
+import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.CheckBox;
-import android.widget.CompoundButton;
-
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
@@ -16,7 +15,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.bean.SourceBean;
-import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.SearchHelper;
 
 import org.jetbrains.annotations.NotNull;
@@ -52,8 +50,7 @@ public class CheckboxSearchAdapter extends ListAdapter<SourceBean, CheckboxSearc
     }
 
     public void setMCheckedSources() {
-//        LOG.i(data.size()+"size----size"+mCheckedSources.size());
-        SearchHelper.putCheckedSources(mCheckedSources,data.size()==mCheckedSources.size());
+        SearchHelper.putCheckedSources(mCheckedSources, data.size() == mCheckedSources.size());
     }
 
     @Override
@@ -64,33 +61,47 @@ public class CheckboxSearchAdapter extends ListAdapter<SourceBean, CheckboxSearc
     @Override
     public void onBindViewHolder(ViewHolder holder, int position) {
         int pos = holder.getAdapterPosition();
+        if (pos < 0 || pos >= data.size()) return;
         SourceBean sourceBean = data.get(pos);
-        holder.oneSearchSource.setText(sourceBean.getName());
-        holder.oneSearchSource.setOnCheckedChangeListener(null);
-        if (mCheckedSources != null) {
-            holder.oneSearchSource.setChecked(mCheckedSources.containsKey(sourceBean.getKey()));
-        }
-        holder.oneSearchSource.setTag(sourceBean);
-        holder.oneSearchSource.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+        holder.tvSourceName.setText(sourceBean.getName());
+        boolean checked = mCheckedSources != null && mCheckedSources.containsKey(sourceBean.getKey());
+        applyCheckedStyle(holder, checked);
+
+        holder.itemRoot.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if (isChecked) {
-                    mCheckedSources.put(sourceBean.getKey(), "1");
+            public void onClick(View v) {
+                int adapterPosition = holder.getAdapterPosition();
+                if (adapterPosition < 0 || adapterPosition >= data.size()) return;
+                SourceBean bean = data.get(adapterPosition);
+                if (mCheckedSources == null) mCheckedSources = new HashMap<>();
+                if (mCheckedSources.containsKey(bean.getKey())) {
+                    mCheckedSources.remove(bean.getKey());
                 } else {
-                    mCheckedSources.remove(sourceBean.getKey());
+                    mCheckedSources.put(bean.getKey(), "1");
                 }
-                notifyItemChanged(pos);
+                notifyItemChanged(adapterPosition);
             }
         });
+    }
 
+    private void applyCheckedStyle(ViewHolder holder, boolean checked) {
+        holder.itemRoot.setBackgroundResource(checked ? R.drawable.bg_chip_selected : R.drawable.bg_chip);
+        holder.tvSourceName.setTextColor(checked
+                ? holder.itemRoot.getContext().getResources().getColor(R.color.color_02F8E1)
+                : Color.WHITE);
+        holder.tvSourceCheck.setVisibility(checked ? View.VISIBLE : View.INVISIBLE);
     }
 
     public class ViewHolder extends RecyclerView.ViewHolder {
-        public CheckBox oneSearchSource;
+        public View itemRoot;
+        public TextView tvSourceName;
+        public TextView tvSourceCheck;
 
         public ViewHolder(View view) {
             super(view);
-            oneSearchSource = (CheckBox) view.findViewById(R.id.oneSearchSource);
+            itemRoot = view.findViewById(R.id.itemRoot);
+            tvSourceName = (TextView) view.findViewById(R.id.tvSourceName);
+            tvSourceCheck = (TextView) view.findViewById(R.id.tvSourceCheck);
         }
     }
 

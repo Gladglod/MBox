@@ -3,6 +3,7 @@ package com.github.tvbox.osc.base;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.AssetManager;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
@@ -71,6 +72,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             th.printStackTrace();
         }
         super.onCreate(savedInstanceState);
+        updateBaseSizeInDp();
         setContentView(getLayoutResID());
         mContext = this;
         initSystemUiListener();
@@ -90,17 +92,12 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         }
     }
 
+    /**
+     * 手机端：不再使用 TV 的沉浸式隐藏（会遮挡手势导航区）。
+     * 播放器等需要全屏的场景请单独实现，不要复用此方法。
+     */
     public void hideSysBar() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            int uiOptions = getWindow().getDecorView().getSystemUiVisibility();
-            uiOptions |= View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
-            uiOptions |= View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
-            uiOptions |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
-            uiOptions |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
-            uiOptions |= View.SYSTEM_UI_FLAG_FULLSCREEN;
-            uiOptions |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
-            getWindow().getDecorView().setSystemUiVisibility(uiOptions);
-        }
+        // no-op on phone
     }
 
     private void initSystemUiListener() {
@@ -155,6 +152,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
                 return;
             }
             updateScreenRatio(dm);
+            updateBaseSizeInDp();
             AutoSizeConfig.getInstance()
                     .setScreenWidth(dm.widthPixels)
                     .setScreenHeight(dm.heightPixels);
@@ -163,6 +161,14 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         } catch (Throwable th) {
             th.printStackTrace();
         }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // 横竖屏切换后重新折算设计宽度，否则横屏 density 会被放大
+        updateBaseSizeInDp();
+        AutoSizeCompat.autoConvertDensityOfCustomAdapt(super.getResources(), this);
     }
 
     private void updateScreenRatio(DisplayMetrics dm) {
@@ -264,14 +270,45 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         return "";
     }
 
+    /**
+     * AutoSize 设计宽度基准。
+     *
+     * 原来恒为 360：竖屏没问题，但横屏时 widthPixels 变大，AutoSize 会按
+     * "屏幕宽 / 360" 重算 density，于是横屏下所有 dp/sp 都被放大 2 倍多
+     * （播放器抽屉、下拉框、弹幕设置全部巨大且文字截断）。
+     *
+     * 现在横屏时按竖屏宽高比折算设计宽度，保证横屏的 density 与竖屏一致，
+     * 控件在横竖屏下视觉大小相同。
+     */
     @Override
     public float getSizeInDp() {
-        return isBaseOnWidth() ? 1280 : 720;
+        return baseSizeInDp;
+    }
+
+    private float baseSizeInDp = DESIGN_WIDTH_DP;
+
+    private static final float DESIGN_WIDTH_DP = 360f;
+
+    private void updateBaseSizeInDp() {
+        try {
+            DisplayMetrics dm = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(dm);
+            int w = dm.widthPixels;
+            int h = dm.heightPixels;
+            if (w > 0 && h > 0 && w > h) {
+                // 横屏：设计宽度 = 360 * (宽 / 高)，density 与竖屏保持一致
+                baseSizeInDp = DESIGN_WIDTH_DP * w / (float) h;
+            } else {
+                baseSizeInDp = DESIGN_WIDTH_DP;
+            }
+        } catch (Throwable th) {
+            baseSizeInDp = DESIGN_WIDTH_DP;
+        }
     }
 
     @Override
     public boolean isBaseOnWidth() {
-        return !(screenRatio >= 4.0f);
+        return true;
     }
 
     protected static BitmapDrawable globalWp = null;

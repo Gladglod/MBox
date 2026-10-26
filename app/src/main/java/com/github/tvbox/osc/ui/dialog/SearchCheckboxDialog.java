@@ -2,36 +2,36 @@ package com.github.tvbox.osc.ui.dialog;
 
 import android.app.Activity;
 import android.content.Context;
+import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.ui.adapter.CheckboxSearchAdapter;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
-import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
 
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.List;
 
-import me.jessyan.autosize.utils.AutoSizeUtils;
+public class SearchCheckboxDialog extends BaseDialog {
 
-public class SearchCheckboxDialog extends BaseDialog{
+    private static final int SPAN_COUNT = 3;
 
-    private TvRecyclerView mGridView;
+    private RecyclerView mGridView;
     private CheckboxSearchAdapter checkboxSearchAdapter;
     public List<SourceBean> mSourceList;
     TextView checkAll;
     TextView clearAll;
+    TextView tvDone;
 
     public HashMap<String, String> mCheckSourcees;
 
@@ -40,7 +40,7 @@ public class SearchCheckboxDialog extends BaseDialog{
         if (context instanceof Activity) {
             setOwnerActivity((Activity) context);
         }
-        setCanceledOnTouchOutside(false);
+        setCanceledOnTouchOutside(true);
         setCancelable(true);
         mSourceList = sourceList;
         mCheckSourcees = checkedSources;
@@ -50,7 +50,9 @@ public class SearchCheckboxDialog extends BaseDialog{
 
     @Override
     public void dismiss() {
-        checkboxSearchAdapter.setMCheckedSources();
+        if (checkboxSearchAdapter != null) {
+            checkboxSearchAdapter.setMCheckedSources();
+        }
         super.dismiss();
     }
 
@@ -58,6 +60,8 @@ public class SearchCheckboxDialog extends BaseDialog{
         mGridView = findViewById(R.id.mGridView);
         checkAll = findViewById(R.id.checkAll);
         clearAll = findViewById(R.id.clearAll);
+        tvDone = findViewById(R.id.tvDone);
+
         checkboxSearchAdapter = new CheckboxSearchAdapter(new DiffUtil.ItemCallback<SourceBean>() {
             @Override
             public boolean areItemsTheSame(@NonNull SourceBean oldItem, @NonNull SourceBean newItem) {
@@ -70,41 +74,19 @@ public class SearchCheckboxDialog extends BaseDialog{
             }
         });
         mGridView.setHasFixedSize(true);
-
-        int size = mSourceList.size();
-        int spanCount = (int) Math.floor(size / 10);
-        if (spanCount <= 0) spanCount = 1;
-        if (spanCount > 3) spanCount = 3;
-        mGridView.setLayoutManager(new V7GridLayoutManager(getContext(), spanCount));
-        View root = findViewById(R.id.root);
-        ViewGroup.LayoutParams clp = root.getLayoutParams();
-        clp.width = AutoSizeUtils.mm2px(getContext(), 400 + 260 * (spanCount - 1));
-
+        mGridView.setLayoutManager(new GridLayoutManager(getContext(), SPAN_COUNT));
         mGridView.setAdapter(checkboxSearchAdapter);
+
+        resizePanel();
+
         checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
-        int pos = 0;
-        if (mCheckSourcees != null) {
-            for(int i=0; i<mSourceList.size(); i++) {
-                String key = mSourceList.get(i).getKey();
-                if (mCheckSourcees.containsKey(key)) {
-                    pos = i;
-                    break;
-                }
-            }
-        }
-//        final int scrollPosition = pos;
-//        mGridView.post(new Runnable() {
-//            @Override
-//            public void run() {
-//                mGridView.smoothScrollToPosition(scrollPosition);
-//            }
-//        });
+
         checkAll.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 FastClickCheckUtil.check(view);
                 mCheckSourcees = new HashMap<>();
-                for(SourceBean sourceBean : mSourceList) {
+                for (SourceBean sourceBean : mSourceList) {
                     mCheckSourcees.put(sourceBean.getKey(), "1");
                 }
                 checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
@@ -118,10 +100,39 @@ public class SearchCheckboxDialog extends BaseDialog{
                 checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
             }
         });
+        if (tvDone != null) {
+            tvDone.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    FastClickCheckUtil.check(view);
+                    dismiss();
+                }
+            });
+        }
+    }
+
+    /**
+     * 手机竖屏：面板宽度铺满（左右留白），高度按数据量自适应，最多占屏幕 70%。
+     */
+    private void resizePanel() {
+        View root = findViewById(R.id.root);
+        if (root == null) return;
+        DisplayMetrics dm = getContext().getResources().getDisplayMetrics();
+        int rowHeight = Math.round(48 * dm.density);      // item 40dp + 上下 padding 4dp
+        int headerHeight = Math.round(112 * dm.density);   // 标题行 + 全选行 + 间距
+        int rows = Math.max(1, (int) Math.ceil(mSourceList.size() / (double) SPAN_COUNT));
+        int contentHeight = rows * rowHeight + Math.round(10 * dm.density);
+        int maxHeight = Math.round(dm.heightPixels * 0.70f);
+        int panelHeight = Math.min(headerHeight + contentHeight, maxHeight);
+
+        ViewGroup.LayoutParams lp = root.getLayoutParams();
+        lp.height = panelHeight;
+        root.setLayoutParams(lp);
     }
 
     public void setMSourceList(List<SourceBean> SourceBeanList) {
         mSourceList = SourceBeanList;
         checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
+        resizePanel();
     }
 }

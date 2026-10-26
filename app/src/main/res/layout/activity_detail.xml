@@ -1,403 +1,368 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#0E0E12"
+    android:fitsSystemWindows="true">
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:id="@+id/llLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:fillViewport="true"
+        android:overScrollMode="never">
 
         <LinearLayout
-            android:id="@+id/topLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/vs_10"
-            android:orientation="horizontal"
-            android:paddingLeft="@dimen/vs_40"
-            android:paddingRight="@dimen/vs_50"
-            android:paddingBottom="@dimen/vs_10">
+            android:orientation="vertical"
+            android:paddingStart="@dimen/vs_12"
+            android:paddingLeft="@dimen/vs_12"
+            android:paddingEnd="@dimen/vs_12"
+            android:paddingRight="@dimen/vs_12"
+            android:paddingBottom="@dimen/vs_20">
 
-            <FrameLayout
-                android:id="@+id/thumbContainer"
-                android:layout_width="@dimen/vs_480"
-                android:layout_height="@dimen/vs_320"
-                android:layout_marginLeft="@dimen/vs_10"
-                android:background="@drawable/shape_detail_thumb_bg">
-
-                <ImageView
-                    android:id="@+id/ivThumb"
-                    android:layout_width="@dimen/vs_230"
-                    android:layout_height="@dimen/vs_300"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="@dimen/vs_10"
-                    android:scaleType="centerCrop" />
-            </FrameLayout>
-
+            <!-- 播放器占位：高度由代码按 16:9 设置 -->
             <View
                 android:id="@+id/previewPlayerPlace"
-                android:layout_width="@dimen/vs_480"
-                android:layout_height="@dimen/vs_320"
-                android:visibility="gone" />
+                android:layout_width="match_parent"
+                android:layout_height="203dp"
+                android:layout_marginStart="-12dp"
+                android:layout_marginLeft="-12dp"
+                android:layout_marginEnd="-12dp"
+                android:layout_marginRight="-12dp"
+                android:layout_marginBottom="@dimen/vs_12" />
 
+            <!-- 头部：左海报（预览开启时隐藏） + 右信息 -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/vs_320"
-                android:layout_marginStart="@dimen/vs_20"
-                android:layout_marginLeft="@dimen/vs_20"
-                android:orientation="vertical">
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/tvName"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="@dimen/vs_5"
-                    android:focusable="false"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:singleLine="true"
-                    android:textColor="@android:color/white"
-                    android:textSize="@dimen/ts_28" />
+                <FrameLayout
+                    android:id="@+id/thumbContainer"
+                    android:layout_width="108dp"
+                    android:layout_height="162dp"
+                    android:layout_marginEnd="@dimen/vs_10"
+                    android:layout_marginRight="@dimen/vs_10"
+                    android:background="@drawable/bg_poster"
+                    android:clipToOutline="true">
+
+                    <ImageView
+                        android:id="@+id/ivThumb"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop" />
+                </FrameLayout>
 
                 <LinearLayout
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="@dimen/vs_5"
-                    android:orientation="horizontal">
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
                     <TextView
-                        android:id="@+id/tvSite"
-                        android:layout_width="wrap_content"
+                        android:id="@+id/tvName"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:focusable="false"
+                        android:layout_marginBottom="@dimen/vs_6"
                         android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
-                        android:textSize="@dimen/ts_20" />
-
-                    <TextView
-                        android:id="@+id/tvYear"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:focusable="false"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
-                        android:textSize="@dimen/ts_20" />
-
-                    <TextView
-                        android:id="@+id/tvArea"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:focusable="false"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
-                        android:textSize="@dimen/ts_20" />
-
-                    <TextView
-                        android:id="@+id/tvLang"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:focusable="false"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
-                        android:textSize="@dimen/ts_20" />
+                        android:gravity="left"
+                        android:maxLines="2"
+                        android:textColor="@android:color/white"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/tvType"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:focusable="false"
+                        android:layout_marginBottom="@dimen/vs_6"
+                        android:background="@drawable/bg_chip"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingLeft="@dimen/vs_10"
+                        android:paddingTop="@dimen/vs_3"
+                        android:paddingRight="@dimen/vs_10"
+                        android:paddingBottom="@dimen/vs_3"
+                        android:singleLine="true"
+                        android:textColor="@android:color/white"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/tvSite"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/vs_3"
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:singleLine="true"
                         android:textColor="@color/color_CCFFFFFF"
-                        android:textSize="@dimen/ts_20" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tvActor"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="@dimen/vs_5"
-                    android:focusable="false"
-                    android:ellipsize="end"
-                    android:singleLine="true"
-                    android:textColor="@color/color_CCFFFFFF"
-                    android:textSize="@dimen/ts_20" />
-
-                <TextView
-                    android:id="@+id/tvDirector"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="@dimen/vs_5"
-                    android:focusable="false"
-                    android:ellipsize="end"
-                    android:singleLine="true"
-                    android:textColor="@color/color_CCFFFFFF"
-                    android:textSize="@dimen/ts_20" />
-
-                <TextView
-                    android:id="@+id/tvPlayUrl"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:singleLine="true"
-                    android:focusable="false"
-                    android:textColor="@color/color_CCFFFFFF"
-                    android:textSize="@dimen/ts_20" />
-
-
-                <TextView
-                    android:id="@+id/tvDes"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:focusable="false"
-                    android:ellipsize="end"
-                    android:lineSpacingMultiplier="1.2"
-                    android:maxLines="3"
-                    android:textColor="@color/color_CCFFFFFF"
-                    android:textSize="@dimen/ts_20" />
-
-                <Space
-                    android:layout_width="wrap_content"
-                    android:layout_height="0mm"
-                    android:layout_weight="1" />
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
+                        android:textSize="12sp" />
 
                     <TextView
-                        android:id="@+id/tvPlay"
-                        android:layout_width="@dimen/vs_120"
-                        android:layout_height="@dimen/vs_40"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:background="@drawable/button_detail_play"
-                        android:focusable="true"
-                        android:nextFocusUp="@id/previewPlayerBlock"
-                        android:gravity="center"
-                        android:text="立即播放"
-                        android:textColor="@android:color/white"
-                        android:textSize="@dimen/vs_20" />
+                        android:id="@+id/tvYear"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/vs_3"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:textColor="@color/color_CCFFFFFF"
+                        android:textSize="12sp" />
 
                     <TextView
-                        android:id="@+id/tvQuickSearch"
-                        android:layout_width="@dimen/vs_120"
-                        android:layout_height="@dimen/vs_40"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:background="@drawable/button_detail_quick_search"
-                        android:focusable="true"
-                        android:gravity="center"
-                        android:text="快速搜索"
-                        android:textColor="@android:color/white"
-                        android:textSize="@dimen/vs_20" />
+                        android:id="@+id/tvArea"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/vs_3"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:textColor="@color/color_CCFFFFFF"
+                        android:textSize="12sp" />
 
                     <TextView
-                        android:id="@+id/tvDesc"
-                        android:layout_width="@dimen/vs_120"
-                        android:layout_height="@dimen/vs_40"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:background="@drawable/button_detail_sort"
-                        android:focusable="true"
-                        android:gravity="center"
-                        android:text="简介"
-                        android:textColor="@android:color/white"
-                        android:textSize="@dimen/vs_20" />
+                        android:id="@+id/tvLang"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/vs_3"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:textColor="@color/color_CCFFFFFF"
+                        android:textSize="12sp" />
 
                     <TextView
-                        android:id="@+id/tvCollect"
-                        android:layout_width="@dimen/vs_120"
-                        android:layout_height="@dimen/vs_40"
-                        android:layout_marginEnd="@dimen/vs_10"
-                        android:layout_marginRight="@dimen/vs_10"
-                        android:background="@drawable/button_detail_collect"
-                        android:focusable="true"
-                        android:gravity="center"
-                        android:text="加入收藏"
-                        android:textColor="@android:color/white"
-                        android:textSize="@dimen/vs_20" />
+                        android:id="@+id/tvActor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/vs_3"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:textColor="@color/color_CCFFFFFF"
+                        android:textSize="12sp" />
 
                     <TextView
-                        android:id="@+id/tvChangeSource"
-                        android:layout_width="@dimen/vs_120"
-                        android:layout_height="@dimen/vs_40"
-                        android:background="@drawable/button_detail_change_source"
-                        android:focusable="true"
-                        android:gravity="center"
-                        android:text="切源"
-                        android:textColor="@android:color/white"
-                        android:textSize="@dimen/vs_20" />
+                        android:id="@+id/tvDirector"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:textColor="@color/color_CCFFFFFF"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvPlayUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/color_99FFFFFF"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
-        </LinearLayout>
 
-
-        <LinearLayout
-            android:id="@+id/mEmptyPlaylist"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_gravity="center"
-            android:gravity="center_horizontal"
-            android:orientation="horizontal"
-            tools:visibility="gone">
-
-            <ImageView
-                android:layout_width="@dimen/vs_128"
-                android:layout_height="@dimen/vs_128"
-                android:layout_gravity="center"
-                android:src="@drawable/icon_empty" />
-
+            <!-- 简介 -->
             <TextView
-                android:layout_width="wrap_content"
+                android:id="@+id/tvDes"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginStart="@dimen/vs_10"
-                android:layout_marginLeft="@dimen/vs_10"
-                android:gravity="center"
-                android:text="暂无播放数据"
-                android:textColor="@android:color/white"
-                android:textSize="@dimen/ts_24" />
-        </LinearLayout>
+                android:layout_marginTop="@dimen/vs_10"
+                android:ellipsize="end"
+                android:lineSpacingMultiplier="1.25"
+                android:maxLines="3"
+                android:textColor="@color/color_CCFFFFFF"
+                android:textSize="13sp" />
 
-        <!-- mGridViewFlag 区域 -->
-        <com.owen.tvrecyclerview.widget.TvRecyclerView
-            android:id="@+id/mGridViewFlag"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/vs_45"
-            android:layout_marginLeft="@dimen/vs_50"
-            android:layout_marginTop="@dimen/vs_0"
-            android:layout_marginRight="@dimen/vs_50"
-            android:clipChildren="false"
-            android:clipToPadding="false"
-            android:focusable="true"
-            android:nextFocusUp="@id/previewPlayerPlace"
-            app:tv_horizontalSpacingWithMargins="@dimen/vs_10"
-            app:tv_selectedItemIsCentered="true" />
+            <!-- 其他操作：一排四个 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_8"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
-        <LinearLayout
-            android:id="@+id/mSeriesGroupTv"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginLeft="@dimen/vs_50"
-            android:layout_marginTop="@dimen/vs_10"
-            android:layout_marginRight="@dimen/vs_50"
-            android:gravity="center_vertical"
-            android:focusable="false"
-            android:visibility="gone">
+                <TextView
+                    android:id="@+id/tvCollect"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="@dimen/vs_6"
+                    android:layout_marginRight="@dimen/vs_6"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_detail_collect"
+                    android:gravity="center"
+                    android:text="收藏"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
 
-            <!-- 排序功能按钮 -->
-            <TextView
-                android:id="@+id/mSeriesSortTv"
-                android:layout_width="wrap_content"
-                android:layout_height="@dimen/vs_45"
-                android:background="@drawable/shape_source_series_focus"
-                android:gravity="center"
-                android:paddingLeft="@dimen/vs_10"
-                android:paddingRight="@dimen/vs_10"
-                android:text="正序"
-                android:textColor="@android:color/white"
-                android:textSize="@dimen/ts_20"
-                android:ellipsize="marquee"
-                android:singleLine="true"
-                android:focusable="true"
-                android:nextFocusUp="@id/mGridViewFlag"
-                android:nextFocusDown="@id/mGridView"
-                android:nextFocusRight="@id/mSeriesGroupView"/>
+                <TextView
+                    android:id="@+id/tvChangeSource"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="@dimen/vs_6"
+                    android:layout_marginRight="@dimen/vs_6"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_detail_change_source"
+                    android:gravity="center"
+                    android:text="换源"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
 
-            <!-- 原来的 mSeriesGroupView -->
-            <com.owen.tvrecyclerview.widget.TvRecyclerView
-                android:id="@+id/mSeriesGroupView"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/vs_45"
-                android:layout_weight="1"
-                android:layout_marginLeft="@dimen/vs_10"
-                android:clipChildren="false"
+                <TextView
+                    android:id="@+id/tvQuickSearch"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="@dimen/vs_6"
+                    android:layout_marginRight="@dimen/vs_6"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_detail_quick_search"
+                    android:gravity="center"
+                    android:text="搜索"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvDesc"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_detail_sort"
+                    android:gravity="center"
+                    android:text="简介"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- 播放源 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/mGridViewFlag"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="@dimen/vs_12"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never" />
+
+            <!-- 分集分页（页码）：手机竖屏改为单行横滑，不再分页 -->
+            <LinearLayout
+                android:id="@+id/mSeriesGroupTv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_8"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/mSeriesGroupView"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:nestedScrollingEnabled="false"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+
+            <!-- 清晰度 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/mGridViewQuality"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="@dimen/vs_8"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:visibility="gone" />
+
+            <!-- 选集标题 + 正序/倒序切换 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_14"
+                android:layout_marginBottom="@dimen/vs_6"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="选集"
+                    android:textColor="@android:color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/mSeriesSortTv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:background="@drawable/bg_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minWidth="56dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:singleLine="true"
+                    android:text="正序"
+                    android:textColor="@color/color_02F8E1"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 选集：单行横滑 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/mGridView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:clipToPadding="false"
-                app:tv_horizontalSpacingWithMargins="@dimen/vs_10"
-                app:tv_selectedItemIsCentered="true"
-                android:focusable="true"
-                android:nextFocusUp="@id/mGridViewFlag"
-                android:nextFocusDown="@id/mGridView"
-                android:nextFocusLeft="@id/mSeriesSortTv"/>
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp" />
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-        <com.owen.tvrecyclerview.widget.TvRecyclerView
-            android:id="@+id/mGridViewQuality"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/vs_45"
-            android:layout_marginLeft="@dimen/vs_50"
-            android:layout_marginTop="@dimen/vs_10"
-            android:layout_marginRight="@dimen/vs_50"
-            android:clipChildren="false"
-            android:clipToPadding="false"
-            android:focusable="true"
-            android:visibility="gone"
-            app:tv_horizontalSpacingWithMargins="@dimen/vs_10"
-            app:tv_selectedItemIsCentered="true" />
-
-
-        <com.owen.tvrecyclerview.widget.TvRecyclerView
-            android:id="@+id/mGridView"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginLeft="@dimen/vs_50"
-            android:layout_marginTop="@dimen/vs_10"
-            android:layout_marginRight="@dimen/vs_50"
-            android:layout_marginBottom="@dimen/vs_10"
-            android:clipChildren="false"
-            android:clipToPadding="false"
-            app:tv_horizontalSpacingWithMargins="@dimen/vs_10"
-            app:tv_selectedItemIsCentered="true"
-            app:tv_verticalSpacingWithMargins="@dimen/vs_10" />
-    </LinearLayout>
-
+    <!-- 播放器：固定在顶部，随内容滚动做位移（全屏时铺满） -->
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/previewPlayer"
-        android:layout_width="@dimen/vs_470"
-        android:layout_height="@dimen/vs_300"
-        android:layout_marginStart="@dimen/vs_50"
-        android:layout_marginLeft="@dimen/vs_50"
-        android:layout_marginTop="@dimen/vs_20"
-        android:layout_marginBottom="@dimen/vs_10"
+        android:layout_width="match_parent"
+        android:layout_height="203dp"
+        android:layout_gravity="top"
         android:background="@drawable/preview_player_round"
         android:visibility="gone" />
 
     <View
         android:id="@+id/previewPlayerBlock"
-        android:layout_width="@dimen/vs_470"
-        android:layout_height="@dimen/vs_300"
-        android:focusable="true"
-        android:nextFocusDown="@id/mGridViewFlag"
+        android:layout_width="match_parent"
+        android:layout_height="203dp"
+        android:layout_gravity="top"
         android:background="@drawable/preview_player_block"
-        android:layout_marginStart="@dimen/vs_50"
-        android:layout_marginLeft="@dimen/vs_50"
-        android:layout_marginTop="@dimen/vs_20"
-        android:layout_marginBottom="@dimen/vs_10"
         android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/mEmptyPlaylist"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="@dimen/vs_128"
+            android:layout_height="@dimen/vs_128"
+            android:layout_gravity="center"
+            android:src="@drawable/icon_empty" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginStart="@dimen/vs_10"
+            android:layout_marginLeft="@dimen/vs_10"
+            android:gravity="center"
+            android:text="暂无播放数据"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/ts_24" />
+    </LinearLayout>
 </FrameLayout>

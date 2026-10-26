@@ -2,28 +2,27 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/button_danmu_setting">
+    android:paddingBottom="8dp">
 
     <LinearLayout
         android:id="@+id/danmuItem"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/vs_50"
-        android:layout_marginBottom="@dimen/vs_10"
-        android:background="@drawable/shape_setting_sort_focus"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_player_chip"
         android:clickable="true"
-        android:focusable="true"
+        android:focusable="false"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="@dimen/vs_20"
-        android:paddingRight="@dimen/vs_20">
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp">
 
         <TextView
             android:id="@+id/danmuName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="marquee"
+            android:ellipsize="end"
             android:singleLine="true"
             android:textColor="@color/dialog_text_primary"
-            android:textSize="@dimen/ts_22" />
+            android:textSize="13sp" />
     </LinearLayout>
 </FrameLayout>

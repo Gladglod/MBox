@@ -11,17 +11,27 @@ import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
+import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.webkit.WebView;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
+import android.widget.PopupWindow;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -32,6 +42,7 @@ import androidx.recyclerview.widget.DiffUtil;
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
+import com.github.tvbox.osc.api.DanmakuApi;
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.ParseBean;
@@ -59,8 +70,8 @@ import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.HttpHeaders;
 import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONArray;
@@ -89,11 +100,32 @@ import static xyz.doikki.videoplayer.util.PlayerUtils.safeTimeMs;
 public class VodController extends BaseController {
     private static final float PORTRAIT_EPISODE_SWIPE_DP = 80f;
     private static final long PORTRAIT_EPISODE_TITLE_SHOW_MS = 3000L;
+
+    /* ===== 长按加速 ===== */
+    /** 竖直方向滑动多少 dp 对应 1 倍速的变化 */
+    private static final float SPEED_BOOST_RANGE_DP = 240f;
+    private static final float SPEED_BOOST_MIN = 0.5f;
+    private static final float SPEED_BOOST_MAX = 3.0f;
+
+    /* ===== 双击左右快退/快进 ===== */
+    private static final int DOUBLE_TAP_SEEK_MS = 3000;
+    /** 双击快进/快退的左右热区宽度占比，中间剩余区域用于播放/暂停 */
+    private static final float DOUBLE_TAP_SEEK_ZONE = 0.35f;
+
+    private boolean speedBoostActive;
+    private float speedBoostStartY;
+    private float speedBoostBaseSpeed = 1.0f;
+    private float speedBoostSpeed = 1.0f;
+    private TextView mSpeedBoostTip;
+
     private boolean portraitEpisodeSwipeTriggered;
     private final Runnable portraitEpisodeTitleRunnable = new Runnable() {
         @Override
         public void run() {
-            if (!isBottomVisible()) mTopRoot1.setVisibility(GONE);
+            if (!isBottomVisible()) {
+                mTopRoot1.setVisibility(GONE);
+                if (mTopBar != null) mTopBar.setVisibility(GONE);
+            }
         }
     };
 
@@ -116,6 +148,7 @@ public class VodController extends BaseController {
                         hidePauseRoot();
                         mPlayTitle.setVisibility(GONE);
                         mBottomRoot.setVisibility(VISIBLE);
+                        if (mTopBar != null) mTopBar.setVisibility(VISIBLE);
                         mTopRoot1.setVisibility(VISIBLE);
                         mTopRoot2.setVisibility(VISIBLE);
                         mPlayLoadNetSpeedRightTop.setVisibility(VISIBLE);
@@ -125,12 +158,15 @@ public class VodController extends BaseController {
                             net_play_speed.setVisibility(GONE);
                         }
                         boolean isPortrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-                        backBtn.setVisibility(ScreenUtils.isTv(context) || isPortrait ? INVISIBLE : VISIBLE);
+                        // 手机竖屏：常显返回键；TV/横屏（非 TV 外部播放器）按原逻辑
+                        backBtn.setVisibility(ScreenUtils.isTv(context) ? INVISIBLE : VISIBLE);
                         showLockView();
                         break;
                     }
                     case 1003: { // 隐藏底部菜单
                         mBottomRoot.setVisibility(GONE);
+                        // 顶部整栏（退出/投屏/菜单）跟随控制条一起隐藏
+                        if (mTopBar != null) mTopBar.setVisibility(GONE);
                         mTopRoot1.setVisibility(GONE);
                         mPlayLoadNetSpeedRightTop.setVisibility(GONE);
                         if (videoPlayState == VideoView.STATE_PAUSED) {
@@ -145,7 +181,8 @@ public class VodController extends BaseController {
                         }else {
                             net_play_speed.setVisibility(VISIBLE);
                         }
-                        backBtn.setVisibility(INVISIBLE);
+                        // 手机竖屏：隐藏菜单时仍保留返回键；仅 TV 按原逻辑隐藏
+                        backBtn.setVisibility(ScreenUtils.isTv(context) ? INVISIBLE : VISIBLE);
                         mHandler.removeCallbacks(lockRunnable);
                         if (mLockView != null) {
                             mLockView.setVisibility(INVISIBLE);
@@ -172,11 +209,133 @@ public class VodController extends BaseController {
     @Override
     public boolean onDown(MotionEvent e) {
         portraitEpisodeSwipeTriggered = false;
+        exitSpeedBoost();
         return super.onDown(e);
+    }
+
+    /** 长按进入加速状态：此后上下滑动即可调节倍速 */
+    private void enterSpeedBoost(float downY) {
+        speedBoostActive = true;
+        speedBoostStartY = downY;
+        speedBoostBaseSpeed = currentPlaySpeed();
+        speedBoostSpeed = speedBoostBaseSpeed;
+        showSpeedBoostTip(speedBoostBaseSpeed);
+    }
+
+    private void updateSpeedBoost(float currentY) {
+        if (!speedBoostActive) return;
+        float range = getResources().getDisplayMetrics().density * SPEED_BOOST_RANGE_DP;
+        if (range <= 0) return;
+        // 手指向上移动为正 → 加速；向下为负 → 减速
+        float delta = (speedBoostStartY - currentY) / range;
+        float speed = speedBoostBaseSpeed + delta;
+        if (speed < SPEED_BOOST_MIN) speed = SPEED_BOOST_MIN;
+        if (speed > SPEED_BOOST_MAX) speed = SPEED_BOOST_MAX;
+        speed = Math.round(speed * 10) / 10f;
+        if (Math.abs(speed - speedBoostSpeed) < 0.05f) return;
+        speedBoostSpeed = speed;
+        if (mControlWrapper != null) mControlWrapper.setSpeed(speed);
+        showSpeedBoostTip(speed);
+    }
+
+    private void exitSpeedBoost() {
+        if (!speedBoostActive) return;
+        speedBoostActive = false;
+        if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostBaseSpeed);
+        if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
+    }
+
+    private void showSpeedBoostTip(float speed) {
+        if (mSpeedBoostTip == null) return;
+        mSpeedBoostTip.setText(String.format(Locale.getDefault(), "%.1fX 倍速", speed));
+        mSpeedBoostTip.setVisibility(VISIBLE);
+    }
+
+    /** 手指抬起/取消时结束加速 */
+    private void handleSpeedBoostRelease(MotionEvent event) {
+        if (!speedBoostActive || event == null) return;
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            exitSpeedBoost();
+        }
+    }
+
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+        // 注意：GestureDetector 在触发长按后会忽略 ACTION_MOVE（不回调 onScroll），
+        // 所以长按加速的滑动必须在这里直接处理
+        if (speedBoostActive && event != null) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_MOVE) {
+                updateSpeedBoost(event.getY());
+                return true;
+            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                exitSpeedBoost();
+            }
+        }
+        return super.onTouch(v, event);
+    }
+
+    /**
+     * 双击分区：
+     * 左侧 35% → 后退 3 秒；右侧 35% → 前进 3 秒；中间 30% → 播放 / 暂停。
+     */
+    @Override
+    public boolean onDoubleTap(MotionEvent e) {
+        if (e == null || isLocked() || !isInPlaybackState()) return true;
+        int width = getMeasuredWidth();
+        if (width <= 0) return true;
+
+        float x = e.getX();
+        float leftEdge = width * DOUBLE_TAP_SEEK_ZONE;          // 0.35
+        float rightEdge = width * (1f - DOUBLE_TAP_SEEK_ZONE);  // 0.65
+        if (x >= leftEdge && x <= rightEdge) {
+            // 中间区域：播放 / 暂停
+            togglePlay();
+            return true;
+        }
+
+        int duration = safeTimeMs(mControlWrapper.getDuration());
+        if (duration <= 0) return true;
+        boolean forward = x > rightEdge;
+        int current = safeTimeMs(mControlWrapper.getCurrentPosition());
+        int target = current + (forward ? DOUBLE_TAP_SEEK_MS : -DOUBLE_TAP_SEEK_MS);
+        if (target < 0) target = 0;
+        if (target > duration) target = duration;
+        mControlWrapper.seekTo(target);
+        showDoubleTapSeekTip(forward, target, duration);
+        return true;
+    }
+
+    private void showDoubleTapSeekTip(boolean forward, int target, int duration) {
+        if (mProgressIcon != null) {
+            mProgressIcon.setVisibility(VISIBLE);
+            mProgressIcon.setImageResource(forward ? R.drawable.exo_icon_fastforward : R.drawable.exo_icon_rewind);
+        }
+        if (mProgressText != null) {
+            mProgressText.setText((forward ? "快进 3 秒" : "快退 3 秒")
+                    + "  " + stringForTime(target) + " / " + stringForTime(duration));
+        }
+        mHandler.sendEmptyMessage(1000);
+        mHandler.removeMessages(1001);
+        mHandler.sendEmptyMessageDelayed(1001, 900);
+    }
+
+    private float currentPlaySpeed() {
+        try {
+            if (mPlayerConfig != null) return (float) mPlayerConfig.getDouble("sp");
+        } catch (Exception ignore) {
+        }
+        return 1.0f;
     }
 
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+        if (speedBoostActive) {
+            updateSpeedBoost(e2.getY());
+            return true;
+        }
         if (isPortraitEpisodeSwipe(e1, e2)) {
             if (!portraitEpisodeSwipeTriggered && Math.abs(e2.getY() - e1.getY()) >= portraitEpisodeSwipeThreshold()) {
                 portraitEpisodeSwipeTriggered = true;
@@ -204,6 +363,8 @@ public class VodController extends BaseController {
     private void showPortraitEpisodeTitle() {
         if (isBottomVisible()) return;
         mHandler.removeCallbacks(portraitEpisodeTitleRunnable);
+        // 切集提示依附于顶部栏，临时把顶部栏带出来，3 秒后自动收回
+        if (mTopBar != null) mTopBar.setVisibility(VISIBLE);
         mTopRoot1.setVisibility(VISIBLE);
         mHandler.postDelayed(portraitEpisodeTitleRunnable, PORTRAIT_EPISODE_TITLE_SHOW_MS);
     }
@@ -222,13 +383,13 @@ public class VodController extends BaseController {
     LinearLayout mTopRoot1;
     LinearLayout mTopRoot2;
     LinearLayout mParseRoot;
-    TvRecyclerView mGridParseView;
+    RecyclerView mGridParseView;
     TextView mPlayTitle;
     TextView mPlayTitle1;
     TextView mPlayLabel;
     TextView mPlayLoadNetSpeedRightTop;
-    TextView mNextBtn;
-    TextView mPreBtn;
+    View mNextBtn;
+    View mPreBtn;
     TextView mPlayerScaleBtn;
     public TextView mPlayerSpeedBtn;
     TextView mPlayerBtn;
@@ -256,10 +417,34 @@ public class VodController extends BaseController {
     TextView seekTime; //右上角进度时间显示
     TextView mScreenDisplay; //增加屏显开关
     LinearLayout tv_screen_display; //增加屏显布局
-    TextView mCastBtn;
+    View mCastBtn;
     TextView net_play_speed;
     private boolean hasDanmu = false;
     private boolean showParse;
+
+    /* ===== 手机竖屏主按钮行 / 右上角菜单 / 抽屉 ===== */
+    private LinearLayout mTopBar;            // 顶部整栏（返回/标题/投屏/菜单）
+    private LinearLayout mPlayPauseBtn;      // 播放·暂停
+    private ImageView mPlayPauseIcon;
+    private TextView mDanmuBtn;              // 弹幕开关
+    private LinearLayout mFullScreenBtn;     // 全屏
+    private ImageView mFullScreenIcon;
+    private ImageView mMenuBtn;              // 右上角菜单
+    private LinearLayout mMorePanel;         // 设置抽屉
+    private View mDrawerScrim;               // 抽屉遮罩
+    private ImageView mDrawerClose;          // 抽屉关闭
+
+    /* ===== 抽屉内的弹幕设置 ===== */
+    private TextView tvDanmuSource;
+    private TextView btnDanmuSearch;
+    private TextView dmColorDefault, dmColorRandom;
+    private TextView dmSpeed0, dmSpeed1, dmSpeed2, dmSpeed3;
+    private TextView dmSizeSub, dmSize, dmSizeAdd;
+    private TextView dmLineSub, dmLine, dmLineAdd;
+    private TextView dmAlphaSub, dmAlpha, dmAlphaAdd;
+    // 注意：必须是 static。initView() 由 BaseVideoController 构造函数回调，
+    // 此时子类实例字段初始化器尚未执行，非 static 的数组仍是 null。
+    private static final float[] DM_SPEED_RATES = {2.4f, 1.8f, 1.5f, 1.0f}; // 与 DanmuSettingDialog 的档位一致
 
     LockRunnable lockRunnable = new LockRunnable();
     private boolean isLock = false;
@@ -368,6 +553,20 @@ public class VodController extends BaseController {
         seekTime = findViewById(R.id.tv_seek_time);
         mScreenDisplay = findViewById(R.id.screen_display);
         mCastBtn = findViewById(R.id.play_cast);
+        mTopBar = findViewById(R.id.player_top_bar);
+        mSpeedBoostTip = findViewById(R.id.tv_speed_boost);
+        mPlayPauseBtn = findViewById(R.id.btn_play_pause);
+        mPlayPauseIcon = findViewById(R.id.iv_play_pause);
+        mDanmuBtn = findViewById(R.id.btn_danmu);
+        mFullScreenBtn = findViewById(R.id.btn_fullscreen);
+        mFullScreenIcon = findViewById(R.id.iv_fullscreen);
+        mMenuBtn = findViewById(R.id.iv_player_menu);
+        mMorePanel = findViewById(R.id.player_more_panel);
+        mDrawerScrim = findViewById(R.id.drawer_scrim);
+        mDrawerClose = findViewById(R.id.iv_drawer_close);
+        bindMainControlButtons();
+        bindDrawer();
+        bindDanmuSettingPanel();
         updateDanmuBtn();
         updateDanmuSearchUiBtn();
         backBtn.setOnClickListener(new OnClickListener() {
@@ -420,6 +619,11 @@ public class VodController extends BaseController {
         myRunnable = new Runnable() {
             @Override
             public void run() {
+                // 暂停状态下控制条常显，否则用户点不到播放键
+                if (videoPlayState == VideoView.STATE_PAUSED) {
+                    myHandle.postDelayed(this, myHandleSeconds);
+                    return;
+                }
                 hideBottom();
             }
         };
@@ -431,7 +635,7 @@ public class VodController extends BaseController {
             }
         });
 
-        mGridParseView.setLayoutManager(new V7LinearLayoutManager(getContext(), 0, false));
+        mGridParseView.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false));
         ParseAdapter parseAdapter = new ParseAdapter();
         parseAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
@@ -614,7 +818,7 @@ public class VodController extends BaseController {
             public void onClick(View view) {
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
-                showScaleDialog();
+                showScalePicker(view);
             }
         });
         setOnTvLongClickListener(mPlayerScaleBtn, new OnLongClickListener() {
@@ -666,30 +870,7 @@ public class VodController extends BaseController {
             public void onClick(View view) {
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
-                try {
-                    int playerType = mPlayerConfig.getInt("pl");
-                    ArrayList<Integer> exsitPlayerTypes = PlayerHelper.getExistPlayerTypes();
-                    int playerTypeIdx = 0;
-                    int playerTypeSize = exsitPlayerTypes.size();
-                    for(int i = 0; i<playerTypeSize; i++) {
-                        if (playerType == exsitPlayerTypes.get(i)) {
-                            if (i == playerTypeSize - 1) {
-                                playerTypeIdx = 0;
-                            } else {
-                                playerTypeIdx = i + 1;
-                            }
-                        }
-                    }
-                    playerType = exsitPlayerTypes.get(playerTypeIdx);
-                    mPlayerConfig.put("pl", playerType);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                    listener.replay(false);
-                    listener.setAllowSwitchPlayer(false);
-                    hideBottom();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
+                showPlayerPicker(view);
             }
         });
 
@@ -759,27 +940,7 @@ public class VodController extends BaseController {
             public void onClick(View view) {
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
-                try {
-                    String ijk = mPlayerConfig.getString("ijk");
-                    List<IJKCode> codecs = ApiConfig.get().getIjkCodes();
-                    for (int i = 0; i < codecs.size(); i++) {
-                        if (ijk.equals(codecs.get(i).getName())) {
-                            if (i >= codecs.size() - 1)
-                                ijk = codecs.get(0).getName();
-                            else {
-                                ijk = codecs.get(i + 1).getName();
-                            }
-                            break;
-                        }
-                    }
-                    mPlayerConfig.put("ijk", ijk);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                    listener.replay(false);
-                    hideBottom();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
+                showCodecPicker(view);
             }
         });
 //        增加播放页面片头片尾时间重置
@@ -815,19 +976,7 @@ public class VodController extends BaseController {
                 }
             }
         });
-        setOnTvLongClickListener(mPlayerTimeStartBtn, new OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                try {
-                    mPlayerConfig.put("st", 0);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-                return true;
-            }
-        });
+        bindTimeAdjust(mPlayerTimeStartBtn, true);
         mPlayerTimeSkipBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -845,19 +994,7 @@ public class VodController extends BaseController {
                 }
             }
         });
-        setOnTvLongClickListener(mPlayerTimeSkipBtn, new OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                try {
-                    mPlayerConfig.put("et", 0);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-                return true;
-            }
-        });
+        bindTimeAdjust(mPlayerTimeSkipBtn, false);
         mZimuBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -972,6 +1109,163 @@ public class VodController extends BaseController {
         mNextBtn.setNextFocusLeftId(R.id.screen_display);
     }
 
+    /* ==================== 下拉框选择器（播放器 / 解码 / 画面比例） ==================== */
+
+    /**
+     * 抽屉内的下拉选项：用与抽屉同风格的浮层列表，宽度跟随锚点，
+     * 避免系统 PopupMenu 在播放器里尺寸/配色不协调、还容易被放大到超出屏幕。
+     */
+    private void showOptionList(View anchor, final List<String> options, int checkedIndex,
+                                final OnOptionPicked callback) {
+        if (anchor == null || options == null || options.isEmpty()) return;
+        try {
+            final Context ctx = getContext();
+            LinearLayout list = new LinearLayout(ctx);
+            list.setOrientation(LinearLayout.VERTICAL);
+            list.setBackgroundResource(R.drawable.bg_player_drawer);
+            int pad = dp(5);
+            list.setPadding(pad, pad, pad, pad);
+
+            final PopupWindow popup = new PopupWindow(list,
+                    anchor.getWidth(), ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
+            popup.setOutsideTouchable(true);
+            popup.setFocusable(true);
+
+            for (int i = 0; i < options.size(); i++) {
+                TextView tv = new TextView(ctx);
+                tv.setText(options.get(i));
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_22));
+                tv.setTextColor(i == checkedIndex
+                        ? getResources().getColor(R.color.color_02F8E1) : 0xFFFFFFFF);
+                tv.setGravity(Gravity.CENTER_VERTICAL);
+                tv.setSingleLine(true);
+                tv.setEllipsize(TextUtils.TruncateAt.END);
+                tv.setPadding(dp(10), 0, dp(10), 0);
+                tv.setBackgroundResource(i == checkedIndex
+                        ? R.drawable.bg_chip_selected : R.drawable.bg_player_chip);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
+                lp.topMargin = i == 0 ? 0 : dp(3);
+                tv.setLayoutParams(lp);
+                final int index = i;
+                tv.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        popup.dismiss();
+                        if (callback != null) callback.onPicked(index);
+                    }
+                });
+                list.addView(tv);
+            }
+            popup.showAsDropDown(anchor, 0, dp(4));
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    interface OnOptionPicked {
+        void onPicked(int index);
+    }
+
+    private void showPlayerPicker(View anchor) {
+        if (mPlayerConfig == null || anchor == null) return;
+        try {
+            final int currentType = mPlayerConfig.getInt("pl");
+            final ArrayList<Integer> players = PlayerHelper.getExistPlayerTypes();
+            if (players.isEmpty()) return;
+            List<String> names = new ArrayList<>();
+            int checked = 0;
+            for (int i = 0; i < players.size(); i++) {
+                int type = players.get(i);
+                names.add(PlayerHelper.getPlayerName(type));
+                if (type == currentType) checked = i;
+            }
+            showOptionList(anchor, names, checked, new OnOptionPicked() {
+                @Override
+                public void onPicked(int index) {
+                    if (index < 0 || index >= players.size()) return;
+                    int thisPlayType = players.get(index);
+                    if (thisPlayType != currentType) {
+                        try {
+                            mPlayerConfig.put("pl", thisPlayType);
+                            updatePlayerCfgView();
+                            listener.updatePlayerCfg();
+                            listener.replay(false);
+                            listener.setAllowSwitchPlayer(false);
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            });
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void showCodecPicker(View anchor) {
+        if (mPlayerConfig == null || anchor == null) return;
+        try {
+            final String current = mPlayerConfig.getString("ijk");
+            final List<IJKCode> codecs = ApiConfig.get().getIjkCodes();
+            if (codecs == null || codecs.isEmpty()) return;
+            List<String> names = new ArrayList<>();
+            int checked = 0;
+            for (int i = 0; i < codecs.size(); i++) {
+                String name = codecs.get(i).getName();
+                names.add(getCodecShortName(name));
+                if (name != null && name.equals(current)) checked = i;
+            }
+            showOptionList(anchor, names, checked, new OnOptionPicked() {
+                @Override
+                public void onPicked(int index) {
+                    if (index < 0 || index >= codecs.size()) return;
+                    String name = codecs.get(index).getName();
+                    if (!name.equals(current)) {
+                        try {
+                            mPlayerConfig.put("ijk", name);
+                            updatePlayerCfgView();
+                            listener.updatePlayerCfg();
+                            listener.replay(false);
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            });
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void showScalePicker(View anchor) {
+        if (mPlayerConfig == null || anchor == null) return;
+        try {
+            final int current = mPlayerConfig.getInt("sc");
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i <= 5; i++) {
+                names.add(PlayerHelper.getScaleName(i));
+            }
+            showOptionList(anchor, names, current, new OnOptionPicked() {
+                @Override
+                public void onPicked(int index) {
+                    if (index < 0 || index > 5) return;
+                    try {
+                        mPlayerConfig.put("sc", index);
+                        updatePlayerCfgView();
+                        listener.updatePlayerCfg();
+                        mControlWrapper.setScreenScaleType(index);
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
     private void showScaleDialog() {
         try {
             int scaleType = mPlayerConfig.getInt("sc");
@@ -1077,8 +1371,9 @@ public class VodController extends BaseController {
 
     public void initLandscapePortraitBtnInfo() {
         boolean isPortrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-        if (mCurrentTime != null) mCurrentTime.setVisibility(isPortrait ? GONE : VISIBLE);
-        if (mTotalTime != null) mTotalTime.setVisibility(isPortrait ? GONE : VISIBLE);
+        // 时长显示：横竖屏都保留（当前时间 / 总时长）
+        if (mCurrentTime != null) mCurrentTime.setVisibility(VISIBLE);
+        if (mTotalTime != null) mTotalTime.setVisibility(VISIBLE);
         if (isPortrait) {
             if (backBtn != null) backBtn.setVisibility(INVISIBLE);
             if (mLockView != null) mLockView.setVisibility(INVISIBLE);
@@ -1101,22 +1396,15 @@ public class VodController extends BaseController {
 
     private void updatePortraitMenu(boolean isPortrait) {
         if (isPortrait) {
-            mParseRoot.setVisibility(GONE);
+            // 竖屏：这些功能都收进「更多功能」面板里，不再隐藏，否则菜单里会缺项
+            mParseRoot.setVisibility(showParse ? VISIBLE : GONE);
             mPlayLabel.setVisibility(GONE);
-            mPlayrefresh.setVisibility(GONE);
-            mPlayerScaleBtn.setVisibility(GONE);
-            mPlayerIJKBtn.setVisibility(GONE);
             mPlayerTimeStartEndText.setVisibility(GONE);
-            mPlayerTimeStartBtn.setVisibility(GONE);
-            mPlayerTimeSkipBtn.setVisibility(GONE);
-            mPlayerTimeResetBtn.setVisibility(GONE);
-            mCastBtn.setVisibility(GONE);
-            mZimuBtn.setVisibility(GONE);
-            mAudioTrackBtn.setVisibility(GONE);
-            mVideoTrackBtn.setVisibility(GONE);
-            mDanmuSettingBtn.setVisibility(GONE);
-            mDanmuSearchUiBtn.setVisibility(GONE);
-            mScreenDisplay.setVisibility(GONE);
+            mCastBtn.setVisibility(Build.VERSION.SDK_INT < 30 ? GONE : VISIBLE);
+            if (mPlayerConfig != null) updatePlayerCfgView();
+            updateDanmuBtn();
+            updateDanmuSearchUiBtn();
+            updateFullScreenIcon(false);
             return;
         }
 
@@ -1133,6 +1421,420 @@ public class VodController extends BaseController {
         if (mPlayerConfig != null) updatePlayerCfgView();
         updateDanmuBtn();
         updateDanmuSearchUiBtn();
+        updateFullScreenIcon(true);
+    }
+
+    /* ==================== 手机竖屏主控按钮（播放 / 弹幕 / 倍速 / 全屏 + 菜单） ==================== */
+
+    private void bindMainControlButtons() {
+        if (mPlayPauseBtn != null) {
+            mPlayPauseBtn.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    togglePlay();
+                    myHandle.removeCallbacks(myRunnable);
+                    myHandle.postDelayed(myRunnable, myHandleSeconds);
+                }
+            });
+        }
+        if (mDanmuBtn != null) {
+            mDanmuBtn.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    boolean opened = listener != null && listener.toggleDanmu();
+                    updateDanmuSwitch(opened);
+                    myHandle.removeCallbacks(myRunnable);
+                    myHandle.postDelayed(myRunnable, myHandleSeconds);
+                }
+            });
+            updateDanmuSwitch(DanmuHelper.isOpen());
+        }
+        if (mFullScreenBtn != null) {
+            mFullScreenBtn.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    togglePlayerFullScreen();
+                }
+            });
+        }
+        if (mMenuBtn != null) {
+            mMenuBtn.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    showDrawer();
+                }
+            });
+        }
+        updateFullScreenIcon(getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT);
+    }
+
+    /** 切换全屏：竖屏 → 横屏全屏，横屏 → 竖屏 */
+    private void togglePlayerFullScreen() {
+        if (mActivity == null) return;
+        boolean portrait = mActivity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        mActivity.setRequestedOrientation(portrait
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        updateFullScreenIcon(!portrait);
+    }
+
+    private void updateFullScreenIcon(boolean fullscreen) {
+        if (mFullScreenIcon == null) return;
+        mFullScreenIcon.setImageResource(fullscreen
+                ? R.drawable.ic_player_exit_fullscreen
+                : R.drawable.ic_player_fullscreen);
+    }
+
+    /* ==================== 设置抽屉 ==================== */
+
+    private void bindDrawer() {
+        if (mDrawerScrim != null) {
+            mDrawerScrim.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    hideDrawer();
+                }
+            });
+        }
+        if (mDrawerClose != null) {
+            mDrawerClose.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    hideDrawer();
+                }
+            });
+        }
+    }
+
+    private boolean isDrawerShowing() {
+        return mMorePanel != null && mMorePanel.getVisibility() == VISIBLE;
+    }
+
+    /** 展开抽屉：横屏从右侧向左滑出，竖屏自底部升起 */
+    private void showDrawer() {
+        if (mMorePanel == null) return;
+        boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mMorePanel.getLayoutParams();
+        if (portrait) {
+            lp.width = FrameLayout.LayoutParams.MATCH_PARENT;
+            lp.height = FrameLayout.LayoutParams.MATCH_PARENT;
+            lp.gravity = Gravity.BOTTOM;
+            lp.setMargins(dp(8), dp(8), dp(8), dp(8));
+        } else {
+            lp.width = dp(308);
+            lp.height = FrameLayout.LayoutParams.MATCH_PARENT;
+            lp.gravity = Gravity.END | Gravity.TOP;
+            lp.setMargins(0, dp(8), dp(8), dp(8));
+        }
+        mMorePanel.setLayoutParams(lp);
+        refreshDanmuPanel();
+
+        if (mDrawerScrim != null) {
+            mDrawerScrim.setVisibility(VISIBLE);
+            mDrawerScrim.setAlpha(0f);
+            mDrawerScrim.animate().alpha(1f).setDuration(180).start();
+        }
+        mMorePanel.setVisibility(VISIBLE);
+        mMorePanel.setTranslationX(portrait ? 0f : dp(340));
+        mMorePanel.setTranslationY(portrait ? dp(420) : 0f);
+        mMorePanel.animate()
+                .translationX(0f)
+                .translationY(0f)
+                .setDuration(220)
+                .setInterpolator(new DecelerateInterpolator())
+                .start();
+
+        myHandle.removeCallbacks(myRunnable);
+    }
+
+    /** 收起抽屉 */
+    void hideDrawer() {
+        if (mMorePanel == null || mMorePanel.getVisibility() != VISIBLE) return;
+        boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        mMorePanel.animate()
+                .translationX(portrait ? 0f : dp(340))
+                .translationY(portrait ? dp(420) : 0f)
+                .setDuration(180)
+                .setInterpolator(new DecelerateInterpolator())
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        mMorePanel.setVisibility(GONE);
+                    }
+                })
+                .start();
+        if (mDrawerScrim != null) {
+            mDrawerScrim.animate().alpha(0f).setDuration(160).withEndAction(new Runnable() {
+                @Override
+                public void run() {
+                    mDrawerScrim.setVisibility(GONE);
+                }
+            }).start();
+        }
+    }
+
+    /* ==================== 片头 / 片尾微调 ==================== */
+
+    /** 点击记录当前位置；长按后左右滑动增减秒数 */
+    private void bindTimeAdjust(final TextView btn, final boolean isStart) {
+        if (btn == null) return;
+        btn.setOnTouchListener(new OnTouchListener() {
+            private float downRawX;
+            private boolean adjusting;
+            private int baseValue;
+            private final Runnable enterAdjust = new Runnable() {
+                @Override
+                public void run() {
+                    adjusting = true;
+                    baseValue = getTimeCfg(isStart);
+                    btn.setBackgroundResource(R.drawable.bg_chip_selected);
+                    btn.setTextColor(getResources().getColor(R.color.color_02F8E1));
+                }
+            };
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        downRawX = event.getRawX();
+                        v.postDelayed(enterAdjust, 420);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (!adjusting) {
+                            if (Math.abs(event.getRawX() - downRawX) > dp(10)) v.removeCallbacks(enterAdjust);
+                        } else {
+                            int delta = Math.round((event.getRawX() - downRawX) / dp(14));
+                            setTimeCfg(isStart, baseValue + delta, false);
+                        }
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.removeCallbacks(enterAdjust);
+                        if (adjusting) {
+                            adjusting = false;
+                            btn.setBackgroundResource(R.drawable.bg_player_chip);
+                            btn.setTextColor(0xFFFFFFFF);
+                            setTimeCfg(isStart, getTimeCfg(isStart), true);
+                            return true;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
+    private int getTimeCfg(boolean isStart) {
+        if (mPlayerConfig == null) return 0;
+        return mPlayerConfig.optInt(isStart ? "st" : "et", 0);
+    }
+
+    private void setTimeCfg(boolean isStart, int value, boolean persist) {
+        if (mPlayerConfig == null) return;
+        int v = Math.max(0, Math.min(1800, value));
+        try {
+            mPlayerConfig.put(isStart ? "st" : "et", v);
+            updatePlayerCfgView();
+            if (persist && listener != null) listener.updatePlayerCfg();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /* ==================== 弹幕开关 ==================== */
+
+    private void updateDanmuSwitch(boolean opened) {
+        if (mDanmuBtn == null) return;
+        mDanmuBtn.setText(opened ? "弹幕开" : "弹幕关");
+        mDanmuBtn.setTextColor(opened ? getResources().getColor(R.color.color_02F8E1) : 0x99FFFFFF);
+    }
+
+    /* ==================== 抽屉内的弹幕设置 ==================== */
+
+    private void bindDanmuSettingPanel() {
+        tvDanmuSource = findViewById(R.id.tv_danmu_source);
+        btnDanmuSearch = findViewById(R.id.btn_danmu_search);
+
+        dmColorDefault = findViewById(R.id.dm_color_default);
+        dmColorRandom = findViewById(R.id.dm_color_random);
+        dmSpeed0 = findViewById(R.id.dm_speed_0);
+        dmSpeed1 = findViewById(R.id.dm_speed_1);
+        dmSpeed2 = findViewById(R.id.dm_speed_2);
+        dmSpeed3 = findViewById(R.id.dm_speed_3);
+        dmSizeSub = findViewById(R.id.dm_size_sub);
+        dmSize = findViewById(R.id.dm_size);
+        dmSizeAdd = findViewById(R.id.dm_size_add);
+        dmLineSub = findViewById(R.id.dm_line_sub);
+        dmLine = findViewById(R.id.dm_line);
+        dmLineAdd = findViewById(R.id.dm_line_add);
+        dmAlphaSub = findViewById(R.id.dm_alpha_sub);
+        dmAlpha = findViewById(R.id.dm_alpha);
+        dmAlphaAdd = findViewById(R.id.dm_alpha_add);
+
+        if (btnDanmuSearch != null) {
+            btnDanmuSearch.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    if (listener != null) listener.openSearchDanmuDialog();
+                }
+            });
+        }
+        // 点弹幕源名字也能更换，扩大点击热区
+        if (tvDanmuSource != null) {
+            tvDanmuSource.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    if (listener != null) listener.openSearchDanmuDialog();
+                }
+            });
+        }
+        if (dmColorDefault != null) {
+            dmColorDefault.setOnClickListener(v -> {
+                DanmuHelper.setRandomColor(false);
+                refreshDanmuPanel();
+                postDanmuSettingChanged(true);
+            });
+        }
+        if (dmColorRandom != null) {
+            dmColorRandom.setOnClickListener(v -> {
+                DanmuHelper.setRandomColor(true);
+                refreshDanmuPanel();
+                postDanmuSettingChanged(true);
+            });
+        }
+        bindDanmuSpeed(dmSpeed0, 0);
+        bindDanmuSpeed(dmSpeed1, 1);
+        bindDanmuSpeed(dmSpeed2, 2);
+        bindDanmuSpeed(dmSpeed3, 3);
+
+        bindStepper(dmSizeSub, dmSizeAdd, true);
+        bindStepper(dmLineSub, dmLineAdd, false);
+        bindStepper(dmAlphaSub, dmAlphaAdd, null);
+
+        refreshDanmuPanel();
+    }
+
+    private void bindDanmuSpeed(TextView view, final int index) {
+        if (view == null) return;
+        view.setOnClickListener(v -> {
+            DanmuHelper.setSpeed(DM_SPEED_RATES[index]);
+            refreshDanmuPanel();
+            postDanmuSettingChanged(false);
+        });
+    }
+
+    /** type: TRUE=大小, FALSE=行数, null=透明度 */
+    private void bindStepper(TextView sub, TextView add, final Boolean type) {
+        if (sub != null) {
+            sub.setOnClickListener(v -> {
+                if (type == null) {
+                    int value = Math.round(DanmuHelper.getAlpha() * 100);
+                    if (value <= 10) return;
+                    DanmuHelper.setAlpha((value - 10) / 100f);
+                } else if (type) {
+                    int value = Math.round(DanmuHelper.getSizeScale() * 10);
+                    if (value <= 6) return;
+                    DanmuHelper.setSizeScale((value - 1) / 10f);
+                } else {
+                    int value = DanmuHelper.getMaxLine();
+                    if (value <= 1) return;
+                    DanmuHelper.setMaxLine(value - 1);
+                }
+                refreshDanmuPanel();
+                postDanmuSettingChanged(false);
+            });
+        }
+        if (add != null) {
+            add.setOnClickListener(v -> {
+                if (type == null) {
+                    int value = Math.round(DanmuHelper.getAlpha() * 100);
+                    if (value >= 100) return;
+                    DanmuHelper.setAlpha((value + 10) / 100f);
+                } else if (type) {
+                    int value = Math.round(DanmuHelper.getSizeScale() * 10);
+                    if (value >= 20) return;
+                    DanmuHelper.setSizeScale((value + 1) / 10f);
+                } else {
+                    int value = DanmuHelper.getMaxLine();
+                    if (value >= 15) return;
+                    DanmuHelper.setMaxLine(value + 1);
+                }
+                refreshDanmuPanel();
+                postDanmuSettingChanged(false);
+            });
+        }
+    }
+
+    private void postDanmuSettingChanged(boolean colorChanged) {
+        if (listener != null) {
+            // 与 DanmuSettingDialog 保持一致：走 RefreshEvent 通知弹幕层刷新
+            org.greenrobot.eventbus.EventBus.getDefault().post(
+                    new com.github.tvbox.osc.event.RefreshEvent(
+                            com.github.tvbox.osc.event.RefreshEvent.TYPE_SET_DANMU_SETTINGS, colorChanged));
+        }
+    }
+
+    /** 刷新抽屉里的弹幕设置显示 */
+    private void refreshDanmuPanel() {
+        if (tvDanmuSource != null) tvDanmuSource.setText(currentDanmuSourceName());
+        boolean random = DanmuHelper.useRandomColor();
+        applyChoice(dmColorDefault, !random);
+        applyChoice(dmColorRandom, random);
+
+        float speed = DanmuHelper.getSpeed();
+        int speedIdx = 2;
+        float best = Float.MAX_VALUE;
+        for (int i = 0; i < DM_SPEED_RATES.length; i++) {
+            float diff = Math.abs(DM_SPEED_RATES[i] - speed);
+            if (diff < best) {
+                best = diff;
+                speedIdx = i;
+            }
+        }
+        applyChoice(dmSpeed0, speedIdx == 0);
+        applyChoice(dmSpeed1, speedIdx == 1);
+        applyChoice(dmSpeed2, speedIdx == 2);
+        applyChoice(dmSpeed3, speedIdx == 3);
+
+        if (dmSize != null) dmSize.setText(Math.round(DanmuHelper.getSizeScale() * 10) + "档");
+        if (dmLine != null) dmLine.setText(DanmuHelper.getMaxLine() + "行");
+        if (dmAlpha != null) dmAlpha.setText(Math.round(DanmuHelper.getAlpha() * 100) + "%");
+    }
+
+    private void applyChoice(TextView view, boolean selected) {
+        if (view == null) return;
+        view.setBackgroundResource(selected ? R.drawable.bg_chip_selected : R.drawable.bg_player_chip);
+        view.setTextColor(selected ? getResources().getColor(R.color.color_02F8E1) : 0xF2FFFFFF);
+    }
+
+    /** 当前在线弹幕源名称 */
+    private String currentDanmuSourceName() {
+        try {
+            if (DanmakuApi.isUseDefault()) return "内置弹幕";
+            String url = DanmakuApi.getDisplayApiUrl();
+            if (TextUtils.isEmpty(url)) return "内置弹幕";
+            String host = android.net.Uri.parse(url).getHost();
+            return TextUtils.isEmpty(host) ? url : host;
+        } catch (Throwable th) {
+            return "内置弹幕";
+        }
+    }
+
+    private void updatePlayPauseIcon(boolean playing) {
+        if (mPlayPauseIcon == null) return;
+        mPlayPauseIcon.setImageResource(playing ? R.drawable.ic_player_pause : R.drawable.ic_player_play);
     }
 
     void setLandscapePortrait() {
@@ -1150,6 +1852,7 @@ public class VodController extends BaseController {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         initLandscapePortraitBtnInfo();
+        updateFullScreenIcon(getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT);
     }
 
     void initSubtitleInfo() {
@@ -1164,8 +1867,8 @@ public class VodController extends BaseController {
 
     public void showParse(boolean userJxList) {
         showParse = userJxList;
-        boolean isPortrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-        mParseRoot.setVisibility(showParse && !isPortrait ? VISIBLE : GONE);
+        // 解析线路已收进「更多功能」面板，竖屏同样可用
+        mParseRoot.setVisibility(showParse ? VISIBLE : GONE);
     }
 
     private JSONObject mPlayerConfig = null;
@@ -1181,7 +1884,8 @@ public class VodController extends BaseController {
             mPlayerBtn.setText(getPlayerShortName(playerType));
             mPlayerScaleBtn.setText(PlayerHelper.getScaleName(mPlayerConfig.getInt("sc")));
             mPlayerIJKBtn.setText(getCodecShortName(mPlayerConfig.getString("ijk")));
-            mPlayerIJKBtn.setVisibility(playerType == 1 ? VISIBLE : GONE);
+            View codecRow = findViewById(R.id.row_codec);
+            if (codecRow != null) codecRow.setVisibility(playerType == 1 ? VISIBLE : GONE);
             mPlayerScaleBtn.setText(PlayerHelper.getScaleName(mPlayerConfig.getInt("sc")));
             mPlayerSpeedBtn.setText(mPlayerConfig.getDouble("sp") + "x");
             int start = mPlayerConfig.getInt("st");
@@ -1244,22 +1948,8 @@ public class VodController extends BaseController {
     }
 
     private void updatePlayLabelVisibility() {
-        if (mPlayLabel == null || mPlayBtnGroup == null) return;
-        boolean isDanmuMenuVisible = false;
-        boolean isScreenDisplayNext = false;
-        for (int i = 0; i < mPlayBtnGroup.getChildCount(); i++) {
-            View child = mPlayBtnGroup.getChildAt(i);
-            if (child.getVisibility() != VISIBLE) continue;
-            if (child == mDanmuSettingBtn) {
-                isDanmuMenuVisible = true;
-                continue;
-            }
-            if (isDanmuMenuVisible) {
-                isScreenDisplayNext = child == mScreenDisplay;
-                break;
-            }
-        }
-        mPlayLabel.setVisibility(isDanmuMenuVisible && !isScreenDisplayNext ? GONE : VISIBLE);
+        // 手机端「播放」文字标签已无意义（原为 TV 焦点提示），恒隐藏
+        if (mPlayLabel != null) mPlayLabel.setVisibility(GONE);
     }
 
     public interface VodControlListener {
@@ -1286,6 +1976,11 @@ public class VodController extends BaseController {
         void selectVideoTrack();
 
         void showDanmuSetting();
+
+        /** 打开「在线弹幕」搜索，默认回退到完整的弹幕设置对话框 */
+        default void openSearchDanmuDialog() {
+            showDanmuSetting();
+        }
 
         boolean toggleDanmu();
 
@@ -1502,18 +2197,20 @@ public class VodController extends BaseController {
             case VideoView.STATE_IDLE:
                 break;
             case VideoView.STATE_PLAYING:
+                updatePlayPauseIcon(true);
                 initLandscapePortraitBtnInfo();
                 startProgress();
+                myHandle.removeCallbacks(myRunnable);
+                myHandle.postDelayed(myRunnable, myHandleSeconds);
                 break;
             case VideoView.STATE_PAUSED:
-                mTopRoot1.setVisibility(GONE);
-//                mTopRoot2.setVisibility(GONE);
+                updatePlayPauseIcon(false);
                 mPlayLoadNetSpeedRightTop.setVisibility(GONE);
-                if (isBottomVisible()) {
-                    hideBottom();
+                // 暂停后保留底部控制条（里面就有播放键），不再弹中央大按钮
+                if (!isBottomVisible()) {
+                    mHandler.removeMessages(1003);
+                    mHandler.sendEmptyMessage(1002);
                 }
-                showPauseRoot();
-                mPlayTitle.setVisibility(VISIBLE);
                 break;
             case VideoView.STATE_ERROR:
                 listener.errReplay();
@@ -1552,6 +2249,7 @@ public class VodController extends BaseController {
 
     void hideBottom() {
         mHandler.removeMessages(1002);
+        hideDrawer();
         mHandler.sendEmptyMessage(1003);
     }
 
@@ -1652,17 +2350,17 @@ public class VodController extends BaseController {
     }
     @Override
     public void onLongPress(MotionEvent e) {
-        if (videoPlayState!=VideoView.STATE_PAUSED) {
-            speedPlayStart();
-        }
+        if (e == null) return;
+        if (videoPlayState == VideoView.STATE_PAUSED) return;
+        if (!isInPlaybackState() || isLocked()) return;
+        // 长按进入加速状态，随后上滑加速、下滑减速
+        enterSpeedBoost(e.getY());
     }
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        if (e.getAction() == MotionEvent.ACTION_UP) {
-            speedPlayEnd();
-        }
+        handleSpeedBoostRelease(e);
         return super.onTouchEvent(e);
     }
 

@@ -52,10 +52,11 @@ public class App extends MultiDexApplication {
                 .addCallback(new EmptyCallback())
                 .addCallback(new LoadingCallback())
                 .commit();
+        // 手机端：关闭 MM 子系统，使用原生 dp/sp，并由 AutoSize 按 360 宽基准做响应式缩放
         AutoSizeConfig.getInstance().setCustomFragment(true).getUnitsManager()
-                .setSupportDP(false)
-                .setSupportSP(false)
-                .setSupportSubunits(Subunits.MM);
+                .setSupportDP(true)
+                .setSupportSP(true)
+                .setSupportSubunits(Subunits.NONE);
         PlayerHelper.init();
         QuickJSLoader.init();
         FileUtils.cleanPlayerCache();

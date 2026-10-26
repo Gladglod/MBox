@@ -2,10 +2,10 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginLeft="6mm"
-    android:layout_marginTop="4mm"
-    android:layout_marginRight="6mm"
-    android:layout_marginBottom="4mm"
+    android:layout_marginLeft="2dp"
+    android:layout_marginTop="2dp"
+    android:layout_marginRight="2dp"
+    android:layout_marginBottom="2dp"
     android:background="@drawable/shape_live_focus"
     android:focusable="true"
     android:focusableInTouchMode="false"
@@ -13,13 +13,15 @@
 
     <TextView
         android:id="@+id/tvChannelGroupName"
-        android:layout_width="0mm"
-        android:layout_height="52mm"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
         android:layout_weight="1"
-        android:ellipsize="marquee"
+        android:ellipsize="end"
         android:gravity="center"
-        android:marqueeRepeatLimit="marquee_forever"
+        android:maxLines="1"
+        android:paddingLeft="4dp"
+        android:paddingRight="4dp"
         android:singleLine="true"
         android:textColor="@android:color/white"
-        android:textSize="20mm" />
+        android:textSize="12sp" />
 </LinearLayout>

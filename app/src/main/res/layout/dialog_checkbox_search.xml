@@ -1,60 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
+
     <LinearLayout
         android:id="@+id/root"
-        android:layout_width="@dimen/vs_420"
-        android:layout_height="match_parent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/shape_dialog_pg_search_checkbox"
-        android:orientation="vertical">
+        android:layout_marginStart="16dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginRight="16dp"
+        android:background="@drawable/bg_sheet_panel"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingLeft="16dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="16dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="12dp">
 
-
+        <!-- 标题行 -->
         <LinearLayout
-            android:orientation="horizontal"
-            android:weightSum="2"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
             <TextView
-                android:id="@+id/checkAll"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_gravity="center"
+                android:text="指定搜索源"
+                android:textColor="@color/dialog_text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDone"
+                android:layout_width="wrap_content"
+                android:layout_height="30dp"
+                android:background="@drawable/bg_chip"
                 android:gravity="center"
-                android:background="@drawable/button_danmu_setting"
+                android:paddingStart="14dp"
+                android:paddingLeft="14dp"
+                android:paddingEnd="14dp"
+                android:paddingRight="14dp"
+                android:text="完成"
+                android:textColor="@color/color_02F8E1"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- 全选 / 全不选 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/checkAll"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_chip"
                 android:clickable="true"
                 android:focusable="true"
-                android:padding="@dimen/vs_30"
+                android:gravity="center"
+                android:text="全选"
                 android:textColor="@color/dialog_text_primary"
-                android:textSize="@dimen/ts_26"
-                android:text="全选" />
+                android:textSize="13sp" />
 
             <TextView
                 android:id="@+id/clearAll"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="@dimen/vs_10"
+                android:layout_height="34dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginLeft="10dp"
                 android:layout_weight="1"
-                android:layout_gravity="center"
-                android:gravity="center"
-                android:background="@drawable/button_danmu_setting"
+                android:background="@drawable/bg_chip"
                 android:clickable="true"
                 android:focusable="true"
-                android:padding="@dimen/vs_30"
+                android:gravity="center"
                 android:text="全不选"
                 android:textColor="@color/dialog_text_primary"
-                android:textSize="@dimen/ts_26" />
+                android:textSize="13sp" />
         </LinearLayout>
 
-        <com.owen.tvrecyclerview.widget.TvRecyclerView
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/mGridView"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"/>
+            android:layout_height="0dp"
+            android:layout_marginTop="10dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:scrollbars="none" />
 
     </LinearLayout>
 

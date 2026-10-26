@@ -1,21 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_width="wrap_content"
+    android:layout_height="36dp"
+    android:layout_marginLeft="4dp"
+    android:layout_marginRight="4dp"
+    android:layout_marginTop="3dp"
+    android:layout_marginBottom="3dp"
+    android:background="@drawable/bg_chip"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center"
+    android:minWidth="54dp"
     android:orientation="horizontal"
-    android:layout_margin="@dimen/vs_5"
-    android:background="@drawable/shape_source_series_focus"
-    android:focusable="true">
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp">
 
     <TextView
         android:id="@+id/tvSeries"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/vs_50"
-        android:ellipsize="marquee"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:ellipsize="end"
         android:gravity="center"
-        android:marqueeRepeatLimit="marquee_forever"
-        android:padding="@dimen/vs_10"
+        android:maxLines="1"
         android:singleLine="true"
         android:textColor="@android:color/white"
-        android:textSize="@dimen/ts_20" />
+        android:textSize="13sp" />
 </LinearLayout>

@@ -17,6 +17,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.catvod.crawler.JsLoader;
@@ -36,9 +39,6 @@ import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.SearchHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.lzy.okgo.OkGo;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
-import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -74,12 +74,12 @@ public class FastSearchActivity extends BaseActivity {
     private static final long POSTER_FOCUS_ANIM_DURATION = 300L;
     private static final float POSTER_FOCUS_SCALE = 1.05f;
     private static final String SEARCH_ALL_NAME = "\u5168\u90e8";
-    private LinearLayout llLayout;
+    private View llLayout;
     private TextView mSearchTitle;
-    private TvRecyclerView mGridView;
-    private TvRecyclerView mGridViewFilter;
-    private TvRecyclerView mGridViewWord;
-    private TvRecyclerView mGridViewWordFenci;
+    private RecyclerView mGridView;
+    private RecyclerView mGridViewFilter;
+    private RecyclerView mGridViewWord;
+    private RecyclerView mGridViewWordFenci;
     SourceViewModel sourceViewModel;
 
     private SearchWordAdapter searchWordAdapter;
@@ -130,7 +130,7 @@ public class FastSearchActivity extends BaseActivity {
         mGridViewFilter = findViewById(R.id.mGridViewFilter);
 
         mGridViewWord.setHasFixedSize(true);
-        mGridViewWord.setLayoutManager(new V7LinearLayoutManager(this.mContext, 1, false));
+        mGridViewWord.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
         spListAdapter = new FastListAdapter();
         mGridViewWord.setAdapter(spListAdapter);
 
@@ -141,48 +141,11 @@ public class FastSearchActivity extends BaseActivity {
             }
         });
 
-        mGridViewWord.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                selectWord(spListAdapter.getItem(position));
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-                selectWord(spListAdapter.getItem(position));
-            }
-        });
-        mGridViewWord.setOnInBorderKeyEventListener(new TvRecyclerView.OnInBorderKeyEventListener() {
-            @Override
-            public boolean onInBorderKeyEvent(int direction, View view) {
-                return direction == View.FOCUS_UP;
-            }
-        });
-
         mGridView.setHasFixedSize(true);
-        mGridView.setLayoutManager(new V7GridLayoutManager(this.mContext, 4));
+        mGridView.setLayoutManager(new GridLayoutManager(this.mContext, 3));
 
         searchAdapter = new FastSearchAdapter();
         mGridView.setAdapter(searchAdapter);
-        mGridView.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                setPosterFocusScale(itemView, false);
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                setPosterFocusScale(itemView, true);
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-            }
-        });
 
         searchAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
@@ -196,24 +159,9 @@ public class FastSearchActivity extends BaseActivity {
         });
 
 
-        mGridViewFilter.setLayoutManager(new V7GridLayoutManager(this.mContext, 4));
+        mGridViewFilter.setLayoutManager(new GridLayoutManager(this.mContext, 3));
         searchAdapterFilter = new FastSearchAdapter();
         mGridViewFilter.setAdapter(searchAdapterFilter);
-        mGridViewFilter.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                setPosterFocusScale(itemView, false);
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                setPosterFocusScale(itemView, true);
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-            }
-        });
         searchAdapterFilter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
@@ -231,7 +179,7 @@ public class FastSearchActivity extends BaseActivity {
         searchWordAdapter = new SearchWordAdapter();
         mGridViewWordFenci = findViewById(R.id.mGridViewWordFenci);
         mGridViewWordFenci.setAdapter(searchWordAdapter);
-        mGridViewWordFenci.setLayoutManager(new V7LinearLayoutManager(this.mContext, 0, false));
+        mGridViewWordFenci.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
         searchWordAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
@@ -411,9 +359,7 @@ public class FastSearchActivity extends BaseActivity {
                 if (version != wordListVersion) return;
                 spListAdapter.setNewData(wordList);
                 if (wordList.size() > 0 && TextUtils.equals(wordList.get(0), SEARCH_ALL_NAME)) {
-                    mGridViewWord.setSelectedPosition(0);
-                    mGridViewWord.setSelection(0);
-                    requestWordListFirstFocus();
+                    mGridViewWord.scrollToPosition(0);
                 }
             }
         });
@@ -424,14 +370,8 @@ public class FastSearchActivity extends BaseActivity {
         mGridViewWord.post(new Runnable() {
             @Override
             public void run() {
-                if (isFinishing() || mGridViewWord == null) return;
-                mGridViewWord.setSelectedPosition(0);
-                mGridViewWord.setSelection(0);
-                View firstChild = mGridViewWord.getChildAt(0);
-                if (firstChild != null) {
-                    firstChild.requestFocus();
-                } else {
-                    mGridViewWord.requestFocus();
+                if (!isFinishing() && mGridViewWord != null) {
+                    mGridViewWord.scrollToPosition(0);
                 }
             }
         });

@@ -13,10 +13,12 @@ import android.os.Bundle;
 import android.text.Html;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
+import android.content.pm.ActivityInfo;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -28,7 +30,6 @@ import android.content.ClipData;
 import androidx.fragment.app.FragmentContainerView;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.LinearSmoothScroller;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.chad.library.adapter.base.BaseViewHolder;
@@ -57,9 +58,9 @@ import com.github.tvbox.osc.util.SubtitleHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.lzy.okgo.OkGo;
 import com.orhanobut.hawk.Hawk;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
-import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -96,10 +97,12 @@ public class DetailActivity extends BaseActivity {
     private static final int DETAIL_FALLBACK_MAX_SEARCH = 20;
     private static final long DETAIL_FALLBACK_SEARCH_TIMEOUT_MS = 8000L;
     private static final long DETAIL_FALLBACK_DETAIL_TIMEOUT_MS = 6000L;
-    private LinearLayout llLayout;
+    private View llLayout;
+    private androidx.core.widget.NestedScrollView scrollView;
     private FragmentContainerView llPlayerFragmentContainer;
     private View llPlayerFragmentContainerBlock;
     private View llPlayerPlace;
+    private int playerHeightPx = 0;
     private PlayFragment playFragment = null;
     private View thumbContainer;
     private ImageView ivThumb;
@@ -113,17 +116,16 @@ public class DetailActivity extends BaseActivity {
     private TextView tvDirector;
     private TextView tvPlayUrl;
     private TextView tvDes;
-    private TextView tvPlay;
 //    private TextView tvSort;
     private TextView tvDesc;
     private TextView tvSeriesSort;
     private TextView tvQuickSearch;
     private TextView tvChangeSource;
     private TextView tvCollect;
-    private TvRecyclerView mGridViewFlag;
-    private TvRecyclerView mGridViewQuality;
-    private TvRecyclerView mGridView;
-    private TvRecyclerView mSeriesGroupView;
+    private RecyclerView mGridViewFlag;
+    private RecyclerView mGridViewQuality;
+    private RecyclerView mGridView;
+    private RecyclerView mSeriesGroupView;
     private LinearLayout mEmptyPlayList;
     private LinearLayout tvSeriesGroup;
     private SourceViewModel sourceViewModel;
@@ -143,7 +145,7 @@ public class DetailActivity extends BaseActivity {
     private String preFlag="";
     private VodInfo.VodSeries routeSwitchSeries;
     private boolean firstReverse;
-    private V7GridLayoutManager mGridViewLayoutMgr = null;
+    private GridLayoutManager mGridViewLayoutMgr = null;
     private HashMap<String, String> mCheckSources = null;
     private final ArrayList<String> seriesGroupOptions = new ArrayList<>();
     private final ArrayList<String> qualityOptions = new ArrayList<>();
@@ -152,8 +154,6 @@ public class DetailActivity extends BaseActivity {
     private int GroupCount;
     private int qualityPosition;
     boolean showPreview = Hawk.get(HawkConfig.SHOW_PREVIEW, true);; // true 开启 false 关闭
-
-    private LinearSmoothScroller smoothScroller;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -178,9 +178,12 @@ public class DetailActivity extends BaseActivity {
 
     private void initView() {
         llLayout = findViewById(R.id.llLayout);
+        scrollView = findViewById(R.id.llLayout);
         llPlayerPlace = findViewById(R.id.previewPlayerPlace);
         llPlayerFragmentContainer = findViewById(R.id.previewPlayer);
         llPlayerFragmentContainerBlock = findViewById(R.id.previewPlayerBlock);
+        applyPlayerSize();
+        setupPlayerScrollSync();
         applyPreviewRoundCorners();
         thumbContainer = findViewById(R.id.thumbContainer);
         ivThumb = findViewById(R.id.ivThumb);
@@ -195,7 +198,6 @@ public class DetailActivity extends BaseActivity {
         tvDirector = findViewById(R.id.tvDirector);
         tvPlayUrl = findViewById(R.id.tvPlayUrl);
         tvDes = findViewById(R.id.tvDes);
-        tvPlay = findViewById(R.id.tvPlay);
 //        tvSort = findViewById(R.id.tvSort);
         tvDesc = findViewById(R.id.tvDesc);
         tvSeriesSort = findViewById(R.id.mSeriesSortTv);
@@ -205,31 +207,21 @@ public class DetailActivity extends BaseActivity {
         mEmptyPlayList = findViewById(R.id.mEmptyPlaylist);
         mGridView = findViewById(R.id.mGridView);
         mGridView.setHasFixedSize(false);
-        this.mGridViewLayoutMgr = new V7GridLayoutManager(this.mContext, 6);
+        // 手机竖屏：集数改为「单行横向滚动」，spanCount 恒为 1
+        this.mGridViewLayoutMgr = new GridLayoutManager(this.mContext, 1,
+                androidx.recyclerview.widget.RecyclerView.HORIZONTAL, false);
         mGridView.setLayoutManager(this.mGridViewLayoutMgr);
-//        mGridView.setLayoutManager(new V7LinearLayoutManager(this.mContext, 0, false));
-
-        smoothScroller = new LinearSmoothScroller(mContext) {
-            @Override
-            protected float calculateSpeedPerPixel(DisplayMetrics displayMetrics) {
-                return 100f / displayMetrics.densityDpi;
-            }
-            @Override
-            public PointF computeScrollVectorForPosition(int targetPosition) {
-                return mGridViewLayoutMgr.computeScrollVectorForPosition(targetPosition);
-            }
-        };
 
         seriesAdapter = new SeriesAdapter(this.mGridViewLayoutMgr);
         mGridView.setAdapter(seriesAdapter);
         mGridViewFlag = findViewById(R.id.mGridViewFlag);
         mGridViewFlag.setHasFixedSize(true);
-        mGridViewFlag.setLayoutManager(new V7LinearLayoutManager(this.mContext, 0, false));
+        mGridViewFlag.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
         seriesFlagAdapter = new SeriesFlagAdapter();
         mGridViewFlag.setAdapter(seriesFlagAdapter);
         mGridViewQuality = findViewById(R.id.mGridViewQuality);
         mGridViewQuality.setHasFixedSize(true);
-        mGridViewQuality.setLayoutManager(new V7LinearLayoutManager(this.mContext, 0, false));
+        mGridViewQuality.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
         qualityAdapter = new BaseQuickAdapter<String, BaseViewHolder>(R.layout.item_series_flag, qualityOptions) {
             @Override
             protected void convert(BaseViewHolder helper, String item) {
@@ -240,17 +232,9 @@ public class DetailActivity extends BaseActivity {
             }
         };
         mGridViewQuality.setAdapter(qualityAdapter);
-        mGridViewQuality.setOnItemListener(new TvRecyclerView.OnItemListener() {
+        qualityAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
+            public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 if (playFragment == null) return;
                 if (position == qualityPosition) {
                     if (showPreview && !fullWindows && playFragment.getPlayer().isPlaying()) enterFullPreview();
@@ -266,15 +250,21 @@ public class DetailActivity extends BaseActivity {
         firstReverse = false;
         preFlag = "";
         if (showPreview) {
-            ensurePlayFragment();
-            tvPlay.setText("全屏");
+            // 播放器初始化（inflate 控制条、弹幕层、解码器）开销较大，
+            // 延后到详情页首帧渲染之后再创建，避免点卡片进入详情时明显卡顿
+            llPlayerFragmentContainer.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (!isFinishing()) ensurePlayFragment();
+                }
+            });
         }
         llPlayerFragmentContainerBlock.setFocusable(showPreview);
 
         mSeriesGroupView = findViewById(R.id.mSeriesGroupView);
         tvSeriesGroup = findViewById(R.id.mSeriesGroupTv);
         mSeriesGroupView.setHasFixedSize(true);
-        mSeriesGroupView.setLayoutManager(new V7LinearLayoutManager(this.mContext, 0, false));
+        mSeriesGroupView.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
         seriesGroupAdapter = new BaseQuickAdapter<String, BaseViewHolder>(R.layout.item_series_flag, seriesGroupOptions) {
             @Override
             protected void convert(BaseViewHolder helper, String item) {
@@ -297,22 +287,6 @@ public class DetailActivity extends BaseActivity {
             if (firstReverse) {
                 jumpToPlay();
                 firstReverse=false;
-            }
-        });
-
-        tvPlay.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                FastClickCheckUtil.check(v);
-                if (showPreview) {
-                    enterFullPreview();
-                    if(firstReverse){
-                        jumpToPlay();
-                        firstReverse=false;
-                    }
-                } else {
-                    jumpToPlay();
-                }
             }
         });
 
@@ -420,23 +394,10 @@ public class DetailActivity extends BaseActivity {
             }
         });
 
-        mGridView.setOnItemListener(new TvRecyclerView.OnItemListener() {
+        seriesFlagAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                seriesSelect = false;
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                seriesSelect = true;
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-            }
-        });
-        mGridViewFlag.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            private void refresh(View itemView, int position) {
+            public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
+                View itemView = view;
                 String newFlag = seriesFlagAdapter.getData().get(position).name;
                 if (vodInfo != null && !vodInfo.playFlag.equals(newFlag)) {
                     String oldFlag = vodInfo.playFlag;
@@ -480,26 +441,9 @@ public class DetailActivity extends BaseActivity {
                             routeSwitchSeries = currentSeries;
                         }
                     }
-                    refreshList();
+                    refreshList(true);
                 }
                 seriesFlagFocus = itemView;
-            }
-
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-//                seriesSelect = false;
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                refresh(itemView, position);
-//                if(isReverse)vodInfo.reverse();
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-                refresh(itemView, position);
-//                if(isReverse)vodInfo.reverse();
             }
         });
         seriesAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
@@ -542,49 +486,14 @@ public class DetailActivity extends BaseActivity {
             }
         });
 
-        mSeriesGroupView.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                TextView txtView = itemView.findViewById(R.id.tvSeriesFlag);
-                txtView.setTextColor(Color.WHITE);
-//                currentSeriesGroupView = null;
-            }
-
-            @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                selectSeriesGroup(itemView, position);
-                if (vodInfo != null && vodInfo.seriesMap.get(vodInfo.playFlag).size() > 0) {
-                    int targetPos = position * GroupCount;
-//                    mGridView.smoothScrollToPosition(targetPos);
-                    customSeriesScrollPos(targetPos);
-                }
-                currentSeriesGroupView = itemView;
-                currentSeriesGroupView.isSelected();
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) { }
-        });
-        tvSeriesSort.setOnFocusChangeListener((view, hasFocus) -> {
-            if (hasFocus) {
-                if (vodInfo != null && Objects.requireNonNull(vodInfo.seriesMap.get(vodInfo.playFlag)).size() > 0) {
-                    int firstVisible = mGridView.getFirstVisiblePosition();
-                    int lastVisible = mGridView.getLastVisiblePosition();
-                    if (vodInfo.playIndex >= 0 && (vodInfo.playIndex < firstVisible || vodInfo.playIndex > lastVisible)) {
-                        customSeriesScrollPos(vodInfo.playIndex);
-                    }
-                }
-            } else {
-                tvSeriesSort.setTextColor(Color.WHITE);
-            }
-        });
         seriesGroupAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 FastClickCheckUtil.check(view);
                 selectSeriesGroup(view, position);
                 if (vodInfo != null && vodInfo.seriesMap.get(vodInfo.playFlag).size() > 0) {
-                    int targetPos =  position * GroupCount+1;
+                    // 该分页第一集在列表中的下标（0 开始）
+                    int targetPos = position * GroupCount;
 
                     customSeriesScrollPos(targetPos);
                 }
@@ -597,12 +506,17 @@ public class DetailActivity extends BaseActivity {
             }
         });
 
-        if(showPreview){
-            llPlayerFragmentContainerBlock.requestFocus();
-        }else {
-            tvPlay.requestFocus();
-        }
         setLoadSir(llLayout);
+        // 进入详情页停在页面最顶部，焦点落在最上方的预览区域
+        if (scrollView != null) {
+            scrollView.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (scrollView != null) scrollView.scrollTo(0, 0);
+                    if (showPreview) llPlayerFragmentContainerBlock.requestFocus();
+                }
+            });
+        }
         if (fullWindows) {
             setFullPreview(true);
         }
@@ -617,15 +531,43 @@ public class DetailActivity extends BaseActivity {
         selectedView.findViewById(R.id.tvSeriesFlagSelect).setVisibility(View.VISIBLE);
     }
 
-    void customSeriesScrollPos(int targetPos)
-    {
+    /**
+     * 集数改为单行横滑后：横向滚到目标集，并把选集区域滚进视野。
+     */
+    void customSeriesScrollPos(int targetPos) {
         if (targetPos < 0) return;
-        mGridViewLayoutMgr.scrollToPositionWithOffset(targetPos>10?targetPos - 10:0, 0);
-        mGridView.postDelayed(() -> {
-            this.smoothScroller.setTargetPosition(targetPos);
-            mGridViewLayoutMgr.startSmoothScroll(smoothScroller);
-            mGridView.smoothScrollToPosition(targetPos);
-        }, 50);
+        mGridView.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                RecyclerView.LayoutManager manager = mGridView.getLayoutManager();
+                if (manager instanceof LinearLayoutManager) {
+                    int itemW = resolveSeriesItemWidth();
+                    ((LinearLayoutManager) manager).scrollToPositionWithOffset(targetPos, Math.max(0, itemW));
+                }
+                scrollSeriesIntoView();
+            }
+        }, 60);
+    }
+
+    /** 让选集区域滚动到屏幕可见位置 */
+    private void scrollSeriesIntoView() {
+        if (scrollView == null || mGridView == null) return;
+        int[] gridLoc = new int[2];
+        int[] svLoc = new int[2];
+        mGridView.getLocationInWindow(gridLoc);
+        scrollView.getLocationInWindow(svLoc);
+        int gridTop = gridLoc[1] - svLoc[1] + scrollView.getScrollY();
+        int offset = Math.round(72 * getResources().getDisplayMetrics().density);
+        scrollView.smoothScrollTo(0, Math.max(0, gridTop - offset));
+    }
+
+    /** 单个集数按钮的宽度，用于横滑定位时左侧留白 */
+    private int resolveSeriesItemWidth() {
+        if (mGridView != null && mGridView.getChildCount() > 0) {
+            View child = mGridView.getChildAt(0);
+            if (child != null && child.getWidth() > 0) return child.getWidth();
+        }
+        return Math.round(64 * getResources().getDisplayMetrics().density);
     }
 
     private void initCheckedSourcesForSearch() {
@@ -677,6 +619,15 @@ public class DetailActivity extends BaseActivity {
 
     @SuppressLint("NotifyDataSetChanged")
     void refreshList() {
+        refreshList(false);
+    }
+
+    /**
+     * @param scrollToSeries 是否把页面滚动到当前集所在位置。
+     *                       首次进入详情页传 false，保持页面停在顶部。
+     */
+    @SuppressLint("NotifyDataSetChanged")
+    void refreshList(boolean scrollToSeries) {
         if (vodInfo.seriesMap.get(vodInfo.playFlag).size() <= vodInfo.playIndex) {
             vodInfo.playIndex = 0;
         }
@@ -709,35 +660,39 @@ public class DetailActivity extends BaseActivity {
             }
         }
         w += 32;
-        int screenWidth = getWindowManager().getDefaultDisplay().getWidth()/3;
-        int offset = screenWidth/w;
-        if(offset <=2) offset =2;
-        if(offset > 6) offset =6;
-        mGridViewLayoutMgr.setSpanCount(offset);
+        // 单行横向滚动：恒为 1 列，宽度由每个集数按钮自身内容决定
+        mGridViewLayoutMgr.setSpanCount(1);
         seriesAdapter.setNewData(vodInfo.seriesMap.get(vodInfo.playFlag));
 
         setSeriesGroupOptions();
 
-        mGridView.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-//                mGridView.smoothScrollToPosition(vodInfo.playIndex);
-                if (vodInfo.playIndex >= 0) customSeriesScrollPos(vodInfo.playIndex);
-            }
-        }, 100);
+        if (scrollToSeries) {
+            mGridView.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (vodInfo.playIndex >= 0) customSeriesScrollPos(vodInfo.playIndex);
+                }
+            }, 100);
+        }
     }
 
     @SuppressLint("NotifyDataSetChanged")
     private void setSeriesGroupOptions(){
         List<VodInfo.VodSeries> list = vodInfo.seriesMap.get(vodInfo.playFlag);
         int listSize = list.size();
+        // 选集标题右侧的「正序 / 倒序」切换按钮：只有一集时无意义
+        if (tvSeriesSort != null) {
+            tvSeriesSort.setVisibility(listSize > 1 ? View.VISIBLE : View.GONE);
+            tvSeriesSort.setText(vodInfo.reverseSort ? "倒序" : "正序");
+        }
         int offset = mGridViewLayoutMgr.getSpanCount();
         seriesGroupOptions.clear();
         GroupCount=(offset==3 || offset==6)?30:20;
         if(listSize>100 && listSize<=400)GroupCount=60;
         if(listSize>400)GroupCount=120;
         if(listSize > 1) {
-            tvSeriesGroup.setVisibility(View.VISIBLE);
+            // 手机竖屏用单行横滑，不再需要分页
+            tvSeriesGroup.setVisibility(isBaseOnWidth() ? View.GONE : View.VISIBLE);
             int remainedOptionSize = listSize % GroupCount;
             int optionSize = listSize / GroupCount;
 
@@ -813,6 +768,48 @@ public class DetailActivity extends BaseActivity {
                 ? Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY).toString()
                 : Html.fromHtml(text).toString();
         return text.replaceAll("\\s", "");
+    }
+
+    /**
+     * 手机竖屏：播放器独占顶部一排，按 16:9 计算高度（全屏时另算）
+     */
+    private void applyPlayerSize() {
+        int w = getResources().getDisplayMetrics().widthPixels;
+        playerHeightPx = Math.round(w * 9f / 16f);
+        setViewHeight(llPlayerPlace, playerHeightPx);
+        setViewHeight(llPlayerFragmentContainer, playerHeightPx);
+        setViewHeight(llPlayerFragmentContainerBlock, playerHeightPx);
+    }
+
+    private void setViewHeight(View view, int height) {
+        if (view == null || height <= 0) return;
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) return;
+        lp.height = height;
+        view.setLayoutParams(lp);
+    }
+
+    /**
+     * 播放器是 FrameLayout 的直接子 View（保证全屏可以铺满），
+     * 这里让它跟随内容滚动一起上移，视觉上等同于「播放器在页面顶部」。
+     */
+    private void setupPlayerScrollSync() {
+        if (scrollView == null) return;
+        scrollView.setOnScrollChangeListener(new androidx.core.widget.NestedScrollView.OnScrollChangeListener() {
+            @Override
+            public void onScrollChange(androidx.core.widget.NestedScrollView v, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
+                syncPlayerTranslation(scrollY);
+            }
+        });
+    }
+
+    private void syncPlayerTranslation(int scrollY) {
+        float translation = 0f;
+        if (!fullWindows && showPreview) {
+            translation = -Math.min(Math.max(scrollY, 0), playerHeightPx);
+        }
+        if (llPlayerFragmentContainer != null) llPlayerFragmentContainer.setTranslationY(translation);
+        if (llPlayerFragmentContainerBlock != null) llPlayerFragmentContainerBlock.setTranslationY(translation);
     }
 
     private void applyPreviewRoundCorners() {
@@ -919,7 +916,6 @@ public class DetailActivity extends BaseActivity {
                     if (vodInfo.seriesMap != null && vodInfo.seriesMap.size() > 0) {
                         mGridViewFlag.setVisibility(View.VISIBLE);
                         mGridView.setVisibility(View.VISIBLE);
-                        tvPlay.setVisibility(View.VISIBLE);
                         mEmptyPlayList.setVisibility(View.GONE);
 
                         VodInfo vodInfoRecord = RoomDataManger.getVodInfo(sourceKey, vodId);
@@ -974,7 +970,6 @@ public class DetailActivity extends BaseActivity {
                         mGridViewFlag.setVisibility(View.GONE);
                         mGridView.setVisibility(View.GONE);
                         tvSeriesGroup.setVisibility(View.GONE);
-                        tvPlay.setVisibility(View.GONE);
                         mEmptyPlayList.setVisibility(View.VISIBLE);
                         handleNoPlayableDetail();
                     }
@@ -1521,7 +1516,7 @@ public class DetailActivity extends BaseActivity {
                     }
                     seriesAdapter.getData().get(index).selected = true;
                     seriesAdapter.notifyItemChanged(index);
-                    if(!isFirstLoad)mGridView.setSelection(index);
+                    if(!isFirstLoad)mGridView.scrollToPosition(index);
                     vodInfo.playIndex = index;
                     routeSwitchSeries = seriesAdapter.getData().get(index);
                     //保存历史
@@ -1767,12 +1762,9 @@ public class DetailActivity extends BaseActivity {
         }
         if (flagIndex >= 0) {
             mGridViewFlag.scrollToPosition(flagIndex);
-            if (mGridViewFlag.hasFocus()) {
-                mGridViewFlag.setSelection(flagIndex);
-            }
         }
         if (!isFirstLoad && newIndex >= 0) {
-            mGridView.setSelection(newIndex);
+            mGridView.scrollToPosition(newIndex);
         }
 
         insertVod(firstsourceKey, vodInfo);
@@ -1951,10 +1943,6 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event != null && !fullWindows && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && event.getKeyCode() == KeyEvent.KEYCODE_MENU) {
-            startDetailFallbackFromMenu();
-            return true;
-        }
         if (event != null && playFragment != null && fullWindows) {
             if (playFragment.dispatchKeyEvent(event)) {
                 return true;
@@ -2002,6 +1990,12 @@ public class DetailActivity extends BaseActivity {
     void exitFullPreview() {
         boolean needRefreshSeries = previewOrientationChanged;
         setFullPreview(false);
+        // 全屏播放时可能已被切成横屏，退出全屏要回到竖屏详情页，
+        // 否则会出现"返回后停在横屏"的问题。
+        if (getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT) {
+            needRefreshSeries = true;
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        }
         previewOrientationChanged = false;
         if (needRefreshSeries) {
             refreshSeriesAfterFullPreview();
@@ -2018,7 +2012,7 @@ public class DetailActivity extends BaseActivity {
             public void run() {
                 mGridView.getRecycledViewPool().clear();
                 mGridView.setAdapter(seriesAdapter);
-                refreshList();
+                refreshList(true);
             }
         });
     }
@@ -2034,8 +2028,8 @@ public class DetailActivity extends BaseActivity {
         mGridView.post(new Runnable() {
             @Override
             public void run() {
-                int firstVisible = mGridView.getFirstVisiblePosition();
-                int lastVisible = mGridView.getLastVisiblePosition();
+                int firstVisible = mGridViewLayoutMgr.findFirstVisibleItemPosition();
+                int lastVisible = mGridViewLayoutMgr.findLastVisibleItemPosition();
                 if (vodInfo.playIndex >= 0 && (vodInfo.playIndex < firstVisible || vodInfo.playIndex > lastVisible)) {
                     customSeriesScrollPos(vodInfo.playIndex);
                 }
@@ -2063,12 +2057,14 @@ public class DetailActivity extends BaseActivity {
             previewOrientationChanged = false;
         }
         fullWindows = full;
+        applyImmersive(full);
         if (playFragment != null) {
             playFragment.setAutoSwitchLineEnabled(!fullWindows);
             playFragment.setPreviewMode(!fullWindows);
         }
         llPlayerFragmentContainer.setVisibility(fullWindows || showPreview ? View.VISIBLE : View.GONE);
         llPlayerFragmentContainer.setLayoutParams(fullWindows ? windowsFull : windowsPreview);
+        syncPlayerTranslation(scrollView == null ? 0 : scrollView.getScrollY());
         setPreviewRoundClip(!fullWindows);
         llPlayerFragmentContainerBlock.setVisibility(!fullWindows && showPreview ? View.VISIBLE : View.GONE);
         mGridView.setVisibility(fullWindows ? View.GONE : View.VISIBLE);
@@ -2088,12 +2084,48 @@ public class DetailActivity extends BaseActivity {
         toggleSubtitleTextSize();
     }
 
+    /**
+     * 全屏播放时隐藏状态栏和导航栏（沉浸式），退出全屏恢复。
+     * BaseActivity.hideSysBar() 在手机端是 no-op，所以这里单独实现。
+     * 只用 SYSTEM_UI_FLAG_* 一套：targetSdk 28 下在 Android 11+ 依然有效，
+     * 也避免低版本设备加载 API 30 的类时出现 VerifyError。
+     */
+    private void applyImmersive(boolean immersive) {
+        Window window = getWindow();
+        if (window == null) return;
+        View decor = window.getDecorView();
+        if (decor == null) return;
+        if (immersive) {
+            decor.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        } else {
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // 全屏时如果用户下拉唤出了状态栏，焦点回来后重新收起
+        if (hasFocus && fullWindows) {
+            applyImmersive(true);
+        }
+    }
+
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         if (fullWindows && newConfig.orientation != previewOrientation) {
             previewOrientation = newConfig.orientation;
             previewOrientationChanged = true;
+        }
+        if (fullWindows) {
+            applyImmersive(true);
         }
     }
 
@@ -2102,6 +2134,7 @@ public class DetailActivity extends BaseActivity {
         playFragment = new PlayFragment();
         getSupportFragmentManager().beginTransaction().add(R.id.previewPlayer, playFragment).commitNowAllowingStateLoss();
         playFragment.setPreviewMode(!fullWindows);
+        playFragment.setAutoSwitchLineEnabled(!fullWindows);
     }
 
     void releasePlayFragment() {

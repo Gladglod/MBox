@@ -156,9 +156,13 @@ public class EpisodeDialog extends BaseDialog {
         protected void convert(BaseViewHolder helper, VodInfo.VodSeries item) {
             TextView series = helper.getView(R.id.tvSeries);
             series.setText(item == null ? "" : item.name);
-            series.setTextColor(helper.getLayoutPosition() == selectedPosition
-                    ? mContext.getResources().getColor(R.color.color_02F8E1)
-                    : Color.WHITE);
+            if (helper.getLayoutPosition() == selectedPosition) {
+                series.setTextColor(mContext.getResources().getColor(R.color.color_02F8E1));
+                helper.itemView.setBackgroundResource(R.drawable.bg_chip_selected);
+            } else {
+                series.setTextColor(Color.WHITE);
+                helper.itemView.setBackgroundResource(R.drawable.bg_chip);
+            }
         }
     }
 }
