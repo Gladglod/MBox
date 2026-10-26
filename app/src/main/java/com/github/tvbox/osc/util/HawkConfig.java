@@ -66,5 +66,38 @@ public class HawkConfig {
     public static final String DANMU_SIZE_SCALE = "danmu_size_scale";
     public static final String DANMU_RANDOM_COLOR = "danmu_random_color";
     public static final String DANMU_API = "danmu_api";
+
+    /** 纯色背景（ARGB，0 表示未设置） */
+    public static final String WALLPAPER_COLOR = "wallpaper_color";
+
+    /**
+     * 首页标签配置：每行一条 {@code 可见(1/0)\t分类id}，行序即显示顺序。
+     * 空字符串表示「默认」——全部显示，按数据源给出的顺序。
+     */
+    public static final String HOME_TABS = "home_tabs";
+
+    /* ===== 外观主题 ===== */
+    /**
+     * 界面明暗模式：0 日间 / 1 夜间 / 2 跟随系统。默认 0（日间，白色为主）。
+     * 具体映射到 {@code AppCompatDelegate.setDefaultNightMode()} 见 {@code ThemeUtil}。
+     */
+    public static final String UI_MODE = "ui_mode";
+    public static final int UI_MODE_DAY = 0;
+    public static final int UI_MODE_NIGHT = 1;
+    public static final int UI_MODE_SYSTEM = 2;
+    public static final int DEFAULT_UI_MODE = UI_MODE_DAY;
+
+    /* ===== 播放手势 ===== */
+    /** 长按屏幕进入变速 */
+    public static final String GESTURE_SPEED_BOOST = "gesture_speed_boost";
+    /** 长按加速的最高倍速 */
+    public static final String GESTURE_MAX_SPEED = "gesture_max_speed";
+    /** 双击中间区域播放 / 暂停 */
+    public static final String GESTURE_DOUBLE_TAP_PLAY = "gesture_double_tap_play";
+    /** 双击左右两侧快进 / 快退的毫秒数 */
+    public static final String GESTURE_DOUBLE_TAP_SEEK = "gesture_double_tap_seek";
+    /** 竖屏上下滑动切换上一集 / 下一集 */
+    public static final String GESTURE_PORTRAIT_SWIPE = "gesture_portrait_swipe";
+
     public static boolean hotVodDelete;
 }

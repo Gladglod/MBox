@@ -1,23 +1,29 @@
 <resources>
     <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
-        <item name="colorPrimary">#14141A</item>
-        <item name="colorPrimaryDark">#14141A</item>
-        <item name="colorAccent">#02F8E1</item>
+    <!--
+      用 DayNight 基类，AppCompatDelegate.setDefaultNightMode() 才能驱动 values-night 生效。
+      具体用日间还是夜间由 ThemeUtil 决定（默认日间）。
+    -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/ui_surface</item>
+        <item name="colorPrimaryDark">@color/ui_bg</item>
+        <item name="colorAccent">@color/ui_accent</item>
+        <item name="android:windowBackground">@color/ui_bg</item>
+        <item name="android:textColorPrimary">@color/ui_text_primary</item>
+        <item name="android:textColorSecondary">@color/ui_text_secondary</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="AppTheme">
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
         <item name="windowActionBar">false</item>
-        <item name="android:windowContentOverlay">@null</item>//是否有遮盖
+        <item name="android:windowContentOverlay">@null</item>
         <item name="windowNoTitle">true</item>
         <item name="android:keepScreenOn">true</item>
-        <item name="android:statusBarColor">#14141A</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <!--        <item name="android:windowBackground">@drawable/main_bg</item>-->
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@color/ui_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <!-- windowBackground 由 BaseActivity.changeWallpaper() 在运行时接管：
+             自定义配图 > 纯色 > 主题默认底色 -->
     </style>
     <!-- 自定义dialog样式 -->
     <style name="CustomDialogStyle" parent="@android:style/Theme.Dialog">

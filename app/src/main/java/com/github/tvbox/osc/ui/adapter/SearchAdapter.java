@@ -17,8 +17,6 @@ import java.util.ArrayList;
 import me.jessyan.autosize.utils.AutoSizeUtils;
 
 public class SearchAdapter extends BaseQuickAdapter<Movie.Video, BaseViewHolder> {
-    private static final int SEARCH_POSTER_WIDTH = 180;
-    private static final int SEARCH_POSTER_HEIGHT = 240;
 
     public SearchAdapter() {
         super(Hawk.get(HawkConfig.SEARCH_VIEW, 0) == 0 ? R.layout.item_search_lite : R.layout.item_search_normal, new ArrayList<>());
@@ -35,7 +33,9 @@ public class SearchAdapter extends BaseQuickAdapter<Movie.Video, BaseViewHolder>
             if (item.note != null && !item.note.isEmpty()) helper.setText(R.id.tvNote, item.note);
             ImageView ivThumb = helper.getView(R.id.ivThumb);
             if (!TextUtils.isEmpty(item.pic)) {
-                ImgUtil.load(item.pic, ivThumb, AutoSizeUtils.mm2px(mContext, 10), AutoSizeUtils.mm2px(mContext, SEARCH_POSTER_WIDTH), AutoSizeUtils.mm2px(mContext, SEARCH_POSTER_HEIGHT), item.name);
+                // 宽高传 0：按 ImageView 实际尺寸解码。原来传的是 180dp×240dp 的设计稿尺寸，
+                // 经 AutoSize 放大后是 540×720，比实际缩略图大得多，解码慢、缓存命中率低。
+                ImgUtil.load(item.pic, ivThumb, AutoSizeUtils.mm2px(mContext, 10), 0, 0, item.name);
             } else {
                 ivThumb.setImageDrawable(ImgUtil.createTextDrawable(item.name));
             }

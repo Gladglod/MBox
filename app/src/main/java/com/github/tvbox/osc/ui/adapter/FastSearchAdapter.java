@@ -30,7 +30,8 @@ public class FastSearchAdapter extends BaseQuickAdapter<Movie.Video, BaseViewHol
         if (item.note != null && !item.note.isEmpty()) helper.setText(R.id.tvNote, item.note);
         ImageView ivThumb = helper.getView(R.id.ivThumb);
         if (!TextUtils.isEmpty(item.pic)) {
-            ImgUtil.load(item.pic, ivThumb, AutoSizeUtils.mm2px(mContext, 10), AutoSizeUtils.mm2px(mContext, 214), AutoSizeUtils.mm2px(mContext, 280), item.name);
+            // 宽高传 0：按 ImageView 实际尺寸解码（原来传 214dp×280dp 设计稿尺寸，经 AutoSize 放大后过大）
+            ImgUtil.load(item.pic, ivThumb, AutoSizeUtils.mm2px(mContext, 10), 0, 0, item.name);
         } else {
             Log.d(TAG, "empty image for item: " + item.name);
             ivThumb.setImageDrawable(ImgUtil.createTextDrawable(item.name));

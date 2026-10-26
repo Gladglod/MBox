@@ -359,26 +359,13 @@
                 tools:ignore="RtlSymmetry" />
         </LinearLayout>
 
-        <!-- 主按钮行：上一集 / 播放·暂停 / 下一集 / 弹幕 / 倍速 / 全屏 -->
+        <!-- 主按钮行：播放·暂停 / 下一集 / 弹幕 / 倍速 / 全屏 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="42dp"
             android:layout_marginTop="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-
-            <ImageView
-                android:id="@+id/play_pre"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="false"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_player_prev"
-                tools:ignore="ContentDescription" />
 
             <LinearLayout
                 android:id="@+id/btn_play_pause"
@@ -1362,12 +1349,13 @@
             tools:text="100" />
     </LinearLayout>
 
-    <!-- 长按加速提示（长按后上下滑动调节倍速） -->
+    <!-- 长按加速提示（长按后上下滑动调倍速，右滑固定） -->
     <TextView
         android:id="@+id/tv_speed_boost"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:alpha="0.55"
         android:background="@drawable/bg_player_toast"
         android:focusable="false"
         android:focusableInTouchMode="false"

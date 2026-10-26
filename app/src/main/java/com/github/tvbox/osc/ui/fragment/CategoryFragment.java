@@ -56,6 +56,7 @@ public class CategoryFragment extends BaseLazyFragment {
             return;
         }
         recyclerView.setLayoutManager(new GridLayoutManager(mContext, 3));
+        recyclerView.setHasFixedSize(true);
         adapter = new CategoryAdapter();
         recyclerView.setAdapter(adapter);
 

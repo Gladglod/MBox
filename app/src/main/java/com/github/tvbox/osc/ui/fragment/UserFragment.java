@@ -1,120 +1,92 @@
 package com.github.tvbox.osc.ui.fragment;
 
-import android.annotation.SuppressLint;
-import android.content.Intent;
 import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.Toast;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProvider;
+import androidx.core.widget.NestedScrollView;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
-import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.BaseLazyFragment;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.RoomDataManger;
-import com.github.tvbox.osc.event.ServerEvent;
+import com.github.tvbox.osc.ui.activity.ApiSettingActivity;
 import com.github.tvbox.osc.ui.activity.CollectActivity;
 import com.github.tvbox.osc.ui.activity.DetailActivity;
-import com.github.tvbox.osc.ui.activity.FastSearchActivity;
 import com.github.tvbox.osc.ui.activity.HistoryActivity;
-import com.github.tvbox.osc.ui.activity.LivePlayActivity;
-import com.github.tvbox.osc.ui.activity.PushActivity;
-import com.github.tvbox.osc.ui.activity.SearchActivity;
-import com.github.tvbox.osc.ui.activity.SettingActivity;
-import com.github.tvbox.osc.ui.adapter.HomeHotVodAdapter;
+import com.github.tvbox.osc.ui.activity.MineSettingActivity;
+import com.github.tvbox.osc.ui.adapter.ContinueSquareAdapter;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
-import com.github.tvbox.osc.util.ImgUtil;
-import com.github.tvbox.osc.util.UA;
-import com.github.tvbox.osc.viewmodel.SourceViewModel;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.lzy.okgo.OkGo;
-import com.lzy.okgo.callback.AbsCallback;
-import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
-import androidx.recyclerview.widget.GridLayoutManager;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import org.greenrobot.eventbus.EventBus;
-import org.greenrobot.eventbus.Subscribe;
-import org.greenrobot.eventbus.ThreadMode;
-import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
 
 /**
- * @author pj567
- * @date :2021/3/9
- * @description:
+ * 「我的」页面：条状菜单。
+ * 「播放历史」这一行下面直接挂一排「继续观看」小方块（横向滑动），相当于它的子模块。
  */
-public class UserFragment extends BaseLazyFragment implements View.OnClickListener {
-    private LinearLayout tvLive;
-    private LinearLayout tvSearch;
-    private LinearLayout tvSetting;
-    private LinearLayout tvHistory;
-    private LinearLayout tvCollect;
-    private LinearLayout tvPush;
-    public static HomeHotVodAdapter homeHotVodAdapter;
-    private List<Movie.Video> homeSourceRec;
-    public static RecyclerView tvHotList;
-    private SourceViewModel sourceViewModel;
+public class UserFragment extends BaseLazyFragment {
+
+    private static final int ACTION_SOURCE = 0;   // 数据源地址
+    private static final int ACTION_SECTION = 1;  // 打开 MineSettingActivity 的某个分组
+    private static final int ACTION_HISTORY = 2;  // 播放历史
+    private static final int ACTION_COLLECT = 3;  // 收藏
+
+    private static final class MenuEntry {
+        final String title;
+        final int icon;
+        final int action;
+        final String section;
+
+        MenuEntry(String title, int icon, int action, String section) {
+            this.title = title;
+            this.icon = icon;
+            this.action = action;
+            this.section = section;
+        }
+    }
+
+    private static final MenuEntry[] MENU_ENTRIES = {
+            new MenuEntry("数据源地址", R.drawable.ic_mine_source, ACTION_SOURCE, null),
+            new MenuEntry("外观主题", R.drawable.ic_mine_theme, ACTION_SECTION, MineSettingActivity.SECTION_APPEARANCE),
+            new MenuEntry("播放历史", R.drawable.ic_mine_history, ACTION_HISTORY, null),
+            new MenuEntry("收藏", R.drawable.icon_collect, ACTION_COLLECT, null),
+            new MenuEntry("播放设定", R.drawable.ic_mine_play, ACTION_SECTION, MineSettingActivity.SECTION_PLAY),
+            new MenuEntry("界面偏好", R.drawable.ic_mine_ui, ACTION_SECTION, MineSettingActivity.SECTION_UI),
+            new MenuEntry("播放手势", R.drawable.ic_mine_gesture, ACTION_SECTION, MineSettingActivity.SECTION_GESTURE),
+            new MenuEntry("弹幕设定", R.drawable.ic_mine_danmu, ACTION_SECTION, MineSettingActivity.SECTION_DANMU),
+            new MenuEntry("关于", R.drawable.ic_mine_about, ACTION_SECTION, MineSettingActivity.SECTION_ABOUT)
+    };
+
+    private static final int CONTINUE_LIMIT = 12;
+
+    private TextView tvSourceValue;
+    private NestedScrollView userScroll;
+    private RecyclerView continueStrip;
+    private ContinueSquareAdapter continueAdapter;
 
     public static UserFragment newInstance() {
         return new UserFragment();
     }
 
+    /**
+     * 兼容旧调用（首页「站点推荐」列表已不再使用，参数忽略）。
+     */
     public static UserFragment newInstance(List<Movie.Video> recVod) {
-        return new UserFragment().setArguments(recVod);
-    }
-
-    public UserFragment setArguments(List<Movie.Video> recVod) {
-        this.homeSourceRec = recVod;
-        return this;
-    }
-
-    @Override
-    protected void onFragmentResume() {
-        super.onFragmentResume();
-        tvHotList.setVisibility(View.VISIBLE);
-        tvHotList.setHasFixedSize(true);
-        int padding = getResources().getDimensionPixelSize(R.dimen.vs_8);
-        if (Hawk.get(HawkConfig.HOME_REC_STYLE, false)) {
-            int spanCount = 3;
-            if (style != null && Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1)
-                spanCount = ImgUtil.spanCountByStyle(style, spanCount);
-            tvHotList.setLayoutManager(new GridLayoutManager(this.mContext, spanCount));
-        } else {
-            tvHotList.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
-        }
-        tvHotList.setPadding(padding, padding, padding, padding);
-        if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 2) {
-            List<VodInfo> allVodRecord = RoomDataManger.getAllVodRecord(20);
-            List<Movie.Video> vodList = new ArrayList<>();
-            for (VodInfo vodInfo : allVodRecord) {
-                Movie.Video vod = new Movie.Video();
-                vod.id = vodInfo.id;
-                vod.sourceKey = vodInfo.sourceKey;
-                vod.name = vodInfo.name;
-                vod.pic = vodInfo.pic;
-                if (vodInfo.playNote != null && !vodInfo.playNote.isEmpty())
-                    vod.note = "上次看到" + vodInfo.playNote;
-                vodList.add(vod);
-            }
-            homeHotVodAdapter.setNewData(vodList);
-        }
+        return new UserFragment();
     }
 
     @Override
@@ -125,236 +97,181 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        RecyclerView hotList = view.findViewById(R.id.tvHotList);
-        if (hotList != null && hotList.getLayoutManager() == null) {
-            hotList.setLayoutManager(new LinearLayoutManager(mContext, LinearLayoutManager.HORIZONTAL, false));
-        }
     }
 
-    private void jumpSearch(Movie.Video vod) {
-        Intent newIntent;
-        if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
-            newIntent = new Intent(mContext, FastSearchActivity.class);
-        } else {
-            newIntent = new Intent(mContext, SearchActivity.class);
-        }
-        newIntent.putExtra("title", vod.name);
-        newIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        mActivity.startActivity(newIntent);
+    @Override
+    protected void onFragmentResume() {
+        super.onFragmentResume();
+        refreshSourceValue();
+        loadContinueList();
     }
 
-    private ImgUtil.Style style;
     @Override
     protected void init() {
-        EventBus.getDefault().register(this);
-        sourceViewModel = new ViewModelProvider(this).get(SourceViewModel.class);
-        tvLive = findViewById(R.id.tvLive);
-        tvSearch = findViewById(R.id.tvSearch);
-        tvSetting = findViewById(R.id.tvSetting);
-        tvCollect = findViewById(R.id.tvFavorite);
-        tvHistory = findViewById(R.id.tvHistory);
-        tvPush = findViewById(R.id.tvPush);
-        tvLive.setOnClickListener(this);
-        tvSearch.setOnClickListener(this);
-        tvSetting.setOnClickListener(this);
-        tvHistory.setOnClickListener(this);
-        tvPush.setOnClickListener(this);
-        tvCollect.setOnClickListener(this);
-        tvHotList = findViewById(R.id.tvHotList);
-        if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1 && homeSourceRec!=null) {
-            style=ImgUtil.initStyle();
+        userScroll = findViewById(R.id.userScroll);
+        buildMenu();
+        loadContinueList();
+    }
+
+    /* ======================== 条状菜单 ======================== */
+
+    private void buildMenu() {
+        LinearLayout card = findViewById(R.id.menuCard);
+        if (card == null) return;
+        card.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(mContext);
+        for (int i = 0; i < MENU_ENTRIES.length; i++) {
+            if (i > 0) card.addView(makeDivider());
+            final MenuEntry entry = MENU_ENTRIES[i];
+            View row = inflater.inflate(R.layout.item_user_menu, card, false);
+            ImageView menuIcon = row.findViewById(R.id.ivMenuIcon);
+            menuIcon.setImageResource(entry.icon);
+            // 图标是白色矢量图，日间模式下必须换成主题色，否则白底白图看不见
+            menuIcon.setColorFilter(getResources().getColor(R.color.ui_icon));
+            ((TextView) row.findViewById(R.id.tvMenuName)).setText(entry.title);
+            TextView value = row.findViewById(R.id.tvMenuValue);
+            if (entry.action == ACTION_SOURCE) {
+                tvSourceValue = value;
+                refreshSourceValue();
+            } else {
+                value.setVisibility(View.GONE);
+            }
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    openMenu(entry);
+                }
+            });
+            card.addView(row);
+            // 「播放历史」下面挂「继续观看」小方块
+            if (entry.action == ACTION_HISTORY) {
+                card.addView(makeContinueStrip());
+            }
         }
-        String tvRate="";
-        if(Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 0){
-            tvRate="豆瓣热播";
-        }else if(Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1){
-          tvRate= homeSourceRec!=null?"站点推荐":"豆瓣热播";
-        }
-        homeHotVodAdapter = new HomeHotVodAdapter(style,tvRate);
-        homeHotVodAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
+    }
+
+    /** 继续观看：横向滑动的小方块列表 */
+    private View makeContinueStrip() {
+        LinearLayout wrap = new LinearLayout(mContext);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wrap.setLayoutParams(wlp);
+        wrap.setPadding(0, 0, 0, dp(4));
+
+        TextView tip = new TextView(mContext);
+        tip.setText("继续观看");
+        tip.setTextColor(getResources().getColor(R.color.ui_muted));
+        tip.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+                getResources().getDimensionPixelSize(R.dimen.ts_14));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.leftMargin = dp(14);
+        tlp.topMargin = dp(2);
+        tlp.bottomMargin = dp(6);
+        wrap.addView(tip, tlp);
+
+        continueStrip = new RecyclerView(mContext);
+        continueStrip.setLayoutManager(new LinearLayoutManager(mContext, LinearLayoutManager.HORIZONTAL, false));
+        continueStrip.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        continueStrip.setClipToPadding(false);
+        continueStrip.setPadding(dp(14), 0, dp(14), 0);
+        continueAdapter = new ContinueSquareAdapter();
+        continueStrip.setAdapter(continueAdapter);
+        continueAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
-                if (ApiConfig.get().getSourceBeanList().isEmpty())
-                    return;
-                Movie.Video vod = ((Movie.Video) adapter.getItem(position));
-
-                if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1 && homeSourceRec != null && vod.action != null) {
-                    sourceViewModel.action(vod.sourceKey, vod.action);
-                    return;
-                }
-
-                if ((vod.id != null && !vod.id.isEmpty()) && (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 2) && HawkConfig.hotVodDelete) {
-                    homeHotVodAdapter.remove(position);
-                    VodInfo vodInfo = RoomDataManger.getVodInfo(vod.sourceKey, vod.id);
-                    assert vodInfo != null;
-                    RoomDataManger.deleteVodRecord(vod.sourceKey, vodInfo);
-                    Toast.makeText(mContext, "已删除当前记录", Toast.LENGTH_SHORT).show();
-                } else if (vod.id != null && vod.id.startsWith("msearch:")) {
-                    jumpSearch(vod);
-                } else {
-                    Bundle bundle = new Bundle();
-                    bundle.putString("id", vod.id);
-                    bundle.putString("sourceKey", vod.sourceKey);
-                    bundle.putString("title", vod.name);
-                    bundle.putString("picture", vod.pic);
-                    jumpActivity(DetailActivity.class, bundle);
-                }
+                FastClickCheckUtil.check(view);
+                if (position < 0 || position >= continueAdapter.getData().size()) return;
+                VodInfo vodInfo = continueAdapter.getData().get(position);
+                if (vodInfo == null) return;
+                Bundle bundle = new Bundle();
+                bundle.putString("id", vodInfo.id);
+                bundle.putString("sourceKey", vodInfo.sourceKey);
+                bundle.putString("title", vodInfo.name);
+                bundle.putString("picture", vodInfo.pic);
+                jumpActivity(DetailActivity.class, bundle);
             }
         });
-        
-        homeHotVodAdapter.setOnItemLongClickListener(new BaseQuickAdapter.OnItemLongClickListener() {
-            @SuppressLint("NotifyDataSetChanged")
-            @Override
-            public boolean onItemLongClick(BaseQuickAdapter adapter, View view, int position) {
-                if (ApiConfig.get().getSourceBeanList().isEmpty()) return false;
-                Movie.Video vod = ((Movie.Video) adapter.getItem(position));
-                // Additional Check if : Home Rec 0=豆瓣, 1=推荐, 2=历史
-                assert vod != null;
-                if (vod.id != null && vod.id.startsWith("msearch:")) {
-                    Bundle bundle = new Bundle();
-                    bundle.putString("id", vod.id);
-                    bundle.putString("sourceKey", vod.sourceKey);
-                    bundle.putString("title", vod.name);
-                    bundle.putString("picture", vod.pic);
-                    jumpActivity(DetailActivity.class, bundle);
-                } else if ((vod.id != null && !vod.id.isEmpty()) && (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 2)) {
-                    HawkConfig.hotVodDelete = !HawkConfig.hotVodDelete;
-                    homeHotVodAdapter.notifyDataSetChanged();
-                } else {
-                    Bundle bundle = new Bundle();
-                    bundle.putString("title", vod.name);
-                    jumpActivity(FastSearchActivity.class, bundle);                    
-                }
-                return true;
-            }    
-        });
-
-        tvHotList.setAdapter(homeHotVodAdapter);
-
-        initHomeHotVod(homeHotVodAdapter);
-        sourceViewModel.actionResult.observe(this, new Observer<JSONObject>() {
-            @Override
-            public void onChanged(JSONObject jsonObject) {
-                if (jsonObject == null) return;
-                String msg = jsonObject.optString("msg");
-                if (!msg.isEmpty()) Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
-            }
-        });
+        wrap.addView(continueStrip, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        wrap.setVisibility(View.GONE);
+        continueWrap = wrap;
+        return wrap;
     }
 
-    private void initHomeHotVod(HomeHotVodAdapter adapter) {
-        if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1) {
-            if (homeSourceRec != null) {
-                adapter.setNewData(homeSourceRec);
-                return;
-            }
-        } else if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 2) {
+    private View continueWrap;
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private View makeDivider() {
+        View divider = new View(mContext);
+        int margin = dp(12);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(0.5f)));
+        lp.leftMargin = margin;
+        lp.rightMargin = margin;
+        divider.setBackgroundColor(0x14FFFFFF);
+        divider.setLayoutParams(lp);
+        return divider;
+    }
+
+    private void openMenu(MenuEntry entry) {
+        switch (entry.action) {
+            case ACTION_SOURCE:
+                jumpActivity(ApiSettingActivity.class);
+                break;
+            case ACTION_HISTORY:
+                jumpActivity(HistoryActivity.class);
+                break;
+            case ACTION_COLLECT:
+                jumpActivity(CollectActivity.class);
+                break;
+            case ACTION_SECTION:
+            default:
+                Bundle bundle = new Bundle();
+                bundle.putString(MineSettingActivity.EXTRA_SECTION, entry.section);
+                jumpActivity(MineSettingActivity.class, bundle);
+                break;
+        }
+    }
+
+    /* ======================== 数据源地址 ======================== */
+
+    private void refreshSourceValue() {
+        if (tvSourceValue == null) return;
+        String api = Hawk.get(HawkConfig.API_URL, "");
+        tvSourceValue.setText(TextUtils.isEmpty(api) ? "未配置" : api);
+    }
+
+    /* ======================== 继续观看 ======================== */
+
+    private void loadContinueList() {
+        if (continueAdapter == null || continueWrap == null) return;
+        List<VodInfo> records = RoomDataManger.getAllVodRecord(CONTINUE_LIMIT);
+        if (records == null || records.isEmpty()) {
+            continueWrap.setVisibility(View.GONE);
+            continueAdapter.setNewData(new ArrayList<VodInfo>());
             return;
         }
-        setDouBanData(adapter);
+        continueWrap.setVisibility(View.VISIBLE);
+        continueAdapter.setNewData(records);
     }
 
-    private void setDouBanData(HomeHotVodAdapter adapter) {
-        try {
-            Calendar cal = Calendar.getInstance();
-            int year = cal.get(Calendar.YEAR);
-            int month = cal.get(Calendar.MONTH) + 1;
-            int day = cal.get(Calendar.DATE);
-            String today = String.format("%d%d%d", year, month, day);
-            String requestDay = Hawk.get("home_hot_day", "");
-            if (requestDay.equals(today)) {
-                String json = Hawk.get("home_hot", "");
-                if (!json.isEmpty()) {
-                    ArrayList<Movie.Video> hotMovies = loadHots(json);
-                    if (hotMovies != null && hotMovies.size() > 0) {
-                        adapter.setNewData(hotMovies);
-                        return;
-                    }
-                }
-            }
-            String doubanUrl = "https://movie.douban.com/j/new_search_subjects?sort=U&range=0,10&tags=&playable=1&start=0&year_range=" + year + "," + year;
-            OkGo.<String>get(doubanUrl)
-                    .headers("User-Agent", UA.randomOne())
-                    .execute(new AbsCallback<String>() {
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            String netJson = response.body();
-                            Hawk.put("home_hot_day", today);
-                            Hawk.put("home_hot", netJson);
-                            mActivity.runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    adapter.setNewData(loadHots(netJson));
-                                }
-                            });
-                        }
+    /* ======================== 返回键回顶 ======================== */
 
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            return response.body().string();
-                        }
-                    });
-        } catch (Throwable th) {
-            th.printStackTrace();
+    /**
+     * 供 HomeActivity 的返回键逻辑调用：列表已上滑时回到顶部并消费事件。
+     */
+    public boolean scrollToTop() {
+        if (userScroll == null) return false;
+        if (userScroll.getScrollY() > 0) {
+            userScroll.scrollTo(0, 0);
+            return true;
         }
-    }
-
-    private ArrayList<Movie.Video> loadHots(String json) {
-        ArrayList<Movie.Video> result = new ArrayList<>();
-        try {
-            JsonObject infoJson = new Gson().fromJson(json, JsonObject.class);
-            JsonArray array = infoJson.getAsJsonArray("data");
-            int limit = Math.min(array.size(), 25);
-            for (int i = 0; i < limit; i++) {  // 改用索引循环
-                JsonElement ele = array.get(i);
-                JsonObject obj = ele.getAsJsonObject();
-                Movie.Video vod = new Movie.Video();
-                vod.name = obj.get("title").getAsString();
-                vod.note = obj.get("rate").getAsString();
-                if (!vod.note.isEmpty()) vod.note += " 分";
-                vod.pic = obj.get("cover").getAsString()
-                        + "@User-Agent=" + UA.randomOne()
-                        + "@Referer=https://www.douban.com/";
-
-                result.add(vod);
-            }
-        } catch (Throwable th) {
-
-        }
-        return result;
-    }
-
-    @Override
-    public void onClick(View v) {
-    	
-    	// takagen99: Remove Delete Mode
-        HawkConfig.hotVodDelete = false;
-    
-        FastClickCheckUtil.check(v);
-        if (v.getId() == R.id.tvLive) {
-            jumpActivity(LivePlayActivity.class);
-        } else if (v.getId() == R.id.tvSearch) {
-            jumpActivity(SearchActivity.class);
-        } else if (v.getId() == R.id.tvSetting) {
-            jumpActivity(SettingActivity.class);
-        } else if (v.getId() == R.id.tvHistory) {
-            jumpActivity(HistoryActivity.class);
-        } else if (v.getId() == R.id.tvPush) {
-            jumpActivity(PushActivity.class);
-        } else if (v.getId() == R.id.tvFavorite) {
-            jumpActivity(CollectActivity.class);
-        }
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
-    public void server(ServerEvent event) {
-        if (event.type == ServerEvent.SERVER_CONNECTION) {
-        }
-    }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        EventBus.getDefault().unregister(this);
+        return false;
     }
 }

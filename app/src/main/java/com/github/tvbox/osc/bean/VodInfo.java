@@ -47,6 +47,11 @@ public class VodInfo implements Serializable {
     public String playFlag = null;
     public int playIndex = 0;
     public String playNote = "";
+    /**
+     * 当前线路的总集数。历史记录里 seriesMap 被排除在序列化之外（体积太大），
+     * 所以单独存一份集数，供「播放历史」展示观看进度。
+     */
+    public int seriesCount = 0;
     public String sourceKey;
     public String playerCfg = "";
     public boolean reverseSort = false;

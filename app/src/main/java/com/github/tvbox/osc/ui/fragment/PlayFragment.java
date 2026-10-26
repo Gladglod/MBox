@@ -194,6 +194,13 @@ public class PlayFragment extends BaseLazyFragment {
     private void initDanmuView() {
         mDanmuView = findViewById(R.id.danmaku);
         danmuLoadController = new DanmuLoadController(mVideoView, mController, mDanmuView);
+        // 弹幕层尺寸就绪后补一次启动：真机上视频/布局就绪晚于弹幕准备时，
+        // 弹幕会停在"已准备但未开始"的状态，表现为一条都不显示。
+        mDanmuView.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left > 0 && bottom - top > 0 && danmuLoadController != null) {
+                danmuLoadController.onViewSizeChanged();
+            }
+        });
     }
 
     private void setDanmuViewSettings(boolean reload) {
@@ -362,6 +369,30 @@ public class PlayFragment extends BaseLazyFragment {
             @Override
             public void openSearchDanmuDialog() {
                 PlayFragment.this.openDanmuSearch();
+            }
+
+            @Override
+            public void exitFullScreen() {
+                Activity activity = getActivity();
+                if (activity instanceof DetailActivity) {
+                    ((DetailActivity) activity).exitFullPreview();
+                }
+            }
+
+            @Override
+            public void enterFullScreen() {
+                Activity activity = getActivity();
+                if (activity instanceof DetailActivity) {
+                    ((DetailActivity) activity).enterFullPreview();
+                }
+            }
+
+            @Override
+            public void onControlsVisibilityChanged(boolean visible) {
+                Activity activity = getActivity();
+                if (activity instanceof DetailActivity) {
+                    ((DetailActivity) activity).setPreviewBlockVisible(!visible);
+                }
             }
 
             @Override
@@ -2236,6 +2267,25 @@ public class PlayFragment extends BaseLazyFragment {
             mController.setPreviewMode(previewMode);
             mController.mLyricView.setTextSize(previewMode ? 16 : 24);
         }
+    }
+
+    /** 显示/隐藏播放器控制条（详情页点击预览区域时调用） */
+    public void toggleControls() {
+        if (mController != null) {
+            mController.toggleControls();
+        }
+    }
+
+    /** 显示控制条 */
+    public void showControls() {
+        if (mController != null) {
+            mController.showControls();
+        }
+    }
+
+    /** 控制条是否可见 */
+    public boolean isControlsVisible() {
+        return mController != null && mController.isControlsVisible();
     }
 
     public void pauseForHidden() {

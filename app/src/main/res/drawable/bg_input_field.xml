@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 页面内（非弹窗）输入框：跟随日间 / 夜间主题 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="6dp" />
+            <solid android:color="@color/ui_surface_alt" />
+            <stroke android:width="1dp" android:color="@color/ui_accent" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="6dp" />
+            <solid android:color="@color/ui_surface_alt" />
+            <stroke android:width="1dp" android:color="@color/ui_divider" />
+        </shape>
+    </item>
+</selector>

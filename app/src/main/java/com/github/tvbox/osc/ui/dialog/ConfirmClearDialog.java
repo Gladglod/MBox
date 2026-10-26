@@ -21,6 +21,18 @@ import java.util.List;
 public class ConfirmClearDialog extends BaseDialog {
     private final TextView tvYes;
     private final TextView tvNo;
+    private Runnable onConfirm;
+
+    /** 通用确认回调：type 不是 Collect / History 时，点「是」执行它 */
+    public ConfirmClearDialog setOnConfirm(Runnable onConfirm) {
+        this.onConfirm = onConfirm;
+        return this;
+    }
+
+    public ConfirmClearDialog setMessage(String message) {
+        ((TextView) findViewById(R.id.confirmation)).setText(message);
+        return this;
+    }
 
     public ConfirmClearDialog(@NonNull @NotNull Context context, String type) {
         super(context);
@@ -44,6 +56,8 @@ public class ConfirmClearDialog extends BaseDialog {
                     HistoryActivity.historyAdapter.setNewData(vodInfoList);
                     HistoryActivity.historyAdapter.notifyDataSetChanged();
                     RoomDataManger.deleteVodRecordAll();
+                } else if (onConfirm != null) {
+                    onConfirm.run();
                 }
 
                 ConfirmClearDialog.this.dismiss();

@@ -41,6 +41,8 @@ public class App extends MultiDexApplication {
         super.onCreate();
         instance = this;
         initParams();
+        // 必须在任何 Activity 创建之前把明暗模式定下来，否则首个页面会先按默认色渲染再重建
+        com.github.tvbox.osc.util.ThemeUtil.applyMode();
         // OKGo
         OkGoHelper.init(); //台标获取
         EpgUtil.init();

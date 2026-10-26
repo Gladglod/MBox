@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:background="?android:attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingLeft="@dimen/vs_12"
+    android:paddingRight="@dimen/vs_12">
+
+    <ImageView
+        android:id="@+id/ivMenuIcon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:alpha="0.85"
+        android:contentDescription="@null" />
+
+    <TextView
+        android:id="@+id/tvMenuName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/vs_10"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/ui_text_primary"
+        android:textSize="@dimen/ts_18" />
+
+    <TextView
+        android:id="@+id/tvMenuValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="middle"
+        android:maxLines="1"
+        android:maxWidth="190dp"
+        android:textColor="@color/ui_text_secondary"
+        android:textSize="@dimen/ts_14" />
+
+    <TextView
+        android:id="@+id/tvMenuArrow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/vs_6"
+        android:text="›"
+        android:textColor="@color/ui_text_tertiary"
+        android:textSize="@dimen/ts_24" />
+</LinearLayout>

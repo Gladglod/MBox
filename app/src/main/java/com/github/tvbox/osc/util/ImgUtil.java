@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.widget.ImageView;
@@ -20,6 +21,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.load.model.GlideUrl;
 import com.bumptech.glide.load.model.LazyHeaders;
+import com.bumptech.glide.load.resource.bitmap.BitmapTransformation;
 import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.bumptech.glide.load.resource.bitmap.FitCenter;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
@@ -43,7 +45,19 @@ import java.util.Random;
 import me.jessyan.autosize.utils.AutoSizeUtils;
 
 public class ImgUtil {
-    private static final Map<String, Drawable> drawableCache = new HashMap<>();
+    // 占位图缓存加个上限，避免浏览越多列表 bitmap 越多（原来是无上限 HashMap）
+    private static final android.util.LruCache<String, Drawable> drawableCache = new android.util.LruCache<>(48);
+    /**
+     * Glide 的 model 缓存：URL → GlideUrl。
+     * {@link #getUrl(String)} 每次都要做 split / URLDecoder / Gson 解析 @Headers=、@Cookie= 这些后缀，
+     * 而列表 bind 时同一个 URL 会被反复请求（滚动回来、复用到同一个 ViewHolder），
+     * 所以解析结果必须缓存，否则 onBindViewHolder 里就有一坨字符串运算。
+     */
+    private static final android.util.LruCache<String, Object> modelCache = new android.util.LruCache<>(256);
+    /** RequestOptions 缓存：列表里只有少数几种「尺寸 + 圆角」组合，没必要每次 bind 都 new 一堆 Transform */
+    private static final Map<String, RequestOptions> optionsCache = new HashMap<>();
+    private static final int OPTIONS_CACHE_MAX = 64;
+
     public static int defaultWidth = 244;
     public static int defaultHeight = 320;
 
@@ -108,58 +122,83 @@ public class ImgUtil {
         load(url, view, roundingRadius, newWidth, newHeight, null);
     }
 
+    /**
+     * 铺满（CENTER_CROP）加载。
+     *
+     * @param newWidth  目标宽度（px）。传 0 表示不指定，让 Glide 按 ImageView 实际尺寸解码
+     * @param newHeight 目标高度（px）
+     */
+    public static void load(String url, ImageView view, int roundingRadius, int newWidth, int newHeight, String label) {
+        loadInternal(url, view, roundingRadius, newWidth, newHeight, label,
+                ImageView.ScaleType.CENTER_CROP, true);
+    }
+
+    /**
+     * 指定 ScaleType 加载（内部用 FitCenter，适合直播台标这类不想被裁切的图）。
+     */
     public static void load(String url, ImageView view, int roundingRadius, int newWidth, int newHeight, String label, ImageView.ScaleType scaleType) {
-        view.setScaleType(scaleType);
-        if (roundingRadius <= 0) roundingRadius = 1;
-        Drawable fallback = createTextDrawable(TextUtils.isEmpty(label) ? "TVBox" : label, newWidth, newHeight, roundingRadius);
-        Drawable placeholder = createImagePlaceholderDrawable(newWidth, newHeight, roundingRadius);
+        loadInternal(url, view, roundingRadius, newWidth, newHeight, label, scaleType, false);
+    }
+
+    /**
+     * 统一的加载入口。原来这里有两份几乎一样的实现，各自 new 一套 RequestOptions / Transform /
+     * RequestListener —— 列表滚动时每次 bind 都在产生垃圾。现在：
+     * <ul>
+     *     <li>{@link RequestOptions} 按「尺寸 + 圆角 + 是否铺满」缓存复用；</li>
+     *     <li>model（{@link GlideUrl}）按 URL 缓存复用；</li>
+     *     <li>始终指定 override 尺寸，避免把原图整张解码进内存。</li>
+     * </ul>
+     */
+    private static void loadInternal(String url, ImageView view, int roundingRadius, int newWidth, int newHeight,
+                                     String label, ImageView.ScaleType scaleType, boolean centerCrop) {
+        if (view == null) return;
+        final ImageView.ScaleType finalScale = scaleType == null ? ImageView.ScaleType.CENTER_CROP : scaleType;
+        view.setScaleType(finalScale);
+        // radius <= 0 表示「不要圆角」：调用方自己已经有圆角背景 + clipToOutline 时，
+        // 再让 Glide 复制一张全尺寸 bitmap 去切圆角纯属浪费。
+        final int radius = Math.max(0, roundingRadius);
         if (isInvalidImageUrl(url)) {
-            view.setImageDrawable(fallback);
+            view.setImageDrawable(createTextDrawable(TextUtils.isEmpty(label) ? "TVBox" : label, newWidth, newHeight, radius));
             return;
         }
-        RequestOptions options = new RequestOptions()
-                .format(DecodeFormat.PREFER_RGB_565)
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .dontAnimate()
-                .transform(new FitCenter(), new RoundedCorners(roundingRadius));
-        if (newWidth > 0 && newHeight > 0) {
-            options = options.override(newWidth, newHeight);
-        }
+        // 占位图本身也是缓存过的，这里只是查一次 LruCache
+        Drawable placeholder = createImagePlaceholderDrawable(newWidth, newHeight, radius);
         Glide.with(App.getInstance())
                 .asBitmap()
                 .load(getUrl(url))
                 .placeholder(placeholder)
-                .error(fallback)
-                .listener(getListener(view, scaleType, fallback))
-                .apply(options)
+                .error(placeholder)
+                .listener(getListener(view, finalScale, label, newWidth, newHeight, radius))
+                .apply(obtainOptions(centerCrop, newWidth, newHeight, radius))
                 .into(view);
     }
 
-    public static void load(String url, ImageView view, int roundingRadius, int newWidth, int newHeight, String label) {
-        view.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        if (roundingRadius <= 0) roundingRadius = 1;
-        Drawable fallback = createTextDrawable(TextUtils.isEmpty(label) ? "TVBox" : label, newWidth, newHeight, roundingRadius);
-        Drawable placeholder = createImagePlaceholderDrawable(newWidth, newHeight, roundingRadius);
-        if (isInvalidImageUrl(url)) {
-            view.setImageDrawable(fallback);
-            return;
-        }
-        RequestOptions options = new RequestOptions()
+    /** 按「尺寸 + 圆角 + 是否铺满」复用 RequestOptions，避免每次 bind 都新建 Transform 对象 */
+    private static RequestOptions obtainOptions(boolean centerCrop, int width, int height, int radius) {
+        String key = (centerCrop ? "c" : "f") + '_' + width + 'x' + height + '_' + radius;
+        RequestOptions options = optionsCache.get(key);
+        if (options != null) return options;
+        BitmapTransformation scale = centerCrop ? new CenterCrop() : new FitCenter();
+        options = new RequestOptions()
                 .format(DecodeFormat.PREFER_RGB_565)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .dontAnimate()
-                .transform(new CenterCrop(), new RoundedCorners(roundingRadius));
-        if (newWidth > 0 && newHeight > 0) {
-            options = options.override(newWidth, newHeight);
+                .dontAnimate();
+        if (radius > 0) {
+            options = options.transform(scale, new RoundedCorners(radius));
+        } else {
+            // 只做缩放，不复制位图去切圆角
+            options = options.transform(scale);
         }
-        Glide.with(App.getInstance())
-                .asBitmap()
-                .load(getUrl(url))
-                .placeholder(placeholder)
-                .error(fallback)
-                .listener(getListener(view, ImageView.ScaleType.CENTER_CROP, fallback))
-                .apply(options)
-                .into(view);
+        if (width > 0 && height > 0) {
+            // 关键：按显示尺寸解码。不指定的话 Glide 会按 ImageView 尺寸推，
+            // 而有些场景 ImageView 还没测量完（宽高为 0），就会退回解码整张原图。
+            options = options.override(width, height);
+        }
+        if (optionsCache.size() >= OPTIONS_CACHE_MAX) {
+            optionsCache.clear();
+        }
+        optionsCache.put(key, options);
+        return options;
     }
 
     public static void loadUrl(String url, ImageView view) {
@@ -190,11 +229,14 @@ public class ImgUtil {
         if (width <= 0) width = 180;
         if (height <= 0) height = 240;
         if (cornerRadius <= 0) cornerRadius = 1;
-        String key = text + "_" + width + "x" + height + "_" + (int) cornerRadius;
-        text = text.substring(0, 1);
-        if (drawableCache.containsKey(key)) return drawableCache.get(key);
+        // key 用首字而不是全名：同一首字的影片复用同一张占位图，
+        // 否则每部剧都会新建一张 200x300 的 bitmap 常驻内存（列表越长越卡）。
+        String firstChar = text.substring(0, 1);
+        String key = "text_" + firstChar + "_" + width + "x" + height + "_" + (int) cornerRadius;
+        Drawable cached = drawableCache.get(key);
+        if (cached != null) return cached;
         int randomColor = getRandomColor();
-        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(randomColor);
@@ -207,20 +249,25 @@ public class ImgUtil {
         Paint.FontMetrics fontMetrics = paint.getFontMetrics();
         float x = width / 2f;
         float y = (height - fontMetrics.bottom - fontMetrics.top) / 2f;
-        canvas.drawText(text, x, y, paint);
+        canvas.drawText(firstChar, x, y, paint);
         Drawable drawable = new BitmapDrawable(App.getInstance().getResources(), bitmap);
         drawableCache.put(key, drawable);
         return drawable;
     }
 
     private static Drawable createImagePlaceholderDrawable(int width, int height, float cornerRadius) {
-        if (width <= 0) width = 180;
-        if (height <= 0) height = 240;
+        if (width <= 0 || height <= 0) {
+            // 尺寸未知（让 Glide 按 View 实测尺寸解码的场景）：直接给一个半透明纯色，
+            // 不再为「未知尺寸」专门生成一张 180×240 的 bitmap 占位图。
+            // 列表项本身有 bg_poster 背景，视觉上不会空。
+            return new ColorDrawable(0x14FFFFFF);
+        }
         if (cornerRadius <= 0) cornerRadius = 1;
         String key = "placeholder_" + width + "x" + height + "_" + (int) cornerRadius;
-        if (drawableCache.containsKey(key)) return drawableCache.get(key);
+        Drawable cached = drawableCache.get(key);
+        if (cached != null) return cached;
 
-        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
         Canvas canvas = new Canvas(bitmap);
 
         Bitmap icon = BitmapFactory.decodeResource(App.getInstance().getResources(), com.github.tvbox.osc.R.drawable.icon_img_placeholder);
@@ -236,7 +283,9 @@ public class ImgUtil {
     }
 
     public static void clearCache() {
-        drawableCache.clear();
+        drawableCache.evictAll();
+        modelCache.evictAll();
+        optionsCache.clear();
     }
 
     public static void clearMemoryCache() {
@@ -249,7 +298,22 @@ public class ImgUtil {
         }
     }
 
+    /**
+     * 把带 {@code @Headers=} / {@code @Cookie=} / {@code @Referer=} / {@code @User-Agent=} 后缀的
+     * 图片地址解析成 Glide 能用的 model。解析结果是不可变的，直接按 URL 缓存。
+     */
     private static Object getUrl(String url) {
+        if (TextUtils.isEmpty(url)) return null;
+        Object cached = modelCache.get(url);
+        if (cached != null) return cached;
+        Object model = buildModel(url);
+        if (model != null) {
+            modelCache.put(url, model);
+        }
+        return model;
+    }
+
+    private static Object buildModel(String url) {
         if (url.startsWith("data:")) return url;
         String header = null;
         String referer = null;
@@ -317,12 +381,15 @@ public class ImgUtil {
         headers.put(key, value.trim());
     }
 
-    private static RequestListener<Bitmap> getListener(final ImageView view, final ImageView.ScaleType scaleType, final Drawable fallback) {
+    private static RequestListener<Bitmap> getListener(final ImageView view, final ImageView.ScaleType scaleType,
+                                                      final String label, final int width, final int height,
+                                                      final float radius) {
         return new RequestListener<Bitmap>() {
             @Override
             public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Bitmap> target, boolean isFirstResource) {
                 view.setScaleType(scaleType);
-                view.setImageDrawable(fallback);
+                // 失败时才画文字占位图
+                view.setImageDrawable(createTextDrawable(TextUtils.isEmpty(label) ? "TVBox" : label, width, height, radius));
                 return true;
             }
 

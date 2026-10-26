@@ -283,10 +283,18 @@ public class DetailActivity extends BaseActivity {
         mSeriesGroupView.setAdapter(seriesGroupAdapter);
 
         llPlayerFragmentContainerBlock.setOnClickListener(v -> {
-            enterFullPreview();
             if (firstReverse) {
+                // 首次点击：拉起播放，同时把播放组件带出来
                 jumpToPlay();
-                firstReverse=false;
+                firstReverse = false;
+                llPlayerFragmentContainer.post(() -> {
+                    if (playFragment != null) playFragment.showControls();
+                });
+                return;
+            }
+            // 非全屏状态下点击播放区域：只显示播放组件，不再自动进入全屏
+            if (playFragment != null) {
+                playFragment.toggleControls();
             }
         });
 
@@ -908,7 +916,10 @@ public class DetailActivity extends BaseActivity {
                     setTextShow(tvDirector, "导演：", removeHtmlTag(mVideo.director));
                     setTextShow(tvDes, "内容简介：", removeHtmlTag(mVideo.des));
                     if (!TextUtils.isEmpty(mVideo.pic)) {
-                        com.github.tvbox.osc.util.ImgUtil.load(DefaultConfig.checkReplaceProxy(mVideo.pic), ivThumb, AutoSizeUtils.mm2px(mContext, 10), AutoSizeUtils.mm2px(mContext, 300), AutoSizeUtils.mm2px(mContext, 400), mVideo.name);
+                        // thumbContainer 是 108dp×162dp（约 324×486px），圆角由 clipToOutline 负责。
+                        // 原来传 300dp×400dp 的设计稿尺寸，经 AutoSize 放大后是 900×1200，
+                        // 解码量和内存都多 7 倍，进详情页那一下的卡顿主要来自这里。
+                        com.github.tvbox.osc.util.ImgUtil.load(DefaultConfig.checkReplaceProxy(mVideo.pic), ivThumb, 0, 0, 0, mVideo.name);
                     } else {
                         ivThumb.setImageDrawable(com.github.tvbox.osc.util.ImgUtil.createTextDrawable(mVideo.name));
                     }
@@ -1983,11 +1994,11 @@ public class DetailActivity extends BaseActivity {
         setFullPreview(!fullWindows);
     }
 
-    void enterFullPreview() {
+    public void enterFullPreview() {
         setFullPreview(true);
     }
 
-    void exitFullPreview() {
+    public void exitFullPreview() {
         boolean needRefreshSeries = previewOrientationChanged;
         setFullPreview(false);
         // 全屏播放时可能已被切成横屏，退出全屏要回到竖屏详情页，
@@ -2004,8 +2015,17 @@ public class DetailActivity extends BaseActivity {
         }
     }
 
-    private void refreshSeriesAfterFullPreview() {
-        if (seriesAdapter == null || vodInfo == null || vodInfo.seriesMap == null || TextUtils.isEmpty(vodInfo.playFlag)) return;
+    /**
+     * 预览区域（previewPlayerBlock）点击热区的显隐。
+     * 它盖在播放器之上，控制条显示时必须让开，否则控制条上的按钮点不到。
+     */
+    public void setPreviewBlockVisible(boolean visible) {
+        if (llPlayerFragmentContainerBlock == null) return;
+        llPlayerFragmentContainerBlock.setVisibility(
+                (!fullWindows && showPreview && visible) ? View.VISIBLE : View.GONE);
+    }
+
+    private void refreshSeriesAfterFullPreview() {        if (seriesAdapter == null || vodInfo == null || vodInfo.seriesMap == null || TextUtils.isEmpty(vodInfo.playFlag)) return;
         if (vodInfo.seriesMap.get(vodInfo.playFlag) == null) return;
         mGridView.post(new Runnable() {
             @Override
@@ -2066,7 +2086,8 @@ public class DetailActivity extends BaseActivity {
         llPlayerFragmentContainer.setLayoutParams(fullWindows ? windowsFull : windowsPreview);
         syncPlayerTranslation(scrollView == null ? 0 : scrollView.getScrollY());
         setPreviewRoundClip(!fullWindows);
-        llPlayerFragmentContainerBlock.setVisibility(!fullWindows && showPreview ? View.VISIBLE : View.GONE);
+        // 控制条显示时热区必须让开，否则控制条上的按钮点不到
+        setPreviewBlockVisible(!(playFragment != null && playFragment.isControlsVisible()));
         mGridView.setVisibility(fullWindows ? View.GONE : View.VISIBLE);
         mGridViewFlag.setVisibility(fullWindows ? View.GONE : View.VISIBLE);
         if (fullWindows) {
@@ -2095,6 +2116,17 @@ public class DetailActivity extends BaseActivity {
         if (window == null) return;
         View decor = window.getDecorView();
         if (decor == null) return;
+        // 根布局是 fitsSystemWindows="true"，系统会为状态栏加 paddingTop。
+        // 全屏时必须关掉它并清掉已应用的 padding，否则播放器上方会留出一条状态栏高度的黑边。
+        View root = findViewById(R.id.detail_root);
+        if (root != null) {
+            root.setFitsSystemWindows(!immersive);
+            if (immersive) {
+                root.setPadding(0, 0, 0, 0);
+            } else {
+                root.requestApplyInsets();
+            }
+        }
         if (immersive) {
             decor.setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE

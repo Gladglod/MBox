@@ -53,6 +53,15 @@ public class RoomDataManger {
         if (Hawk.get(HawkConfig.HISTORY_MERGE, false)) {
             removeSameNameVodRecords(dao, sourceKey, vodInfo);
         }
+        // seriesMap 不参与序列化，这里把总集数单独记下来，历史列表才能显示观看进度
+        try {
+            if (vodInfo.seriesMap != null && !vodInfo.seriesMap.isEmpty()) {
+                List<VodInfo.VodSeries> series = vodInfo.seriesMap.get(vodInfo.playFlag);
+                if (series == null) series = vodInfo.seriesMap.values().iterator().next();
+                if (series != null) vodInfo.seriesCount = series.size();
+            }
+        } catch (Throwable ignore) {
+        }
         VodRecord record = dao.getVodRecord(sourceKey, vodInfo.id);
         if (record == null) {
             record = new VodRecord();
@@ -84,6 +93,26 @@ public class RoomDataManger {
         VodRecord record = AppDataManager.get().getVodRecordDao().getVodRecord(sourceKey, vodInfo.id);
         if (record != null) {
             AppDataManager.get().getVodRecordDao().delete(record);
+        }
+    }
+
+    /** 置顶：只把更新时间改成当前时间，列表按 updateTime 倒序，自然排到最前 */
+    public static void pinVodRecord(String sourceKey, String vodId) {
+        VodRecordDao dao = AppDataManager.get().getVodRecordDao();
+        VodRecord record = dao.getVodRecord(sourceKey, vodId);
+        if (record != null) {
+            record.updateTime = System.currentTimeMillis();
+            dao.insert(record);
+        }
+    }
+
+    /** 置顶收藏：同上 */
+    public static void pinVodCollect(int id) {
+        VodCollectDao dao = AppDataManager.get().getVodCollectDao();
+        VodCollect record = dao.getVodCollect(id);
+        if (record != null) {
+            record.updateTime = System.currentTimeMillis();
+            dao.insert(record);
         }
     }
 

@@ -51,6 +51,46 @@
     <color name="dialog_text_primary">#FFFFFFFF</color>
     <color name="dialog_text_hint">#80FFFFFF</color>
 
-
-
+    <!--
+      ==================== 界面语义色（日间） ====================
+      这些颜色在 values-night/colors.xml 里有同名覆盖。
+      页面/卡片/文字/分隔线一律引用这里的语义色，不要再写死 #0E0E12 这类字面量，
+      否则「外观主题 → 日间/夜间」切换时那部分界面不会跟着变。
+      播放器控制层（player_*）始终是深色浮层，不使用这套语义色。
+    -->
+    <!-- 页面底色（window background 也用这个） -->
+    <color name="ui_bg">#FFF3F4F7</color>
+    <!-- 顶栏 / 底栏 / 卡片 -->
+    <color name="ui_surface">#FFFFFFFF</color>
+    <!-- 次级卡片 / 输入框 / 占位块 -->
+    <color name="ui_surface_alt">#FFF0F1F5</color>
+    <!-- 历史、收藏页底部操作条 -->
+    <color name="ui_bar_bg">#FFFFFFFF</color>
+    <!-- 主文字 -->
+    <color name="ui_text_primary">#FF17181D</color>
+    <!-- 次要文字（说明、副标题） -->
+    <color name="ui_text_secondary">#99000000</color>
+    <!-- 三级文字（提示、禁用） -->
+    <color name="ui_text_tertiary">#4D000000</color>
+    <!-- 输入框 hint -->
+    <color name="ui_text_hint">#66000000</color>
+    <!-- 分隔线 -->
+    <color name="ui_divider">#14000000</color>
+    <!-- 图标着色 -->
+    <color name="ui_icon">#FF2A2C33</color>
+    <!-- 小胶囊背景（年份、备注、按钮底） -->
+    <color name="ui_chip_bg">#FFE7E9EF</color>
+    <!-- 品牌强调色（日间用深一档保证白底可读） -->
+    <color name="ui_accent">#FF00A396</color>
+    <!-- 链接 / 可点击文字 -->
+    <color name="ui_link">#FF2A6BE0</color>
+    <!-- 弱化文字（灰色说明） -->
+    <color name="ui_muted">#FF8A8F99</color>
+    <!-- 危险操作（删除） -->
+    <color name="ui_danger">#FFD9343C</color>
+    <!-- 强调色的浅底（选中态胶囊、标签底色） -->
+    <color name="ui_accent_soft">#1A00A396</color>
+    <!-- 海报占位底色 / 描边 -->
+    <color name="ui_poster_placeholder">#FFE2E4EA</color>
+    <color name="ui_poster_stroke">#14000000</color>
 </resources>

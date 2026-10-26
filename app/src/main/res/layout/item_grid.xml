@@ -33,7 +33,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="@dimen/vs_4"
-                android:background="@drawable/bg_chip"
+                android:background="@drawable/bg_chip_on_image"
                 android:ellipsize="end"
                 android:gravity="center"
                 android:paddingLeft="@dimen/vs_6"
@@ -49,7 +49,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="@dimen/vs_4"
-                android:background="@drawable/bg_chip"
+                android:background="@drawable/bg_chip_on_image"
                 android:ellipsize="end"
                 android:gravity="center"
                 android:paddingLeft="@dimen/vs_6"
@@ -58,13 +58,15 @@
                 android:paddingBottom="@dimen/vs_2"
                 android:singleLine="true"
                 android:textColor="@android:color/white"
-                android:textSize="@dimen/ts_14" />
+                android:textSize="@dimen/ts_14"
+                android:visibility="gone"
+            />
 
             <TextView
                 android:id="@+id/tvLang"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_chip"
+                android:background="@drawable/bg_chip_on_image"
                 android:ellipsize="end"
                 android:gravity="center"
                 android:paddingLeft="@dimen/vs_6"
@@ -73,7 +75,9 @@
                 android:paddingBottom="@dimen/vs_2"
                 android:singleLine="true"
                 android:textColor="@android:color/white"
-                android:textSize="@dimen/ts_14" />
+                android:textSize="@dimen/ts_14"
+                android:visibility="gone"
+            />
         </LinearLayout>
 
         <TextView
@@ -83,7 +87,7 @@
             android:layout_gravity="bottom|start"
             android:layout_marginLeft="@dimen/vs_5"
             android:layout_marginBottom="@dimen/vs_5"
-            android:background="@drawable/bg_chip"
+            android:background="@drawable/bg_chip_on_image"
             android:ellipsize="end"
             android:gravity="center"
             android:paddingLeft="@dimen/vs_6"
@@ -122,7 +126,7 @@
         android:maxLines="1"
         android:singleLine="true"
         android:text="Title"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_primary"
         android:textSize="@dimen/ts_18" />
 
     <TextView
@@ -132,7 +136,7 @@
         android:ellipsize="end"
         android:gravity="left"
         android:singleLine="true"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_secondary"
         android:textSize="@dimen/ts_16"
         android:visibility="gone" />
 </LinearLayout>

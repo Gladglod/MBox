@@ -2,26 +2,26 @@ package com.github.tvbox.osc.ui.activity;
 
 import android.os.Bundle;
 import android.view.View;
-import android.view.animation.BounceInterpolator;
-import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.BaseActivity;
-import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.event.RefreshEvent;
-import com.github.tvbox.osc.ui.adapter.HistoryAdapter;
+import com.github.tvbox.osc.ui.adapter.HistoryBarAdapter;
 import com.github.tvbox.osc.ui.dialog.ConfirmClearDialog;
+import com.github.tvbox.osc.ui.widget.SmoothTopScroller;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.orhanobut.hawk.Hawk;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -31,17 +31,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * @author pj567
- * @date :2021/1/7
- * @description:
+ * 播放历史：条状列表。
+ * 支持左滑「置顶 / 删除」，以及右上角「编辑」进入多选批量删除。
  */
 public class HistoryActivity extends BaseActivity {
-    private ImageView tvDelete;
-    private ImageView tvClear;
-    private TextView tvDelTip;
-    private TvRecyclerView mGridView;
-    public static HistoryAdapter historyAdapter;
-    private boolean delMode = false;
+
+    private RecyclerView mGridView;
+    private TextView tvEdit;
+    private TextView tvEmpty;
+    private TextView tvSelectAll;
+    private TextView tvDeleteSelected;
+    private View bottomBar;
+    public static HistoryBarAdapter historyAdapter;
+    private boolean editMode = false;
 
     @Override
     protected int getLayoutResID() {
@@ -59,123 +61,177 @@ public class HistoryActivity extends BaseActivity {
         initData();
     }
 
-    private void toggleDelMode() {
-    	HawkConfig.hotVodDelete = !HawkConfig.hotVodDelete;
-        historyAdapter.notifyDataSetChanged();
-        delMode = !delMode;
-        tvDelTip.setVisibility(delMode ? View.VISIBLE : View.GONE);        
-    }
-
     private void initView() {
         EventBus.getDefault().register(this);
-        tvDelete = findViewById(R.id.tvDelete);
-        tvClear = findViewById(R.id.tvClear);
-        tvDelTip = findViewById(R.id.tvDelTip);
+        tvEdit = findViewById(R.id.tvEdit);
+        tvEmpty = findViewById(R.id.tvEmpty);
+        tvSelectAll = findViewById(R.id.tvSelectAll);
+        tvDeleteSelected = findViewById(R.id.tvDeleteSelected);
+        bottomBar = findViewById(R.id.bottomBar);
         mGridView = findViewById(R.id.mGridView);
+        findViewById(R.id.ivBack).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                onBackPressed();
+            }
+        });
+        mGridView.setLayoutManager(new LinearLayoutManager(mContext, LinearLayoutManager.VERTICAL, false));
+        // 条目高度固定，固定尺寸可以省掉每次数据变化后的重新测量
         mGridView.setHasFixedSize(true);
-        mGridView.setLayoutManager(new V7GridLayoutManager(this.mContext, isBaseOnWidth() ? 5 : 6));
-        historyAdapter = new HistoryAdapter();
+        historyAdapter = new HistoryBarAdapter();
         mGridView.setAdapter(historyAdapter);
-        tvDelete.setOnClickListener(new View.OnClickListener() {
+
+        // 点标题 = 平滑回到顶部（0 号 item 半露时也能精确收顶）
+        findViewById(R.id.tvTitle).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                toggleDelMode();
+                SmoothTopScroller.scrollToTop(mGridView);
             }
         });
-        tvClear.setOnClickListener(new View.OnClickListener() {
+
+        tvEdit.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ConfirmClearDialog dialog = new ConfirmClearDialog(mContext, "History");
-                dialog.show();
+                FastClickCheckUtil.check(v);
+                toggleEditMode();
             }
         });
-        mGridView.setOnInBorderKeyEventListener(new TvRecyclerView.OnInBorderKeyEventListener() {
+        findViewById(R.id.tvDone).setOnClickListener(new View.OnClickListener() {
             @Override
-            public boolean onInBorderKeyEvent(int direction, View focused) {
-                if (direction == View.FOCUS_UP) {
-                    tvDelete.setFocusable(true);
-                    tvClear.setFocusable(true);
-                    tvDelete.requestFocus();
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                toggleEditMode();
+            }
+        });
+        tvSelectAll.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                historyAdapter.selectAll();
+                updateDeleteLabel();
+            }
+        });
+        tvDeleteSelected.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                deleteSelected();
+            }
+        });
+
+        historyAdapter.setOnActionListener(new HistoryBarAdapter.OnActionListener() {
+            @Override
+            public void onPin(VodInfo item) {
+                RoomDataManger.pinVodRecord(item.sourceKey, item.id);
+                initData();
+                Toast.makeText(mContext, "已置顶", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onDelete(VodInfo item) {
+                RoomDataManger.deleteVodRecord(item.sourceKey, item);
+                historyAdapter.getData().remove(item);
+                historyAdapter.notifyDataSetChanged();
+                updateEmpty();
+            }
+        });
+
+        historyAdapter.setOnItemActionListener(new HistoryBarAdapter.OnItemActionListener() {
+            @Override
+            public void onItemClick(VodInfo vodInfo) {
+                if (vodInfo == null) return;
+                if (editMode) {
+                    // 编辑模式下点条目 = 勾选 / 取消勾选
+                    historyAdapter.toggleSelection(vodInfo);
+                    updateDeleteLabel();
+                    return;
                 }
-                return false;
-            }
-        });
-        mGridView.setOnItemListener(new TvRecyclerView.OnItemListener() {
-            @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                itemView.animate().scaleX(1.0f).scaleY(1.0f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
+                openDetail(vodInfo);
             }
 
             @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                itemView.animate().scaleX(1.05f).scaleY(1.05f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
-            }
-
-            @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-
-            }
-        });
-        historyAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
-            @Override
-            public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
-                FastClickCheckUtil.check(view);
-                if (position == -1) return;
-                VodInfo vodInfo = historyAdapter.getData().get(position);
-
-                if (vodInfo != null) {
-                    if (delMode) {
-                        historyAdapter.remove(position);
-                        RoomDataManger.deleteVodRecord(vodInfo.sourceKey, vodInfo);
-                    } else {
-                        Bundle bundle = new Bundle();
-                        bundle.putString("id", vodInfo.id);
-                        bundle.putString("sourceKey", vodInfo.sourceKey);
-                        SourceBean sourceBean = ApiConfig.get().getSource(vodInfo.sourceKey);
-                        if(sourceBean!=null){
-                            bundle.putString("title", vodInfo.name);
-                            bundle.putString("picture", vodInfo.pic);
-                            jumpActivity(DetailActivity.class, bundle);
-                        }else {
-                            bundle.putString("title", vodInfo.name);
-                            if(Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)){
-                                jumpActivity(FastSearchActivity.class, bundle);
-                            }else {
-                                jumpActivity(SearchActivity.class, bundle);
-                            }
-                        }
-                    }
+            public void onItemLongClick(VodInfo vodInfo) {
+                if (editMode || vodInfo == null) return;
+                Bundle bundle = new Bundle();
+                bundle.putString("title", vodInfo.name);
+                if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
+                    jumpActivity(FastSearchActivity.class, bundle);
+                } else {
+                    jumpActivity(SearchActivity.class, bundle);
                 }
             }
         });
-        historyAdapter.setOnItemLongClickListener(new BaseQuickAdapter.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(BaseQuickAdapter adapter, View view, int position) {
-                VodInfo vodInfo = historyAdapter.getData().get(position);
-                if (vodInfo != null) {
-                    Bundle bundle = new Bundle();
-                    bundle.putString("title", vodInfo.name);
-                    if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
-                        jumpActivity(FastSearchActivity.class, bundle);
-                    } else {
-                        jumpActivity(SearchActivity.class, bundle);
-                    }
-                }
-                return true;
-            }
-        });
+    }
+
+    private void openDetail(VodInfo vodInfo) {
+        Bundle bundle = new Bundle();
+        bundle.putString("id", vodInfo.id);
+        bundle.putString("sourceKey", vodInfo.sourceKey);
+        SourceBean sourceBean = ApiConfig.get().getSource(vodInfo.sourceKey);
+        bundle.putString("title", vodInfo.name);
+        bundle.putString("picture", vodInfo.pic);
+        if (sourceBean != null) {
+            jumpActivity(DetailActivity.class, bundle);
+        } else if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
+            jumpActivity(FastSearchActivity.class, bundle);
+        } else {
+            jumpActivity(SearchActivity.class, bundle);
+        }
+    }
+
+    /* ============================ 编辑模式 ============================ */
+
+    private void toggleEditMode() {
+        editMode = !editMode;
+        historyAdapter.setEditMode(editMode);
+        bottomBar.setVisibility(editMode ? View.VISIBLE : View.GONE);
+        tvEdit.setText(editMode ? "取消" : "编辑");
+        updateDeleteLabel();
+    }
+
+    private void updateDeleteLabel() {
+        int count = historyAdapter == null ? 0 : historyAdapter.getSelectedCount();
+        tvDeleteSelected.setText(count > 0 ? "删除(" + count + ")" : "删除");
+    }
+
+    private void deleteSelected() {
+        List<VodInfo> selected = historyAdapter.getSelectedItems();
+        if (selected.isEmpty()) {
+            Toast.makeText(mContext, "请先选择要删除的记录", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        for (VodInfo info : selected) {
+            RoomDataManger.deleteVodRecord(info.sourceKey, info);
+        }
+        historyAdapter.setEditMode(false);
+        editMode = false;
+        bottomBar.setVisibility(View.GONE);
+        tvEdit.setText("编辑");
+        initData();
+        Toast.makeText(mContext, "已删除 " + selected.size() + " 条", Toast.LENGTH_SHORT).show();
     }
 
     private void initData() {
         List<VodInfo> allVodRecord = RoomDataManger.getAllVodRecord(100);
         List<VodInfo> vodInfoList = new ArrayList<>();
-        for (VodInfo vodInfo : allVodRecord) {
-            if (vodInfo.playNote != null && !vodInfo.playNote.isEmpty())vodInfo.note = "上次看到" + vodInfo.playNote;
-            vodInfoList.add(vodInfo);
+        if (allVodRecord != null) {
+            for (VodInfo vodInfo : allVodRecord) {
+                if (vodInfo.playNote != null && !vodInfo.playNote.isEmpty()) {
+                    vodInfo.note = "上次看到" + vodInfo.playNote;
+                }
+                vodInfoList.add(vodInfo);
+            }
         }
         historyAdapter.setNewData(vodInfoList);
+        updateEmpty();
+        updateDeleteLabel();
     }
 
+    private void updateEmpty() {
+        boolean empty = historyAdapter == null || historyAdapter.getData().isEmpty();
+        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+    }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void refresh(RefreshEvent event) {
@@ -192,8 +248,8 @@ public class HistoryActivity extends BaseActivity {
 
     @Override
     public void onBackPressed() {
-        if (delMode) {
-            toggleDelMode();
+        if (editMode) {
+            toggleEditMode();
             return;
         }
         super.onBackPressed();

@@ -29,7 +29,7 @@
             android:marqueeRepeatLimit="marquee_forever"
             android:padding="@dimen/vs_10"
             android:singleLine="true"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_text_primary"
             android:textSize="@dimen/ts_20" />
 
         <TextView
@@ -42,7 +42,7 @@
             android:marqueeRepeatLimit="marquee_forever"
             android:padding="@dimen/vs_10"
             android:singleLine="true"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_text_secondary"
             android:textSize="@dimen/ts_20" />
 
 

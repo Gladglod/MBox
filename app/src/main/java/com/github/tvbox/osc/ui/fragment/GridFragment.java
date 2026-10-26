@@ -35,6 +35,7 @@ import com.github.tvbox.osc.ui.adapter.GridAdapter;
 import com.github.tvbox.osc.ui.adapter.GridFilterKVAdapter;
 import com.github.tvbox.osc.ui.dialog.GridFilterDialog;
 import com.github.tvbox.osc.ui.tv.widget.LoadMoreView;
+import com.github.tvbox.osc.ui.widget.SmoothTopScroller;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.ImgUtil;
@@ -220,8 +221,16 @@ public class GridFragment extends BaseLazyFragment {
             mGridView.setVisibility(View.VISIBLE);
         }
         mGridView.setHasFixedSize(true);
-        // 默认缓存 2 屏 item，海报图较大，压到 1 屏多一点就够滑动了
-        mGridView.setItemViewCacheSize(6);
+        // 滑动时多留几屏 item，滑回来不用重新 bind（默认只有 2 个）
+        mGridView.setItemViewCacheSize(8);
+        // 关闭增删动画：一次 setNewData 几十项时，动画会让首帧明显掉帧
+        mGridView.setItemAnimator(null);
+        // 复用池放大：默认只有 5 个，而一屏 3×4=12 个 item，滑一屏就要丢掉一半再 inflate
+        mGridView.getRecycledViewPool().setMaxRecycledViews(0, 12);
+        // 注意：这里以前挂了「滑动时 Glide.pauseRequests()、停下再 resume」的监听。
+        // 那是错的——pause 会让滑动过程中新出现的 item 永远拿不到图（表现就是「图片一直加载不出来」），
+        // 停下瞬间几十个请求同时恢复又反过来抢占主线程。Glide 本身会在 View 复用时
+        // 自动取消旧请求，不需要手动暂停。
         style = ImgUtil.initStyle();
         gridAdapter = new GridAdapter(isFolederMode(), style);
         this.page = 1;
@@ -475,10 +484,20 @@ public class GridFragment extends BaseLazyFragment {
         return isTop;
     }
 
+    /** 刷新数据时用：瞬间回到顶部，不带滚动动画 */
     public void scrollTop() {
         isTop = true;
         if (mGridView == null) return;
         mGridView.scrollToPosition(0);
+    }
+
+    /**
+     * 用户主动「回到顶部」时用：平滑滚动，0 号 item 半露时也能精确收到顶部。
+     *
+     * @return true 表示确实滚动了（已经在顶部返回 false）
+     */
+    public boolean smoothScrollToTop() {
+        return SmoothTopScroller.scrollToTop(mGridView);
     }
 
     public void showFilter() {

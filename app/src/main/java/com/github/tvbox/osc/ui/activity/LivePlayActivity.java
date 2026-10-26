@@ -1133,7 +1133,15 @@ public class LivePlayActivity extends BaseActivity {
             liveIconNullText.setText("" + channel_Name.getChannelNum());
         } else {
             imgLiveIcon.setVisibility(View.VISIBLE);
-            com.github.tvbox.osc.util.ImgUtil.load(DefaultConfig.checkReplaceProxy(logoUrl), imgLiveIcon, 1, 0, 0, channel_Name.getChannelName(), ImageView.ScaleType.CENTER_INSIDE);
+            // 台标控件是 34dp × 24dp，按实际显示尺寸解码，避免把整张台标原图读进内存
+            int iconW = imgLiveIcon.getWidth();
+            int iconH = imgLiveIcon.getHeight();
+            if (iconW <= 0 || iconH <= 0) {
+                float density = mContext.getResources().getDisplayMetrics().density;
+                iconW = Math.max(1, (int) (34 * density));
+                iconH = Math.max(1, (int) (24 * density));
+            }
+            com.github.tvbox.osc.util.ImgUtil.load(DefaultConfig.checkReplaceProxy(logoUrl), imgLiveIcon, 1, iconW, iconH, channel_Name.getChannelName(), ImageView.ScaleType.CENTER_INSIDE);
             liveIconNullBg.setVisibility(View.INVISIBLE);
             liveIconNullText.setVisibility(View.INVISIBLE);
         }

@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/detail_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0E0E12"
+    android:background="@color/ui_bg"
     android:fitsSystemWindows="true">
 
     <androidx.core.widget.NestedScrollView
@@ -70,7 +71,7 @@
                         android:ellipsize="end"
                         android:gravity="left"
                         android:maxLines="2"
-                        android:textColor="@android:color/white"
+                        android:textColor="@color/ui_text_primary"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
@@ -88,7 +89,7 @@
                         android:paddingRight="@dimen/vs_10"
                         android:paddingBottom="@dimen/vs_3"
                         android:singleLine="true"
-                        android:textColor="@android:color/white"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="11sp" />
 
                     <TextView
@@ -99,7 +100,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="12sp" />
 
                     <TextView
@@ -110,7 +111,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="12sp" />
 
                     <TextView
@@ -121,7 +122,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="12sp" />
 
                     <TextView
@@ -132,7 +133,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:singleLine="true"
-                        android:textColor="@color/color_CCFFFFFF"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="12sp" />
 
                     <TextView
@@ -142,7 +143,7 @@
                         android:layout_marginBottom="@dimen/vs_3"
                         android:ellipsize="end"
                         android:maxLines="2"
-                        android:textColor="@color/color_CCFFFFFF"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="12sp" />
 
                     <TextView
@@ -151,7 +152,7 @@
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
                         android:maxLines="2"
-                        android:textColor="@color/color_CCFFFFFF"
+                        android:textColor="@color/ui_text_secondary"
                         android:textSize="12sp" />
 
                     <TextView
@@ -160,7 +161,7 @@
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
                         android:maxLines="1"
-                        android:textColor="@color/color_99FFFFFF"
+                        android:textColor="@color/ui_text_tertiary"
                         android:textSize="12sp"
                         android:visibility="gone" />
                 </LinearLayout>
@@ -175,7 +176,7 @@
                 android:ellipsize="end"
                 android:lineSpacingMultiplier="1.25"
                 android:maxLines="3"
-                android:textColor="@color/color_CCFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="13sp" />
 
             <!-- 其他操作：一排四个 -->
@@ -288,7 +289,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="选集"
-                    android:textColor="@android:color/white"
+                    android:textColor="@color/ui_text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -305,7 +306,7 @@
                     android:paddingRight="10dp"
                     android:singleLine="true"
                     android:text="正序"
-                    android:textColor="@color/color_02F8E1"
+                    android:textColor="@color/ui_accent"
                     android:textSize="12sp" />
             </LinearLayout>
 

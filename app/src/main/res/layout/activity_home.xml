@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0E0E12"
+    android:background="@color/ui_bg"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -38,7 +38,7 @@
                 android:gravity="left"
                 android:maxLines="1"
                 android:text="@string/app_name"
-                android:textColor="@android:color/white"
+                android:textColor="@color/ui_text_primary"
                 android:textSize="@dimen/ts_34"
                 android:textStyle="bold" />
 
@@ -51,7 +51,7 @@
                 android:gravity="left"
                 android:includeFontPadding="false"
                 android:maxLines="1"
-                android:textColor="@color/color_BBFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="@dimen/ts_16"
                 tools:text="2026/06/16 周二 15:01" />
         </LinearLayout>
@@ -65,7 +65,7 @@
             android:focusable="false"
             android:padding="@dimen/vs_8"
             android:src="@drawable/icon_search"
-            android:tint="@android:color/white" />
+            android:tint="@color/ui_icon" />
 
         <TextView
             android:id="@+id/tvMenu"
@@ -85,14 +85,14 @@
             android:paddingRight="@dimen/vs_12"
             android:paddingBottom="@dimen/vs_6"
             android:text="换源"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_text_primary"
             android:textSize="@dimen/ts_16" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1px"
-        android:background="#1FFFFFFF" />
+        android:background="@color/ui_divider" />
 
     <!-- 内容区：首页(分类页签 + 列表) 与 分类/我的 片段共用 -->
     <FrameLayout
@@ -110,14 +110,14 @@
                 android:id="@+id/mTabLayout"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:background="#14141A"
+                android:background="@color/ui_surface"
                 app:tabIndicatorColor="@color/color_02F8E1"
                 app:tabIndicatorHeight="2dp"
                 app:tabMode="scrollable"
                 app:tabRippleColor="@null"
-                app:tabSelectedTextColor="@android:color/white"
+                app:tabSelectedTextColor="@color/ui_text_primary"
                 app:tabTextAppearance="@style/TextAppearance.App.Tab"
-                app:tabTextColor="@color/color_BBFFFFFF" />
+                app:tabTextColor="@color/ui_text_secondary" />
 
             <androidx.viewpager.widget.ViewPager
                 android:id="@+id/mViewPager"
@@ -136,7 +136,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1px"
-        android:background="#1FFFFFFF" />
+        android:background="@color/ui_divider" />
 
     <!-- 底部四栏导航 -->
     <LinearLayout
@@ -196,7 +196,7 @@
                 android:layout_marginTop="2dp"
                 android:includeFontPadding="false"
                 android:text="分类"
-                android:textColor="@color/color_BBFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="@dimen/ts_14" />
         </LinearLayout>
 
@@ -223,7 +223,7 @@
                 android:layout_marginTop="2dp"
                 android:includeFontPadding="false"
                 android:text="直播"
-                android:textColor="@color/color_BBFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="@dimen/ts_14" />
         </LinearLayout>
 
@@ -250,7 +250,7 @@
                 android:layout_marginTop="2dp"
                 android:includeFontPadding="false"
                 android:text="我的"
-                android:textColor="@color/color_BBFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="@dimen/ts_14" />
         </LinearLayout>
     </LinearLayout>

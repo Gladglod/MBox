@@ -34,6 +34,8 @@ import com.github.tvbox.osc.bean.AbsSortXml;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.MovieSort;
 import com.github.tvbox.osc.bean.SourceBean;
+import com.github.tvbox.osc.bean.VodInfo;
+import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.ui.adapter.HomePageAdapter;
@@ -44,6 +46,7 @@ import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.TipDialog;
 import com.github.tvbox.osc.ui.fragment.CategoryFragment;
 import com.github.tvbox.osc.ui.fragment.GridFragment;
+import com.github.tvbox.osc.ui.fragment.HotRecommendFragment;
 import com.github.tvbox.osc.ui.fragment.UserFragment;
 import com.github.tvbox.osc.ui.tv.widget.DefaultTransformer;
 import com.github.tvbox.osc.ui.tv.widget.FixedSpeedScroller;
@@ -52,6 +55,7 @@ import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.HomeTabConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
@@ -87,13 +91,14 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     private SourceViewModel sourceViewModel;
     private SortAdapter sortAdapter;
     private HomePageAdapter pageAdapter;
-    private final List<BaseLazyFragment> fragments = new ArrayList<>();
+    /** 首页实际渲染的分类页（不含最左侧「热门推荐」），顺序即页序 - 1 */
+    private final List<MovieSort.SortData> pageSorts = new ArrayList<>();
+    private AbsSortXml lastAbsXml;
     private int currentSelected = 0;
     private SourceBean previousHomeSource;
     private String loadingSourceKey;
     private String previousHomeName;
     private boolean homeSortLoading = false;
-    private boolean refreshHomeRec = false;
     private final Handler mHandler = new Handler();
     private long mExitTime = 0;
     private boolean eventBusRegistered = false;
@@ -145,13 +150,10 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         this.mViewPager = findViewById(R.id.mViewPager);
         this.sortAdapter = new SortAdapter();
 
-        tvName.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                FastClickCheckUtil.check(v);
-                jumpActivity(SettingActivity.class);
-            }
-        });
+        // 左上角站点名称仅作展示，不再响应点击（设置入口统一收归「我的」）
+        tvName.setOnClickListener(null);
+        tvName.setClickable(false);
+        tvName.setFocusable(false);
         tvMenu.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -180,6 +182,20 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
 
             @Override
             public void onTabReselected(TabLayout.Tab tab) {
+                // 再次点击当前页签 = 平滑回到该页顶部
+                scrollPageToTop(tab.getPosition());
+            }
+        });
+
+        // 左右滑动切换页面时，让顶部页签跟着走
+        this.mViewPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
+            @Override
+            public void onPageSelected(int position) {
+                if (mTabLayout == null) return;
+                TabLayout.Tab tab = mTabLayout.getTabAt(position);
+                if (tab != null && !tab.isSelected()) {
+                    tab.select();
+                }
             }
         });
 
@@ -188,11 +204,11 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     }
 
     private void selectPage(int position) {
-        if (position < 0 || position >= fragments.size()) return;
+        if (pageAdapter == null || position < 0 || position >= pageAdapter.getCount()) return;
         if (currentSelected == position) return;
         currentSelected = position;
         mViewPager.setCurrentItem(position, false);
-        BaseLazyFragment baseLazyFragment = fragments.get(position);
+        BaseLazyFragment baseLazyFragment = pageAdapter.getFragment(position);
         if (baseLazyFragment instanceof GridFragment && ((GridFragment) baseLazyFragment).shouldReloadOnSelect()) {
             ((GridFragment) baseLazyFragment).forceRefresh();
         }
@@ -201,10 +217,16 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     private void setupTabs() {
         if (mTabLayout == null || sortAdapter == null) return;
         mTabLayout.removeAllTabs();
-        List<MovieSort.SortData> data = sortAdapter.getData();
-        for (MovieSort.SortData sortData : data) {
+        // 第 0 页固定是「热门推荐」，其后按用户配置的分类顺序排列
+        mTabLayout.addTab(mTabLayout.newTab().setText(HomeTabConfig.HOT_NAME));
+        for (MovieSort.SortData sortData : getVisibleSortData()) {
             mTabLayout.addTab(mTabLayout.newTab().setText(sortData.name));
         }
+    }
+
+    /** 首页要显示的分类（已按用户配置过滤 + 排序），不含「热门推荐」 */
+    private List<MovieSort.SortData> getVisibleSortData() {
+        return HomeTabConfig.visibleSortData(sortAdapter == null ? null : sortAdapter.getData());
     }
 
     private void initBottomNav() {
@@ -259,15 +281,34 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
             startActivity(new Intent(HomeActivity.this, LivePlayActivity.class));
             return;
         }
+        // 已经在首页时再点「首页」= 平滑回到当前分类页顶部
+        boolean alreadyHome = tab == 0 && currentBottomTab == 0
+                && homeContent != null && homeContent.getVisibility() == View.VISIBLE;
         currentBottomTab = tab;
         updateBottomNav(tab);
         if (tab == 0) {
             showHomeContent();
+            if (alreadyHome) {
+                scrollPageToTop(currentSelected);
+            }
         } else if (tab == 1) {
             showSubFragment(CategoryFragment.newInstance(getCategoryList()));
         } else if (tab == 3) {
             showSubFragment(UserFragment.newInstance(lastRecList));
         }
+    }
+
+    /** 把首页第 position 页平滑滚回顶部 */
+    private boolean scrollPageToTop(int position) {
+        if (pageAdapter == null) return false;
+        BaseLazyFragment fragment = pageAdapter.getFragment(position);
+        if (fragment instanceof GridFragment) {
+            return ((GridFragment) fragment).smoothScrollToTop();
+        }
+        if (fragment instanceof HotRecommendFragment) {
+            return ((HotRecommendFragment) fragment).scrollToTop();
+        }
+        return false;
     }
 
     private void showHomeContent() {
@@ -296,8 +337,9 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     }
 
     private void updateBottomNav(int selected) {
-        int on = getResources().getColor(R.color.color_02F8E1);
-        int off = getResources().getColor(R.color.color_BBFFFFFF);
+        // 用语义色：日间是深青 + 半透明黑，夜间是亮青 + 半透明白，否则日间模式下图标会白到看不见
+        int on = getResources().getColor(R.color.ui_accent);
+        int off = getResources().getColor(R.color.ui_text_secondary);
         applyNavState(ivNavHome, tvNavHome, selected == 0, on, off);
         applyNavState(ivNavCategory, tvNavCategory, selected == 1, on, off);
         applyNavState(ivNavLive, tvNavLive, selected == 2, on, off);
@@ -314,15 +356,7 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     }
 
     private ArrayList<MovieSort.SortData> getCategoryList() {
-        ArrayList<MovieSort.SortData> list = new ArrayList<>();
-        if (sortAdapter != null) {
-            for (MovieSort.SortData data : sortAdapter.getData()) {
-                if (data != null && !"my0".equals(data.id)) {
-                    list.add(data);
-                }
-            }
-        }
-        return list;
+        return new ArrayList<>(getVisibleSortData());
     }
 
     @Override
@@ -330,18 +364,22 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         if (sortData == null) {
             return;
         }
+        // 页 0 是「热门推荐」，分类从第 1 页开始
         int index = -1;
-        List<MovieSort.SortData> data = sortAdapter.getData();
-        for (int i = 0; i < data.size(); i++) {
-            if (data.get(i) != null && sortData.id != null && sortData.id.equals(data.get(i).id)) {
-                index = i;
+        for (int i = 0; i < pageSorts.size(); i++) {
+            MovieSort.SortData data = pageSorts.get(i);
+            if (data != null && sortData.id != null && sortData.id.equals(data.id)) {
+                index = i + 1;
                 break;
             }
         }
-        if (mViewPager != null && index >= 0) {
-            mViewPager.setCurrentItem(index, false);
-        }
         selectBottomTab(0);
+        if (mTabLayout != null && index >= 0) {
+            TabLayout.Tab tab = mTabLayout.getTabAt(index);
+            if (tab != null) {
+                tab.select();
+            }
+        }
     }
 
     private void initViewModel() {
@@ -356,6 +394,7 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
                     return;
                 }
                 lastRecList = absXml != null ? absXml.videoList : null;
+                lastAbsXml = absXml;
                 SourceBean home = ApiConfig.get().getHomeSourceBean();
                 showSuccess();
                 clearHomePages();
@@ -367,7 +406,6 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
                 }
                 updateSortData(newSortData);
                 initViewPager(absXml);
-                updateHomeRec(absXml);
                 if (home != null && home.getName() != null && !home.getName().isEmpty()) tvName.setText(home.getName());
                 tvName.clearAnimation();
                 homeSortLoading = false;
@@ -558,42 +596,87 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     }
 
     private void initViewPager(AbsSortXml absXml) {
-        if (sortAdapter.getData().size() > 0) {
-            for (MovieSort.SortData data : sortAdapter.getData()) {
-                if (data.id.equals("my0")) {
-                    if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 1 && absXml != null && absXml.videoList != null && absXml.videoList.size() > 0) {
-                        fragments.add(UserFragment.newInstance(absXml.videoList));
-                    } else {
-                        fragments.add(UserFragment.newInstance(null));
+        if (sortAdapter == null) return;
+        // 交给「热门推荐」页的数据：站点推荐 / 历史记录
+        HotRecommendFragment.setData(resolveHotList(absXml));
+
+        pageSorts.clear();
+        pageSorts.addAll(getVisibleSortData());
+        final List<MovieSort.SortData> sorts = new ArrayList<>(pageSorts);
+
+        // 懒加载：这里只给出「第几页是什么」，Fragment 实例等 ViewPager 真正需要时才创建
+        pageAdapter = new HomePageAdapter(getSupportFragmentManager(), sorts.size() + 1,
+                new HomePageAdapter.PageProvider() {
+                    @Override
+                    public BaseLazyFragment create(int position) {
+                        if (position <= 0) {
+                            return HotRecommendFragment.newInstance();
+                        }
+                        return GridFragment.newInstance(sorts.get(position - 1));
                     }
-                } else {
-                    fragments.add(GridFragment.newInstance(data));
-                }
-            }
-            pageAdapter = new HomePageAdapter(getSupportFragmentManager(), fragments);
-            try {
-                java.lang.reflect.Field field = ViewPager.class.getDeclaredField("mScroller");
-                field.setAccessible(true);
-                FixedSpeedScroller scroller = new FixedSpeedScroller(mContext, new android.view.animation.AccelerateInterpolator());
-                field.set(mViewPager, scroller);
-                scroller.setmDuration(300);
-            } catch (Exception e) {
-            }
-            mViewPager.setPageTransformer(true, new DefaultTransformer());
-            mViewPager.setAdapter(pageAdapter);
-            mViewPager.setCurrentItem(currentSelected, false);
+                });
+        try {
+            java.lang.reflect.Field field = ViewPager.class.getDeclaredField("mScroller");
+            field.setAccessible(true);
+            FixedSpeedScroller scroller = new FixedSpeedScroller(mContext, new android.view.animation.AccelerateInterpolator());
+            field.set(mViewPager, scroller);
+            scroller.setmDuration(300);
+        } catch (Exception e) {
         }
+        mViewPager.setPageTransformer(true, new DefaultTransformer());
+        // 只保留当前页左右各一页；滑出范围的页面会被 detach，视图树和海报一起释放
+        mViewPager.setOffscreenPageLimit(1);
+        mViewPager.setAdapter(pageAdapter);
+        if (currentSelected < 0 || currentSelected >= pageAdapter.getCount()) {
+            currentSelected = 0;
+        }
+        mViewPager.setCurrentItem(currentSelected, false);
+    }
+
+    /** 「热门推荐」页的数据源：0 豆瓣热播 / 1 站点推荐走接口列表，2 走本地历史 */
+    private List<Movie.Video> resolveHotList(AbsSortXml absXml) {
+        if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) == 2) {
+            return buildHistoryList();
+        }
+        List<Movie.Video> rec = absXml != null ? absXml.videoList : null;
+        // 「热门推荐」是首页默认落地页，空着很难看。
+        // 不少数据源的 homeContent 并不返回推荐列表，这种情况下退回到本地观看历史，
+        // 至少让首屏有内容可点；历史也为空时才显示「暂无推荐内容」。
+        if (rec == null || rec.isEmpty()) {
+            return buildHistoryList();
+        }
+        return rec;
+    }
+
+    /** 本地观看历史 → 首页卡片。也用作「热门推荐」无推荐内容时的兜底 */
+    private List<Movie.Video> buildHistoryList() {
+        List<VodInfo> records = RoomDataManger.getAllVodRecord(30);
+        List<Movie.Video> list = new ArrayList<>();
+        if (records != null) {
+            for (VodInfo info : records) {
+                if (info == null) continue;
+                Movie.Video video = new Movie.Video();
+                video.id = info.id;
+                video.sourceKey = info.sourceKey;
+                video.name = info.name;
+                video.pic = info.pic;
+                if (info.playNote != null && !info.playNote.isEmpty()) {
+                    video.note = "上次看到" + info.playNote;
+                }
+                list.add(video);
+            }
+        }
+        return list;
     }
 
     private void clearHomePages() {
         mHandler.removeCallbacks(mDataRunnable);
         currentSelected = 0;
+        pageSorts.clear();
         if (pageAdapter != null) {
             mViewPager.setAdapter(null);
             pageAdapter.removeAll();
             pageAdapter = null;
-        } else if (!fragments.isEmpty()) {
-            fragments.clear();
         }
     }
 
@@ -601,27 +684,16 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         if (newSortData == null) {
             newSortData = new ArrayList<>();
         }
-        List<MovieSort.SortData> oldSortData = sortAdapter.getData();
-        if (oldSortData.isEmpty()
-                || newSortData.isEmpty()
-                || oldSortData.get(0) == null
-                || newSortData.get(0) == null
-                || !"my0".equals(oldSortData.get(0).id)
-                || !"my0".equals(newSortData.get(0).id)) {
-            sortAdapter.setNewData(newSortData);
-            setupTabs();
-            return;
-        }
-        int oldTailCount = oldSortData.size() - 1;
-        if (oldTailCount > 0) {
-            oldSortData.subList(1, oldSortData.size()).clear();
-            sortAdapter.notifyItemRangeRemoved(1, oldTailCount);
-        }
-        if (newSortData.size() > 1) {
-            oldSortData.addAll(newSortData.subList(1, newSortData.size()));
-            sortAdapter.notifyItemRangeInserted(1, newSortData.size() - 1);
-        }
+        sortSnapshot = new ArrayList<>(newSortData);
+        sortAdapter.setNewData(newSortData);
         setupTabs();
+    }
+
+    /** 首页分类快照，供「首页标签」设置页读取（分类里带 filters，不适合走 Intent 序列化） */
+    private static List<MovieSort.SortData> sortSnapshot = new ArrayList<>();
+
+    public static List<MovieSort.SortData> getSortSnapshot() {
+        return sortSnapshot;
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -640,30 +712,24 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
             selectBottomTab(0);
             return;
         }
-        if (HawkConfig.hotVodDelete) {
-            HawkConfig.hotVodDelete = false;
-            UserFragment.homeHotVodAdapter.notifyDataSetChanged();
-            return;
-        }
-
-        if (this.fragments.size() <= 0 || this.currentSelected >= this.fragments.size() || this.currentSelected < 0) {
+        if (pageAdapter == null || this.currentSelected >= pageAdapter.getCount() || this.currentSelected < 0) {
             doExit();
             return;
         }
 
-        BaseLazyFragment baseLazyFragment = this.fragments.get(this.currentSelected);
+        BaseLazyFragment baseLazyFragment = pageAdapter.getFragment(this.currentSelected);
         if (baseLazyFragment instanceof GridFragment) {
             GridFragment grid = (GridFragment) baseLazyFragment;
             if (grid.restoreView()) {
                 return;
             } else if (this.currentSelected != 0) {
-                mViewPager.setCurrentItem(0, false);
+                selectPage(0);
             } else {
                 doExit();
             }
-        } else if (baseLazyFragment instanceof UserFragment && UserFragment.tvHotList.canScrollVertically(-1)) {
-            UserFragment.tvHotList.scrollToPosition(0);
-            mViewPager.setCurrentItem(0, false);
+        } else if (baseLazyFragment instanceof HotRecommendFragment
+                && ((HotRecommendFragment) baseLazyFragment).scrollToTop()) {
+            // 热门推荐页已经上滑，先回到顶部
         } else {
             doExit();
         }
@@ -688,6 +754,17 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         super.onResume();
         refreshTopInfoTextSize();
         mHandler.post(mRunnable);
+        applyHomeTabChange();
+    }
+
+    /** 从「界面偏好 → 首页标签」返回后，按新配置重建页签与页面 */
+    private void applyHomeTabChange() {
+        // 首页数据还没回来时先不动，等下一次 onResume 或首页加载完成后再应用
+        if (sortAdapter == null || sortAdapter.getData().isEmpty()) return;
+        if (!HomeTabConfig.consumeChanged()) return;
+        clearHomePages();
+        setupTabs();
+        initViewPager(lastAbsXml);
     }
 
     @Override
@@ -795,23 +872,11 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     }
 
     private void refreshHomeSort() {
-        refreshHomeRec = true;
-        if (UserFragment.homeHotVodAdapter != null) {
-            UserFragment.homeHotVodAdapter.setNewData(new ArrayList<Movie.Video>());
-        }
         SourceBean home = ApiConfig.get().getHomeSourceBean();
         if (home != null) {
             SourceViewModel.clearSortCache(home.getKey());
         }
         refreshHome(false);
-    }
-
-    private void updateHomeRec(AbsSortXml absXml) {
-        if (!refreshHomeRec) return;
-        refreshHomeRec = false;
-        if (Hawk.get(HawkConfig.HOME_REC, HawkConfig.DEFAULT_HOME_REC) != 1) return;
-        if (absXml == null || absXml.videoList == null || UserFragment.homeHotVodAdapter == null) return;
-        UserFragment.homeHotVodAdapter.setNewData(absXml.videoList);
     }
 
     private void refreshHome(final boolean restart) {

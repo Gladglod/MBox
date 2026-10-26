@@ -23,7 +23,7 @@
         android:minHeight="20dp"
         android:singleLine="true"
         android:text="11111111111"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_primary"
         android:textSize="13sp" />
 
     <View

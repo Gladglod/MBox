@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  压在海报上的小胶囊（年份 / 备注 / 站点）。
+  底色刻意固定为半透明黑：它下面永远是图片，不跟主题走，
+  否则日间模式下浅灰底 + 白字会糊成一片。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#73000000" />
+    <corners android:radius="16dp" />
+</shape>

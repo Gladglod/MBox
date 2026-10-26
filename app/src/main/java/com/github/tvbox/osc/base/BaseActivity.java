@@ -7,6 +7,7 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
@@ -21,6 +22,8 @@ import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.callback.EmptyCallback;
 import com.github.tvbox.osc.callback.LoadingCallback;
 import com.github.tvbox.osc.util.AppManager;
+import com.github.tvbox.osc.util.HawkConfig;
+import com.orhanobut.hawk.Hawk;
 import com.kingja.loadsir.callback.Callback;
 import com.kingja.loadsir.core.LoadService;
 import com.kingja.loadsir.core.LoadSir;
@@ -75,6 +78,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         updateBaseSizeInDp();
         setContentView(getLayoutResID());
         mContext = this;
+        com.github.tvbox.osc.util.ThemeUtil.applySystemBars(this);
         initSystemUiListener();
         CutoutUtil.adaptCutoutAboveAndroidP(mContext, true);//设置刘海
         AppManager.getInstance().addActivity(this);
@@ -314,8 +318,11 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
     protected static BitmapDrawable globalWp = null;
 
     public void changeWallpaper(boolean force) {
-        if (!force && globalWp != null)
+        if (!force && globalWp != null) {
             getWindow().setBackgroundDrawable(globalWp);
+            releaseContentBackground(true);
+            return;
+        }
         try {
             File wp = new File(getFilesDir().getAbsolutePath() + "/wp");
             if (wp.exists()) {
@@ -347,9 +354,45 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             throwable.printStackTrace();
             globalWp = null;
         }
-        if (globalWp != null)
+        if (globalWp != null) {
             getWindow().setBackgroundDrawable(globalWp);
-        else
-            getWindow().setBackgroundDrawableResource(R.drawable.app_bg);
+            releaseContentBackground(true);
+        } else if (Hawk.get(HawkConfig.WALLPAPER_COLOR, 0) != 0) {
+            getWindow().setBackgroundDrawable(new ColorDrawable(Hawk.get(HawkConfig.WALLPAPER_COLOR, 0)));
+            releaseContentBackground(true);
+        } else {
+            // 没有配图也没有纯色：底色交给主题（日间白 / 夜间深），
+            // 不再固定用 app_bg.jpg —— 那张是深色图，日间模式下会和白色文字打架。
+            getWindow().setBackgroundDrawable(new ColorDrawable(
+                    getResources().getColor(R.color.ui_bg)));
+            releaseContentBackground(false);
+        }
+    }
+
+    /**
+     * 让窗口背景（配图 / 纯色）能真正透出来。
+     *
+     * <p>页面根布局自带 {@code @color/ui_bg} 底色，会把 window background 整个盖住——
+     * 这正是之前「设置了配图/纯色，全局却不生效」的原因。
+     * 用户设了自定义背景时把根布局底色抹成透明，没设时恢复成主题底色
+     * （保持不透明可以让 GPU 少画一层全屏底色）。</p>
+     */
+    private void releaseContentBackground(boolean transparent) {
+        View content = findViewById(android.R.id.content);
+        if (!(content instanceof android.view.ViewGroup)) return;
+        android.view.ViewGroup group = (android.view.ViewGroup) content;
+        int color = transparent ? android.graphics.Color.TRANSPARENT
+                : getResources().getColor(R.color.ui_bg);
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child == null) continue;
+            child.setBackgroundColor(color);
+        }
+    }
+
+    /** 立即刷新背景（设置页里切换纯色后即时预览用） */
+    public void applyWallpaperNow() {
+        globalWp = null;
+        changeWallpaper(true);
     }
 }

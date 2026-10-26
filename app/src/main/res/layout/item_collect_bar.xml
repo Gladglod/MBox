@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.github.tvbox.osc.ui.widget.SwipeActionLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/vs_8">
+
+    <!-- 左滑后露出的操作区 -->
+    <LinearLayout
+        android:layout_width="132dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnPin"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#FF2F4A6B"
+            android:gravity="center"
+            android:text="置顶"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/ts_16" />
+
+        <TextView
+            android:id="@+id/btnDelete"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#FF6B2F2F"
+            android:gravity="center"
+            android:text="删除"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/ts_16" />
+    </LinearLayout>
+
+    <!-- 内容区 -->
+    <LinearLayout
+        android:id="@+id/contentRoot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_phone_card"
+        android:clickable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="@dimen/vs_8">
+
+        <ImageView
+            android:id="@+id/ivThumb"
+            android:layout_width="104dp"
+            android:layout_height="60dp"
+            android:background="@color/ui_surface_alt"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/vs_10"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@android:color/white"
+                android:textSize="@dimen/ts_18" />
+
+            <TextView
+                android:id="@+id/tvSource"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/color_CCFFFFFF"
+                android:textSize="@dimen/ts_14" />
+
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/color_CCFFFFFF"
+                android:textSize="@dimen/ts_14" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/ivCheck"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="@dimen/vs_8"
+            android:background="@drawable/bg_item_check"
+            android:contentDescription="@null"
+            android:visibility="gone" />
+    </LinearLayout>
+</com.github.tvbox.osc.ui.widget.SwipeActionLayout>

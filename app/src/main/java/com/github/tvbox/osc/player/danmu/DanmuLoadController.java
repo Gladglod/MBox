@@ -38,6 +38,7 @@ public class DanmuLoadController {
     private int startedSeq = -1;
     private boolean pendingPrepare;
     private boolean temporarilyClosed;
+    private long lastPrepareAt;
     private LoadCallback loadCallback;
     private volatile int seekGeneration;
     private volatile long pendingSeekPosition = -1;
@@ -118,6 +119,23 @@ public class DanmuLoadController {
             return;
         }
         startIfReady(loadSeq.get());
+    }
+
+    /**
+     * 弹幕层尺寸变化时调用（由 View 的 layout 回调触发）。
+     * 尺寸一直是 0 时 prepare 会被放弃，等真正拿到尺寸后这里补一次，否则弹幕永远不出来。
+     */
+    public void onViewSizeChanged() {
+        if (danmuView == null || !DanmuHelper.isOpen() || TextUtils.isEmpty(danmuText)) return;
+        if (danmuView.getWidth() <= 0 || danmuView.getHeight() <= 0) return;
+        if (danmuView.isPrepared()) {
+            startIfReady();
+            return;
+        }
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastPrepareAt < 1000) return;
+        lastPrepareAt = now;
+        prepare(danmuText);
     }
 
     public void reset() {
@@ -204,31 +222,50 @@ public class DanmuLoadController {
             LOG.i("echo-danmu parsed count: " + danmuCount);
             if (danmuView == null) return;
             final Parser preparedParser = currentParser;
-            danmuView.post(() -> {
-                if (seq != loadSeq.get() || danmakuContext == null) return;
-                try {
-                    danmuView.release();
-                    if (videoView != null) videoView.setDanmuView(danmuView);
-                    if (danmuCount <= 0) {
-                        LOG.e("echo-danmu empty after parse");
-                        danmuView.setVisibility(View.GONE);
-                        notifyLoadFailed(seq);
-                        return;
-                    }
-                    danmuView.prepare(preparedParser, danmakuContext);
-                    clearLoadCallback(seq);
-                    danmuView.setVisibility(DanmuHelper.isOpen() ? View.VISIBLE : View.GONE);
-                    startIfReady(seq);
-                    danmuView.postDelayed(() -> startIfReady(seq), 300);
-                    danmuView.postDelayed(() -> startIfReady(seq), 1000);
-                    appendRemaining(preparedParser, seq, currentSeekGeneration);
-                } catch (Throwable th) {
-                    LOG.e("echo-danmu prepare error: " + th.getMessage());
-                    danmuView.setVisibility(View.GONE);
-                    notifyLoadFailed(seq);
-                }
-            });
+            danmuView.post(() -> applyPrepared(seq, preparedParser, danmuCount, currentSeekGeneration, 0));
         });
+    }
+
+    /**
+     * 真正把解析结果挂到弹幕层上。
+     * 必须先确认 DanmakuView 已经有实际尺寸：如果此时 width/height 还是 0，
+     * DanmakuView 内部会把所有弹幕判定为"超出屏幕"，结果一条都不显示
+     * （高分辨率/慢设备上很容易在 layout 完成前就走到这里）。
+     */
+    private void applyPrepared(int seq, Parser parser, int danmuCount, int generation, int retry) {
+        if (seq != loadSeq.get() || danmakuContext == null || danmuView == null) return;
+        if (danmuView.getWidth() <= 0 || danmuView.getHeight() <= 0) {
+            if (retry < 25) {
+                danmuView.postDelayed(() -> applyPrepared(seq, parser, danmuCount, generation, retry + 1), 100);
+            } else {
+                LOG.e("echo-danmu view size still 0, skip prepare");
+            }
+            return;
+        }
+        try {
+            danmuView.release();
+            if (videoView != null) videoView.setDanmuView(danmuView);
+            if (danmuCount <= 0) {
+                LOG.e("echo-danmu empty after parse");
+                danmuView.setVisibility(View.GONE);
+                notifyLoadFailed(seq);
+                return;
+            }
+            danmuView.prepare(parser, danmakuContext);
+            clearLoadCallback(seq);
+            danmuView.setVisibility(DanmuHelper.isOpen() ? View.VISIBLE : View.GONE);
+            startIfReady(seq);
+            danmuView.postDelayed(() -> startIfReady(seq), 300);
+            danmuView.postDelayed(() -> startIfReady(seq), 1000);
+            // 真机上视频可能还在缓冲，多给几次机会，否则弹幕会一直停在未启动状态
+            danmuView.postDelayed(() -> startIfReady(seq), 2000);
+            danmuView.postDelayed(() -> startIfReady(seq), 3500);
+            appendRemaining(parser, seq, generation);
+        } catch (Throwable th) {
+            LOG.e("echo-danmu prepare error: " + th.getMessage());
+            danmuView.setVisibility(View.GONE);
+            notifyLoadFailed(seq);
+        }
     }
 
     private void appendRemaining(Parser parser, int seq, int generation) {
@@ -267,7 +304,14 @@ public class DanmuLoadController {
         startedSeq = -1;
         if (DanmuHelper.isOpen() && !TextUtils.isEmpty(danmuText)) {
             pendingPrepare = true;
-            if (danmuView != null) danmuView.setVisibility(View.GONE);
+            if (danmuView != null) {
+                danmuView.setVisibility(View.GONE);
+                // 拖动进度后必须自己再拉一次：原来只把弹幕层藏起来等 prepared() 回调，
+                // 但普通 seek 不会触发 prepared()，结果弹幕就一直是隐藏状态（真机续播进度时尤其明显）。
+                danmuView.postDelayed(this::startIfReady, 400);
+                danmuView.postDelayed(this::startIfReady, 1200);
+                danmuView.postDelayed(this::startIfReady, 2500);
+            }
         }
     }
 

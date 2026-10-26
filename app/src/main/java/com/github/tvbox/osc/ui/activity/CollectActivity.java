@@ -1,12 +1,12 @@
 package com.github.tvbox.osc.ui.activity;
 
-import android.content.Intent;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
-import android.view.animation.BounceInterpolator;
 import android.widget.TextView;
-import android.widget.ImageView;
+import android.widget.Toast;
+
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
@@ -15,12 +15,10 @@ import com.github.tvbox.osc.base.BaseActivity;
 import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.cache.VodCollect;
 import com.github.tvbox.osc.event.RefreshEvent;
-import com.github.tvbox.osc.ui.adapter.CollectAdapter;
-import com.github.tvbox.osc.ui.dialog.ConfirmClearDialog;
+import com.github.tvbox.osc.ui.adapter.CollectBarAdapter;
+import com.github.tvbox.osc.ui.widget.SmoothTopScroller;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
-import com.owen.tvrecyclerview.widget.TvRecyclerView;
-import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
 import com.orhanobut.hawk.Hawk;
 
 import org.greenrobot.eventbus.EventBus;
@@ -30,17 +28,28 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 收藏：与「播放历史」一致的条状列表。
+ * 支持左滑「置顶 / 删除」，以及右上角「编辑」进入多选批量删除。
+ */
 public class CollectActivity extends BaseActivity {
-    private ImageView tvDelete;
-    private ImageView tvClear;
-    private TextView tvDelTip;
-    private TvRecyclerView mGridView;
-    public static CollectAdapter collectAdapter;
-    private boolean delMode = false;
+
+    private RecyclerView mGridView;
+    private TextView tvEdit;
+    private TextView tvEmpty;
+    private TextView tvDeleteSelected;
+    private View bottomBar;
+    public static CollectBarAdapter collectAdapter;
+    private boolean editMode = false;
 
     @Override
     protected int getLayoutResID() {
         return R.layout.activity_collect;
+    }
+
+    @Override
+    protected boolean shouldRefreshAutoSize() {
+        return true;
     }
 
     @Override
@@ -49,118 +58,172 @@ public class CollectActivity extends BaseActivity {
         initData();
     }
 
-    private void toggleDelMode() {
-    	HawkConfig.hotVodDelete = !HawkConfig.hotVodDelete;
-        collectAdapter.notifyDataSetChanged();
-        delMode = !delMode;
-        tvDelTip.setVisibility(delMode ? View.VISIBLE : View.GONE);
-    }
-
     private void initView() {
         EventBus.getDefault().register(this);
-        tvDelete = findViewById(R.id.tvDelete);
-        tvClear = findViewById(R.id.tvClear);
-        tvDelTip = findViewById(R.id.tvDelTip);
+        tvEdit = findViewById(R.id.tvEdit);
+        tvEmpty = findViewById(R.id.tvEmpty);
+        tvDeleteSelected = findViewById(R.id.tvDeleteSelected);
+        bottomBar = findViewById(R.id.bottomBar);
         mGridView = findViewById(R.id.mGridView);
+        findViewById(R.id.ivBack).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                onBackPressed();
+            }
+        });
+        mGridView.setLayoutManager(new LinearLayoutManager(mContext, LinearLayoutManager.VERTICAL, false));
+        // 条目高度固定，固定尺寸可以省掉每次数据变化后的重新测量
         mGridView.setHasFixedSize(true);
-        mGridView.setLayoutManager(new V7GridLayoutManager(this.mContext, isBaseOnWidth() ? 5 : 6));
-        collectAdapter = new CollectAdapter();
+        collectAdapter = new CollectBarAdapter();
         mGridView.setAdapter(collectAdapter);
-        tvDelete.setOnClickListener(new View.OnClickListener() {
+
+        // 点标题 = 平滑回到顶部
+        findViewById(R.id.tvTitle).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                toggleDelMode();
+                SmoothTopScroller.scrollToTop(mGridView);
             }
         });
-        tvClear.setOnClickListener(new View.OnClickListener() {
+
+        tvEdit.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ConfirmClearDialog dialog = new ConfirmClearDialog(mContext, "Collect");
-                dialog.show();
+                FastClickCheckUtil.check(v);
+                toggleEditMode();
             }
         });
-        mGridView.setOnInBorderKeyEventListener(new TvRecyclerView.OnInBorderKeyEventListener() {
+        findViewById(R.id.tvDone).setOnClickListener(new View.OnClickListener() {
             @Override
-            public boolean onInBorderKeyEvent(int direction, View focused) {
-                if (direction == View.FOCUS_UP) {
-                    tvDelete.setFocusable(true);
-                    tvClear.setFocusable(true);
-                    tvDelete.requestFocus();
-                }
-                return false;
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                toggleEditMode();
             }
         });
-        mGridView.setOnItemListener(new TvRecyclerView.OnItemListener() {
+        findViewById(R.id.tvSelectAll).setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onItemPreSelected(TvRecyclerView parent, View itemView, int position) {
-                itemView.animate().scaleX(1.0f).scaleY(1.0f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                collectAdapter.selectAll();
+                updateDeleteLabel();
+            }
+        });
+        tvDeleteSelected.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                deleteSelected();
+            }
+        });
+
+        collectAdapter.setOnActionListener(new CollectBarAdapter.OnActionListener() {
+            @Override
+            public void onPin(VodCollect item) {
+                RoomDataManger.pinVodCollect(item.getId());
+                initData();
+                Toast.makeText(mContext, "已置顶", Toast.LENGTH_SHORT).show();
             }
 
             @Override
-            public void onItemSelected(TvRecyclerView parent, View itemView, int position) {
-                itemView.animate().scaleX(1.05f).scaleY(1.05f).setDuration(300).setInterpolator(new BounceInterpolator()).start();
+            public void onDelete(VodCollect item) {
+                RoomDataManger.deleteVodCollect(item.getId());
+                collectAdapter.getData().remove(item);
+                collectAdapter.notifyDataSetChanged();
+                updateEmpty();
+            }
+        });
+
+        collectAdapter.setOnItemActionListener(new CollectBarAdapter.OnItemActionListener() {
+            @Override
+            public void onItemClick(VodCollect item) {
+                if (item == null) return;
+                if (editMode) {
+                    collectAdapter.toggleSelection(item);
+                    updateDeleteLabel();
+                    return;
+                }
+                openDetail(item);
             }
 
             @Override
-            public void onItemClick(TvRecyclerView parent, View itemView, int position) {
+            public void onItemLongClick(VodCollect item) {
+                if (editMode || item == null) return;
+                Bundle bundle = new Bundle();
+                bundle.putString("title", item.name);
+                if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
+                    jumpActivity(FastSearchActivity.class, bundle);
+                } else {
+                    jumpActivity(SearchActivity.class, bundle);
+                }
+            }
+        });
+    }
 
+    private void openDetail(VodCollect item) {
+        if (ApiConfig.get().getSource(item.sourceKey) != null) {
+            Bundle bundle = new Bundle();
+            bundle.putString("id", item.vodId);
+            bundle.putString("sourceKey", item.sourceKey);
+            bundle.putString("title", item.name);
+            bundle.putString("picture", item.pic);
+            bundle.putBoolean("collect", true);
+            jumpActivity(DetailActivity.class, bundle);
+        } else {
+            Bundle bundle = new Bundle();
+            bundle.putString("title", item.name);
+            if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
+                jumpActivity(FastSearchActivity.class, bundle);
+            } else {
+                jumpActivity(SearchActivity.class, bundle);
             }
-        });
-        collectAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
-            @Override
-            public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
-                FastClickCheckUtil.check(view);
-                VodCollect vodInfo = collectAdapter.getData().get(position);
-                if (vodInfo != null) {
-                    if (delMode) {
-                        collectAdapter.remove(position);
-                        RoomDataManger.deleteVodCollect(vodInfo.getId());
-                    } else {
-                        if (ApiConfig.get().getSource(vodInfo.sourceKey) != null) {
-                            Bundle bundle = new Bundle();
-                            bundle.putString("id", vodInfo.vodId);
-                            bundle.putString("sourceKey", vodInfo.sourceKey);
-                            bundle.putString("title", vodInfo.name);
-                            bundle.putString("picture", vodInfo.pic);
-                            bundle.putBoolean("collect", true);
-                            jumpActivity(DetailActivity.class, bundle);
-                        } else {
-                            Intent newIntent = new Intent(mContext, SearchActivity.class);
-                            newIntent.putExtra("title", vodInfo.name);
-                            newIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                            startActivity(newIntent);
-                        }
-                    }
-                }
-            }
-        });
-        collectAdapter.setOnItemLongClickListener(new BaseQuickAdapter.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(BaseQuickAdapter adapter, View view, int position) {
-                VodCollect vodInfo = collectAdapter.getData().get(position);
-                if (vodInfo != null) {
-                    Bundle bundle = new Bundle();
-                    bundle.putString("title", vodInfo.name);
-                    if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
-                        jumpActivity(FastSearchActivity.class, bundle);
-                    } else {
-                        jumpActivity(SearchActivity.class, bundle);
-                    }
-                }
-                return true;
-            }
-        });
+        }
+    }
+
+    /* ============================ 编辑模式 ============================ */
+
+    private void toggleEditMode() {
+        editMode = !editMode;
+        collectAdapter.setEditMode(editMode);
+        bottomBar.setVisibility(editMode ? View.VISIBLE : View.GONE);
+        tvEdit.setText(editMode ? "取消" : "编辑");
+        updateDeleteLabel();
+    }
+
+    private void updateDeleteLabel() {
+        int count = collectAdapter == null ? 0 : collectAdapter.getSelectedCount();
+        tvDeleteSelected.setText(count > 0 ? "删除(" + count + ")" : "删除");
+    }
+
+    private void deleteSelected() {
+        List<VodCollect> selected = collectAdapter.getSelectedItems();
+        if (selected.isEmpty()) {
+            Toast.makeText(mContext, "请先选择要删除的收藏", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        for (VodCollect item : selected) {
+            RoomDataManger.deleteVodCollect(item.getId());
+        }
+        collectAdapter.setEditMode(false);
+        editMode = false;
+        bottomBar.setVisibility(View.GONE);
+        tvEdit.setText("编辑");
+        initData();
+        Toast.makeText(mContext, "已删除 " + selected.size() + " 条", Toast.LENGTH_SHORT).show();
     }
 
     private void initData() {
-        List<VodCollect> allVodRecord = RoomDataManger.getAllVodCollect();
-        List<VodCollect> vodInfoList = new ArrayList<>();
-        for (VodCollect vodInfo : allVodRecord) {
-            vodInfoList.add(vodInfo);
-        }
-        collectAdapter.setNewData(vodInfoList);
+        List<VodCollect> all = RoomDataManger.getAllVodCollect();
+        List<VodCollect> list = new ArrayList<>();
+        if (all != null) list.addAll(all);
+        collectAdapter.setNewData(list);
+        updateEmpty();
+        updateDeleteLabel();
     }
 
+    private void updateEmpty() {
+        boolean empty = collectAdapter == null || collectAdapter.getData().isEmpty();
+        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+    }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void refresh(RefreshEvent event) {
@@ -177,8 +240,8 @@ public class CollectActivity extends BaseActivity {
 
     @Override
     public void onBackPressed() {
-        if (delMode) {
-            toggleDelMode();
+        if (editMode) {
+            toggleEditMode();
             return;
         }
         super.onBackPressed();

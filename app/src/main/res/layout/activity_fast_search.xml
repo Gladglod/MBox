@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0E0E12"
+    android:background="@color/ui_bg"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -24,7 +24,7 @@
         android:maxLines="2"
         android:padding="@dimen/vs_8"
         android:text="准备搜索\n结果 0"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_primary"
         android:textSize="@dimen/ts_16" />
 
     <!-- 分词 -->

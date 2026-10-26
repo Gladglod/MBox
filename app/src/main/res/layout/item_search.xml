@@ -23,7 +23,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="top|start"
             android:layout_margin="@dimen/vs_5"
-            android:background="@drawable/bg_chip"
+            android:background="@drawable/bg_chip_on_image"
             android:ellipsize="end"
             android:gravity="center"
             android:paddingStart="@dimen/vs_6"
@@ -42,7 +42,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|start"
             android:layout_margin="@dimen/vs_5"
-            android:background="@drawable/bg_chip"
+            android:background="@drawable/bg_chip_on_image"
             android:ellipsize="end"
             android:gravity="center"
             android:paddingStart="@dimen/vs_6"
@@ -65,6 +65,6 @@
         android:gravity="left"
         android:maxLines="1"
         android:singleLine="true"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_primary"
         android:textSize="@dimen/ts_18" />
 </LinearLayout>

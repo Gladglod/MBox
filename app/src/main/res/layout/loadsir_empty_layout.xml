@@ -21,7 +21,7 @@
             android:layout_marginTop="@dimen/vs_20"
             android:gravity="center"
             android:text="没找到数据"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_text_secondary"
             android:textSize="@dimen/ts_24" />
     </LinearLayout>
 

@@ -23,6 +23,6 @@
         android:gravity="center"
         android:maxLines="1"
         android:singleLine="true"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_primary"
         android:textSize="13sp" />
 </LinearLayout>

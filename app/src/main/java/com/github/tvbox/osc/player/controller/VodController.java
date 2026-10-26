@@ -106,17 +106,30 @@ public class VodController extends BaseController {
     private static final float SPEED_BOOST_RANGE_DP = 240f;
     private static final float SPEED_BOOST_MIN = 0.5f;
     private static final float SPEED_BOOST_MAX = 3.0f;
+    /** 横向右滑多少 dp 判定为「固定 / 解除固定当前倍速」 */
+    private static final float SPEED_LOCK_SWIPE_DP = 56f;
+    /** 倍速提示的透明度：调低一档，别太抢画面 */
+    private static final float SPEED_TIP_ALPHA = 0.55f;
+    /** 固定 / 解除固定时的触感反馈时长（毫秒） */
+    private static final long SPEED_LOCK_VIBRATE_MS = 22L;
+
+    private boolean speedBoostActive;
+    private float speedBoostStartY;
+    private float speedBoostStartX;
+    private float speedBoostBaseSpeed = 1.0f;
+    private float speedBoostSpeed = 1.0f;
+    /** 当前倍速是否已被「右滑固定」：固定后抬手不回落到原速 */
+    private boolean speedBoostLocked;
+    /** 固定前的原始倍速，解除固定时回到这里 */
+    private float speedBoostNaturalSpeed = 1.0f;
+    /** 一次横滑只触发一次切换，避免手指轻微抖动来回翻转 */
+    private boolean speedLockSwipeConsumed;
+    private TextView mSpeedBoostTip;
 
     /* ===== 双击左右快退/快进 ===== */
     private static final int DOUBLE_TAP_SEEK_MS = 3000;
     /** 双击快进/快退的左右热区宽度占比，中间剩余区域用于播放/暂停 */
     private static final float DOUBLE_TAP_SEEK_ZONE = 0.35f;
-
-    private boolean speedBoostActive;
-    private float speedBoostStartY;
-    private float speedBoostBaseSpeed = 1.0f;
-    private float speedBoostSpeed = 1.0f;
-    private TextView mSpeedBoostTip;
 
     private boolean portraitEpisodeSwipeTriggered;
     private final Runnable portraitEpisodeTitleRunnable = new Runnable() {
@@ -161,6 +174,7 @@ public class VodController extends BaseController {
                         // 手机竖屏：常显返回键；TV/横屏（非 TV 外部播放器）按原逻辑
                         backBtn.setVisibility(ScreenUtils.isTv(context) ? INVISIBLE : VISIBLE);
                         showLockView();
+                        if (listener != null) listener.onControlsVisibilityChanged(true);
                         break;
                     }
                     case 1003: { // 隐藏底部菜单
@@ -187,6 +201,7 @@ public class VodController extends BaseController {
                         if (mLockView != null) {
                             mLockView.setVisibility(INVISIBLE);
                         }
+                        if (listener != null) listener.onControlsVisibilityChanged(false);
                         break;
                     }
                     case 1004: { // 设置速度
@@ -213,24 +228,35 @@ public class VodController extends BaseController {
         return super.onDown(e);
     }
 
-    /** 长按进入加速状态：此后上下滑动即可调节倍速 */
-    private void enterSpeedBoost(float downY) {
+    /**
+     * 长按进入加速状态：此后上下滑动调倍速，**向右滑动**把当前倍速固定下来
+     * （已固定时再右滑一次解除固定）。
+     */
+    private void enterSpeedBoost(float downX, float downY) {
         speedBoostActive = true;
+        speedBoostStartX = downX;
         speedBoostStartY = downY;
         speedBoostBaseSpeed = currentPlaySpeed();
+        if (!speedBoostLocked) {
+            // 未固定时，这一轮加速的「原速」就是进入时的倍速
+            speedBoostNaturalSpeed = speedBoostBaseSpeed;
+        }
         speedBoostSpeed = speedBoostBaseSpeed;
-        showSpeedBoostTip(speedBoostBaseSpeed);
+        speedLockSwipeConsumed = false;
+        showSpeedBoostTip(speedBoostSpeed);
     }
 
     private void updateSpeedBoost(float currentY) {
         if (!speedBoostActive) return;
         float range = getResources().getDisplayMetrics().density * SPEED_BOOST_RANGE_DP;
         if (range <= 0) return;
+        float maxSpeed = Hawk.get(HawkConfig.GESTURE_MAX_SPEED, SPEED_BOOST_MAX);
+        if (maxSpeed < SPEED_BOOST_MIN) maxSpeed = SPEED_BOOST_MIN;
         // 手指向上移动为正 → 加速；向下为负 → 减速
         float delta = (speedBoostStartY - currentY) / range;
         float speed = speedBoostBaseSpeed + delta;
         if (speed < SPEED_BOOST_MIN) speed = SPEED_BOOST_MIN;
-        if (speed > SPEED_BOOST_MAX) speed = SPEED_BOOST_MAX;
+        if (speed > maxSpeed) speed = maxSpeed;
         speed = Math.round(speed * 10) / 10f;
         if (Math.abs(speed - speedBoostSpeed) < 0.05f) return;
         speedBoostSpeed = speed;
@@ -238,17 +264,88 @@ public class VodController extends BaseController {
         showSpeedBoostTip(speed);
     }
 
+    /**
+     * 横向右滑：固定 / 解除固定当前倍速。
+     *
+     * <p>判定用的是相对按下点的水平位移，超过 {@link #SPEED_LOCK_SWIPE_DP} 才触发；
+     * 手指回到阈值一半以内会重置标记，所以一次长按里可以连续固定 → 解除 → 再固定。</p>
+     *
+     * @return true 表示这次移动已被判定为横滑（调用方仍可继续按竖直位移调倍速）
+     */
+    private boolean handleSpeedLockSwipe(MotionEvent event) {
+        float threshold = getResources().getDisplayMetrics().density * SPEED_LOCK_SWIPE_DP;
+        if (threshold <= 0) return false;
+        float dx = event.getX() - speedBoostStartX;
+        if (dx < threshold * 0.5f) {
+            // 手指收回去了，允许下一次再触发
+            speedLockSwipeConsumed = false;
+            return false;
+        }
+        if (dx < threshold || speedLockSwipeConsumed) return speedLockSwipeConsumed;
+        speedLockSwipeConsumed = true;
+        if (speedBoostLocked) {
+            speedBoostLocked = false;
+            speedBoostSpeed = speedBoostNaturalSpeed;
+            speedBoostBaseSpeed = speedBoostNaturalSpeed;
+            if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostNaturalSpeed);
+        } else {
+            speedBoostLocked = true;
+            speedBoostBaseSpeed = speedBoostSpeed;
+        }
+        // 以当前位置作为新的竖直基准，切换后不会因为历史位移让倍速突然跳变
+        speedBoostStartY = event.getY();
+        speedBoostStartX = event.getX();
+        speedLockSwipeConsumed = true;
+        showSpeedBoostTip(speedBoostSpeed);
+        vibrateSpeedLock();
+        return true;
+    }
+
     private void exitSpeedBoost() {
         if (!speedBoostActive) return;
         speedBoostActive = false;
-        if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostBaseSpeed);
         if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
+        if (speedBoostLocked) {
+            // 已固定：抬手保持当前倍速
+            speedBoostBaseSpeed = speedBoostSpeed;
+            return;
+        }
+        if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostBaseSpeed);
+        speedBoostSpeed = speedBoostBaseSpeed;
     }
 
     private void showSpeedBoostTip(float speed) {
         if (mSpeedBoostTip == null) return;
-        mSpeedBoostTip.setText(String.format(Locale.getDefault(), "%.1fX 倍速", speed));
+        String text = String.format(Locale.getDefault(), "%.1fX 倍速", speed);
+        if (speedBoostLocked) text = text + " · 已固定";
+        mSpeedBoostTip.setText(text);
+        mSpeedBoostTip.setAlpha(SPEED_TIP_ALPHA);
         mSpeedBoostTip.setVisibility(VISIBLE);
+    }
+
+    /** 固定 / 解除固定时的触感反馈（短促一下） */
+    private void vibrateSpeedLock() {
+        try {
+            Context context = getContext();
+            if (context == null) return;
+            android.os.Vibrator vibrator;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.os.VibratorManager manager =
+                        (android.os.VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                vibrator = manager == null ? null : manager.getDefaultVibrator();
+            } else {
+                vibrator = (android.os.Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+            }
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(
+                        SPEED_LOCK_VIBRATE_MS, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                vibrator.vibrate(SPEED_LOCK_VIBRATE_MS);
+            }
+        } catch (Throwable ignore) {
+            // 没有振动马达 / 权限被拒时静默降级，不影响手势本身
+        }
     }
 
     /** 手指抬起/取消时结束加速 */
@@ -267,6 +364,8 @@ public class VodController extends BaseController {
         if (speedBoostActive && event != null) {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_MOVE) {
+                // 先判横滑（固定 / 解除固定），再按竖直位移调倍速
+                handleSpeedLockSwipe(event);
                 updateSpeedBoost(event.getY());
                 return true;
             }
@@ -292,29 +391,33 @@ public class VodController extends BaseController {
         float rightEdge = width * (1f - DOUBLE_TAP_SEEK_ZONE);  // 0.65
         if (x >= leftEdge && x <= rightEdge) {
             // 中间区域：播放 / 暂停
-            togglePlay();
+            if (Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_PLAY, true)) {
+                togglePlay();
+            }
             return true;
         }
 
         int duration = safeTimeMs(mControlWrapper.getDuration());
         if (duration <= 0) return true;
+        int seekMs = Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, DOUBLE_TAP_SEEK_MS);
+        if (seekMs <= 0) seekMs = DOUBLE_TAP_SEEK_MS;
         boolean forward = x > rightEdge;
         int current = safeTimeMs(mControlWrapper.getCurrentPosition());
-        int target = current + (forward ? DOUBLE_TAP_SEEK_MS : -DOUBLE_TAP_SEEK_MS);
+        int target = current + (forward ? seekMs : -seekMs);
         if (target < 0) target = 0;
         if (target > duration) target = duration;
         mControlWrapper.seekTo(target);
-        showDoubleTapSeekTip(forward, target, duration);
+        showDoubleTapSeekTip(forward, seekMs, target, duration);
         return true;
     }
 
-    private void showDoubleTapSeekTip(boolean forward, int target, int duration) {
+    private void showDoubleTapSeekTip(boolean forward, int seekMs, int target, int duration) {
         if (mProgressIcon != null) {
             mProgressIcon.setVisibility(VISIBLE);
             mProgressIcon.setImageResource(forward ? R.drawable.exo_icon_fastforward : R.drawable.exo_icon_rewind);
         }
         if (mProgressText != null) {
-            mProgressText.setText((forward ? "快进 3 秒" : "快退 3 秒")
+            mProgressText.setText((forward ? "快进 " : "快退 ") + (seekMs / 1000) + " 秒"
                     + "  " + stringForTime(target) + " / " + stringForTime(duration));
         }
         mHandler.sendEmptyMessage(1000);
@@ -352,6 +455,7 @@ public class VodController extends BaseController {
 
     private boolean isPortraitEpisodeSwipe(MotionEvent e1, MotionEvent e2) {
         if (e1 == null || e2 == null || !canHandleGesture(e1)) return false;
+        if (!Hawk.get(HawkConfig.GESTURE_PORTRAIT_SWIPE, true)) return false;
         if (getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT) return false;
         return Math.abs(e2.getY() - e1.getY()) > Math.abs(e2.getX() - e1.getX());
     }
@@ -389,7 +493,6 @@ public class VodController extends BaseController {
     TextView mPlayLabel;
     TextView mPlayLoadNetSpeedRightTop;
     View mNextBtn;
-    View mPreBtn;
     TextView mPlayerScaleBtn;
     public TextView mPlayerSpeedBtn;
     TextView mPlayerBtn;
@@ -499,6 +602,7 @@ public class VodController extends BaseController {
         if (mLockView != null) {
             mLockView.setVisibility(INVISIBLE);
         }
+        updateFullScreenIcon(!previewMode);
     }
 
     @Override
@@ -528,7 +632,6 @@ public class VodController extends BaseController {
         mPlayerRetry = findViewById(R.id.play_retry);
         mPlayrefresh = findViewById(R.id.play_refresh);
         mNextBtn = findViewById(R.id.play_next);
-        mPreBtn = findViewById(R.id.play_pre);
         mPlayerScaleBtn = findViewById(R.id.play_scale);
         mPlayerSpeedBtn = findViewById(R.id.play_speed);
         mPlayerBtn = findViewById(R.id.play_player);
@@ -572,14 +675,25 @@ public class VodController extends BaseController {
         backBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-                    setLandscapePortrait();
-                    hideBottom();
-                    return;
+                FastClickCheckUtil.check(v);
+                hideDrawer();
+                Activity host = mActivity;
+                if (host == null && getContext() instanceof Activity) {
+                    host = (Activity) getContext();
                 }
-                if (getContext() instanceof Activity) {
-                    isClickBackBtn = true;
-                    ((Activity) getContext()).onBackPressed();
+                if (host == null) return;
+                if (isPlayerFullScreen()) {
+                    // 全屏：退出全屏，回到详情页
+                    hideBottom();
+                    if (listener != null) {
+                        listener.exitFullScreen();
+                    } else {
+                        host.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+                    }
+                } else {
+                    // 非全屏（详情页内嵌播放）：退出当前播放
+                    hideBottom();
+                    host.onBackPressed();
                 }
             }
         });
@@ -789,22 +903,6 @@ public class VodController extends BaseController {
             }
         });
         setOnTvLongClickListener(mNextBtn, new OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                FastClickCheckUtil.check(view);
-                listener.showEpisodeDialog();
-                hideBottom();
-                return true;
-            }
-        });
-        mPreBtn.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                listener.playPre();
-                hideBottom();
-            }
-        });
-        setOnTvLongClickListener(mPreBtn, new OnLongClickListener() {
             @Override
             public boolean onLongClick(View view) {
                 FastClickCheckUtil.check(view);
@@ -1469,17 +1567,25 @@ public class VodController extends BaseController {
                 }
             });
         }
-        updateFullScreenIcon(getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT);
+        updateFullScreenIcon(isPlayerFullScreen());
     }
 
-    /** 切换全屏：竖屏 → 横屏全屏，横屏 → 竖屏 */
+    /** 切换全屏：非全屏 → 横屏铺满；全屏 → 退出全屏回到详情页 */
     private void togglePlayerFullScreen() {
         if (mActivity == null) return;
-        boolean portrait = mActivity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-        mActivity.setRequestedOrientation(portrait
-                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-        updateFullScreenIcon(!portrait);
+        if (isPlayerFullScreen()) {
+            if (listener != null) {
+                listener.exitFullScreen();
+            } else {
+                mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+            }
+        } else {
+            if (listener != null) {
+                listener.enterFullScreen();
+            }
+            mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        }
+        updateFullScreenIcon(isPlayerFullScreen());
     }
 
     private void updateFullScreenIcon(boolean fullscreen) {
@@ -1852,7 +1958,7 @@ public class VodController extends BaseController {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         initLandscapePortraitBtnInfo();
-        updateFullScreenIcon(getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT);
+        updateFullScreenIcon(isPlayerFullScreen());
     }
 
     void initSubtitleInfo() {
@@ -1980,6 +2086,18 @@ public class VodController extends BaseController {
         /** 打开「在线弹幕」搜索，默认回退到完整的弹幕设置对话框 */
         default void openSearchDanmuDialog() {
             showDanmuSetting();
+        }
+
+        /** 退出全屏（回到详情页），默认回退为切换竖屏 */
+        default void exitFullScreen() {
+        }
+
+        /** 进入全屏（横屏铺满），默认空实现 */
+        default void enterFullScreen() {
+        }
+
+        /** 控制条显示/隐藏回调：详情页用它来控制预览区域点击热区的显隐 */
+        default void onControlsVisibilityChanged(boolean visible) {
         }
 
         boolean toggleDanmu();
@@ -2253,6 +2371,44 @@ public class VodController extends BaseController {
         mHandler.sendEmptyMessage(1003);
     }
 
+    /** 当前是否处于全屏播放状态（详情页内嵌预览视为非全屏） */
+    public boolean isPlayerFullScreen() {
+        return !previewMode;
+    }
+
+    /** 控制条当前是否可见 */
+    public boolean isControlsVisible() {
+        return isBottomVisible();
+    }
+
+    /** 显示控制条（外部点击预览区域时调用） */
+    public void showControls() {
+        if (isLocked()) return;
+        showBottom();
+        if (myHandle != null && myRunnable != null) {
+            myHandle.removeCallbacks(myRunnable);
+            myHandle.postDelayed(myRunnable, myHandleSeconds);
+        }
+    }
+
+    /** 隐藏控制条 */
+    public void hideControls() {
+        hideBottom();
+    }
+
+    /** 切换控制条显隐：非全屏状态下点击播放区域调用 */
+    public void toggleControls() {
+        if (isLocked()) {
+            showLockView();
+            return;
+        }
+        if (isBottomVisible() || isDrawerShowing()) {
+            hideBottom();
+        } else {
+            showControls();
+        }
+    }
+
     @Override
     public boolean onKeyEvent(KeyEvent event) {
         myHandle.removeCallbacks(myRunnable);
@@ -2351,10 +2507,11 @@ public class VodController extends BaseController {
     @Override
     public void onLongPress(MotionEvent e) {
         if (e == null) return;
+        if (!Hawk.get(HawkConfig.GESTURE_SPEED_BOOST, true)) return;
         if (videoPlayState == VideoView.STATE_PAUSED) return;
         if (!isInPlaybackState() || isLocked()) return;
-        // 长按进入加速状态，随后上滑加速、下滑减速
-        enterSpeedBoost(e.getY());
+        // 长按进入加速状态，随后上滑加速、下滑减速、右滑固定倍速
+        enterSpeedBoost(e.getX(), e.getY());
     }
 
     @SuppressLint("ClickableViewAccessibility")
