@@ -1,6 +1,6 @@
 <resources>
     <!--  app名称   -->
-    <string name="app_name">TVBox</string>
+    <string name="app_name">MBox</string>
 
     <!-- 首页顶栏 / 底部导航（同时用作无障碍标签） -->
     <string name="search_hint">搜索影片</string>
