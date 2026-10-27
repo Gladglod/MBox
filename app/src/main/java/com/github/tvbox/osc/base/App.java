@@ -5,6 +5,7 @@ import androidx.multidex.MultiDexApplication;
 
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.callback.EmptyCallback;
+import com.github.tvbox.osc.callback.HomeSkeletonCallback;
 import com.github.tvbox.osc.callback.LoadingCallback;
 import com.github.tvbox.osc.data.AppDataManager;
 import com.github.tvbox.osc.server.ControlManager;
@@ -53,6 +54,7 @@ public class App extends MultiDexApplication {
         LoadSir.beginBuilder()
                 .addCallback(new EmptyCallback())
                 .addCallback(new LoadingCallback())
+                .addCallback(new HomeSkeletonCallback())
                 .commit();
         // 手机端：关闭 MM 子系统，使用原生 dp/sp，并由 AutoSize 按 360 宽基准做响应式缩放
         AutoSizeConfig.getInstance().setCustomFragment(true).getUnitsManager()

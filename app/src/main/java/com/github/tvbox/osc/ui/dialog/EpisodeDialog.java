@@ -157,10 +157,10 @@ public class EpisodeDialog extends BaseDialog {
             TextView series = helper.getView(R.id.tvSeries);
             series.setText(item == null ? "" : item.name);
             if (helper.getLayoutPosition() == selectedPosition) {
-                series.setTextColor(mContext.getResources().getColor(R.color.color_02F8E1));
+                series.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
                 helper.itemView.setBackgroundResource(R.drawable.bg_chip_selected);
             } else {
-                series.setTextColor(Color.WHITE);
+                series.setTextColor(mContext.getResources().getColor(R.color.ui_text_primary));
                 helper.itemView.setBackgroundResource(R.drawable.bg_chip);
             }
         }

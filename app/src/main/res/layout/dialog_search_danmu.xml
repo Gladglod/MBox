@@ -67,7 +67,7 @@
                 android:paddingRight="8dp"
                 android:singleLine="true"
                 android:textColor="@color/dialog_text_primary"
-                android:textColorHint="@color/color_6CFFFFFF"
+                android:textColorHint="@color/dialog_text_hint"
                 android:textSize="13sp" />
 
             <TextView

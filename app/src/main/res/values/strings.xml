@@ -1,6 +1,20 @@
 <resources>
     <!--  app名称   -->
     <string name="app_name">TVBox</string>
+
+    <!-- 首页顶栏 / 底部导航（同时用作无障碍标签） -->
+    <string name="search_hint">搜索影片</string>
+    <string name="action_search">搜索影片</string>
+    <string name="nav_home">首页</string>
+    <string name="nav_category">分类</string>
+    <string name="nav_live">直播</string>
+    <string name="nav_mine">我的</string>
+
+    <!-- 首页空状态 -->
+    <string name="home_rec_empty">这个数据源没有推荐内容</string>
+    <string name="home_rec_empty_action">换个数据源</string>
+    <!-- 数据源还没加载出来时胶囊上的占位文案 -->
+    <string name="source_fallback">数据源</string>
     <string name="_00_00_00_00">00:00 | 00:00</string>
     <string name="_1024_x_768">[ 1024 x 768 ]</string>
     <string name="http">http://</string>

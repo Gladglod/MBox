@@ -1,24 +1,30 @@
 package com.github.tvbox.osc.ui.activity;
 
 import android.Manifest;
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.text.TextUtils;
-import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
@@ -36,6 +42,7 @@ import com.github.tvbox.osc.bean.MovieSort;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.RoomDataManger;
+import com.github.tvbox.osc.callback.HomeSkeletonCallback;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.ui.adapter.HomePageAdapter;
@@ -68,17 +75,13 @@ import org.greenrobot.eventbus.ThreadMode;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
 public class HomeActivity extends BaseActivity implements CategoryFragment.OnCategorySelectListener {
     private LinearLayout topLayout;
-    private TextView tvDate;
-    private TextView tvName;
+    private View searchBar;
     private TextView tvMenu;
     private TabLayout mTabLayout;
     private ViewPager mViewPager;
@@ -102,16 +105,6 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     private final Handler mHandler = new Handler();
     private long mExitTime = 0;
     private boolean eventBusRegistered = false;
-    private final Runnable mRunnable = new Runnable() {
-        @SuppressLint("SetTextI18n")
-        @Override
-        public void run() {
-            Date date = new Date();
-            SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy/MM/dd  E  HH:mm", Locale.CHINA);
-            tvDate.setText(timeFormat.format(date));
-            mHandler.postDelayed(this, 1000);
-        }
-    };
 
     @Override
     protected int getLayoutResID() {
@@ -121,6 +114,17 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     @Override
     protected boolean shouldRefreshAutoSize() {
         return true;
+    }
+
+    /** 首页用海报骨架代替通用转圈，见 HomeSkeletonCallback */
+    @Override
+    protected void showLoading() {
+        showLoading(HomeSkeletonCallback.class);
+    }
+
+    @Override
+    protected boolean isLoading() {
+        return super.isLoading() || isShowingCallback(HomeSkeletonCallback.class);
     }
 
     boolean useCacheConfig = false;
@@ -143,17 +147,21 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
 
     private void initView() {
         this.topLayout = findViewById(R.id.topLayout);
-        this.tvDate = findViewById(R.id.tvDate);
-        this.tvName = findViewById(R.id.tvName);
         this.tvMenu = findViewById(R.id.tvMenu);
+        this.searchBar = findViewById(R.id.searchBar);
         this.mTabLayout = findViewById(R.id.mTabLayout);
         this.mViewPager = findViewById(R.id.mViewPager);
         this.sortAdapter = new SortAdapter();
 
-        // 左上角站点名称仅作展示，不再响应点击（设置入口统一收归「我的」）
-        tvName.setOnClickListener(null);
-        tvName.setClickable(false);
-        tvName.setFocusable(false);
+        // 假输入框：点击进搜索页。真键盘留给搜索页，首页不抢焦点
+        searchBar.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                startActivity(new Intent(HomeActivity.this, SearchActivity.class));
+            }
+        });
+        // 右侧胶囊 = 当前数据源，点开切换
         tvMenu.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -161,14 +169,11 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
                 showSiteSwitch();
             }
         });
-        ImageView ivSearch = findViewById(R.id.ivSearch);
-        ivSearch.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                FastClickCheckUtil.check(v);
-                startActivity(new Intent(HomeActivity.this, SearchActivity.class));
-            }
-        });
+        // 数据源还没加载完时先给个占位，别让顶栏挂一个空胶囊
+        SourceBean initialSource = ApiConfig.get().getHomeSourceBean();
+        setSourceChipText(initialSource != null && initialSource.getName() != null
+                ? initialSource.getName()
+                : getString(R.string.source_fallback));
 
         this.mTabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
             @Override
@@ -200,7 +205,9 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         });
 
         initBottomNav();
-        setLoadSir(this.topLayout);
+        // 加载/空占位必须挂在内容区：挂在顶栏（52dp）上的话，加载时整条顶栏会被
+        // 一个转圈替掉，而真正空着的海报区反而没有任何反馈
+        setLoadSir(this.homeContent);
     }
 
     private void selectPage(int position) {
@@ -350,9 +357,34 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         if (icon == null || label == null) {
             return;
         }
-        int color = selected ? on : off;
-        icon.setColorFilter(color);
-        label.setTextColor(color);
+        final ImageView fIcon = icon;
+        final TextView fLabel = label;
+        final int target = selected ? on : off;
+        final int current = label.getCurrentTextColor();
+        // 打断上一次未完成的过渡，保证再次切换时从「当前呈现值」平滑重定向（Apple 式可打断动画）
+        Object prev = label.getTag();
+        if (prev instanceof ValueAnimator) {
+            ((ValueAnimator) prev).cancel();
+        }
+        if (current == target) {
+            fIcon.setColorFilter(target);
+            fLabel.setTextColor(target);
+            fLabel.setTag(null);
+            return;
+        }
+        ValueAnimator animator = ValueAnimator.ofObject(new ArgbEvaluator(), current, target);
+        animator.setDuration(180);
+        animator.setInterpolator(new DecelerateInterpolator());
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                int color = (Integer) animation.getAnimatedValue();
+                fIcon.setColorFilter(color);
+                fLabel.setTextColor(color);
+            }
+        });
+        fLabel.setTag(animator);
+        animator.start();
     }
 
     private ArrayList<MovieSort.SortData> getCategoryList() {
@@ -406,8 +438,10 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
                 }
                 updateSortData(newSortData);
                 initViewPager(absXml);
-                if (home != null && home.getName() != null && !home.getName().isEmpty()) tvName.setText(home.getName());
-                tvName.clearAnimation();
+                if (home != null && home.getName() != null && !home.getName().isEmpty()) {
+                    setSourceChipText(home.getName());
+                }
+                stopSourceChipBlink();
                 homeSortLoading = false;
                 loadingSourceKey = null;
                 previousHomeName = null;
@@ -435,7 +469,7 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
             if (!useCacheConfig) warmSearchSpidersOnce();
             return;
         }
-        tvNameAnimation();
+        startSourceChipBlink();
         showLoading();
         if (dataInitOk && !jarInitOk) {
             if (!ApiConfig.get().getSpider().isEmpty()) {
@@ -578,10 +612,10 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         SourceBean home = ApiConfig.get().getHomeSourceBean();
         homeSortLoading = keepCurrentContent;
         if (keepCurrentContent && home != null && home.getName() != null && !home.getName().isEmpty()) {
-            previousHomeName = tvName.getText() == null ? null : tvName.getText().toString();
-            tvName.setText(home.getName());
+            previousHomeName = tvMenu.getText() == null ? null : tvMenu.getText().toString();
+            setSourceChipText(home.getName());
         }
-        tvNameAnimation();
+        startSourceChipBlink();
         if (home == null) {
             loadingSourceKey = null;
             if (!keepCurrentContent) showLoading();
@@ -752,8 +786,6 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     @Override
     protected void onResume() {
         super.onResume();
-        refreshTopInfoTextSize();
-        mHandler.post(mRunnable);
         applyHomeTabChange();
     }
 
@@ -770,15 +802,48 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     @Override
     protected void onPause() {
         super.onPause();
-        mHandler.removeCallbacks(mRunnable);
     }
 
-    private void refreshTopInfoTextSize() {
-        if (tvName == null || tvDate == null) {
+    /** 数据源胶囊的文字就是站点名；只有一个站点时它不可点，别做成死按钮 */
+    private void setSourceChipText(String name) {
+        if (tvMenu == null || name == null) return;
+        tvMenu.setText(name);
+        List<SourceBean> sites = ApiConfig.get().getSwitchSourceBeanList();
+        boolean canSwitch = sites != null && sites.size() > 1;
+        tvMenu.setClickable(canSwitch);
+        applyChipChevron(canSwitch);
+    }
+
+    /** 胶囊右侧的箭头。矢量图标默认是白色，必须按语义色着色，否则浅色胶囊上等于没有 */
+    private void applyChipChevron(boolean show) {
+        if (!show) {
+            tvMenu.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0);
             return;
         }
-        tvName.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_20));
-        tvDate.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_14));
+        Drawable chevron = AppCompatResources.getDrawable(this, R.drawable.ic_chevron_down);
+        if (chevron == null) return;
+        chevron = DrawableCompat.wrap(chevron).mutate();
+        DrawableCompat.setTint(chevron, ContextCompat.getColor(this, R.color.ui_muted));
+        int size = (int) getResources().getDimension(R.dimen.vs_30);
+        chevron.setBounds(0, 0, size, size);
+        tvMenu.setCompoundDrawablesRelative(null, null, chevron, null);
+    }
+
+    /** 切源期间让胶囊轻微呼吸，替代原来那个「站点名闪烁」 */
+    private void startSourceChipBlink() {
+        if (tvMenu == null) return;
+        tvMenu.clearAnimation();
+        AlphaAnimation blinkAnimation = new AlphaAnimation(0.35f, 1.0f);
+        blinkAnimation.setDuration(500);
+        blinkAnimation.setStartOffset(20);
+        blinkAnimation.setRepeatMode(Animation.REVERSE);
+        blinkAnimation.setRepeatCount(Animation.INFINITE);
+        tvMenu.startAnimation(blinkAnimation);
+    }
+
+    private void stopSourceChipBlink() {
+        if (tvMenu == null) return;
+        tvMenu.clearAnimation();
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -822,7 +887,22 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
 
     private SelectDialog<SourceBean> mSiteSwitchDialog;
 
-    void showSiteSwitch() {
+    /**
+     * 首页空状态里「换个数据源」的动作。
+     * 有多个可切换站点就直接弹列表；只有一个（或一个都没有）时，
+     * 真正该去的是数据源地址页，而不是弹一个只有一项的列表。
+     */
+    public void onHomeEmptyAction() {
+        if (isActivityUnavailable()) return;
+        List<SourceBean> sites = ApiConfig.get().getSwitchSourceBeanList();
+        if (sites != null && sites.size() > 1) {
+            showSiteSwitch();
+        } else {
+            jumpActivity(ApiSettingActivity.class);
+        }
+    }
+
+    public void showSiteSwitch() {
         if (isActivityUnavailable()) return;
         List<SourceBean> sites = ApiConfig.get().getSwitchSourceBeanList();
         if (sites.isEmpty()) return;
@@ -940,30 +1020,20 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         sortAdapter.setNewData(DefaultConfig.adjustSort(ApiConfig.get().getHomeSourceBean().getKey(), new ArrayList<>(), false));
         setupTabs();
         initViewPager(null);
-        tvName.clearAnimation();
+        stopSourceChipBlink();
     }
 
     private void cancelHomeSortLoading() {
         homeSortLoading = false;
         loadingSourceKey = null;
-        tvName.clearAnimation();
+        stopSourceChipBlink();
         if (previousHomeSource != null) {
             ApiConfig.get().setSourceBean(previousHomeSource);
         }
         if (!TextUtils.isEmpty(previousHomeName)) {
-            tvName.setText(previousHomeName);
+            setSourceChipText(previousHomeName);
         }
         previousHomeSource = null;
         previousHomeName = null;
-    }
-
-    private void tvNameAnimation() {
-        tvName.clearAnimation();
-        AlphaAnimation blinkAnimation = new AlphaAnimation(0.0f, 1.0f);
-        blinkAnimation.setDuration(500);
-        blinkAnimation.setStartOffset(20);
-        blinkAnimation.setRepeatMode(Animation.REVERSE);
-        blinkAnimation.setRepeatCount(Animation.INFINITE);
-        tvName.startAnimation(blinkAnimation);
     }
 }

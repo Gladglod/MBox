@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 底部导航：半透明材质 + 顶部由 1px 细线（ui_divider）作为「发丝分隔」 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/ui_surface" />
+    <solid android:color="@color/ui_material" />
 </shape>

@@ -412,6 +412,7 @@ public class SearchActivity extends BaseActivity {
             setAggregateHotTitle();
             wordsSwitch.setFocusable(false);
             wordsSwitch.setBackground(null);
+            wordsSwitch.setPadding(0, 0, 0, 0);
             mGridViewWord.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
             mGridViewWord.setAdapter(hotWordAdapter);
             refreshSearchHistoryWords();
@@ -423,7 +424,12 @@ public class SearchActivity extends BaseActivity {
             }
             setNormalWordTitle();
             wordsSwitch.setFocusable(true);
-            wordsSwitch.setBackgroundResource(R.drawable.shape_user_focus);
+            // 之前用的是深色 shape_user_focus（#6C3D3D3D）+ 主题文字色，日间模式下深字压深底看不见；
+            // 换成跟随主题的胶囊底，和下面一排热词标签保持同一套观感。
+            wordsSwitch.setBackgroundResource(R.drawable.bg_chip);
+            int padH = getResources().getDimensionPixelSize(R.dimen.vs_12);
+            int padV = getResources().getDimensionPixelSize(R.dimen.vs_4);
+            wordsSwitch.setPadding(padH, padV, padH, padV);
             mGridViewWord.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
             mGridViewWord.setAdapter(wordAdapter);
         }
@@ -451,7 +457,7 @@ public class SearchActivity extends BaseActivity {
                 int availableWidth = historyWordGrid.getWidth();
                 if (availableWidth <= 0) availableWidth = llHistoryWord.getWidth();
                 float textSize = getResources().getDimension(R.dimen.ts_22);
-                int textColor = getResources().getColor(R.color.color_FFFFFF);
+                int textColor = getResources().getColor(R.color.ui_text_primary);
                 LinearLayout row = null;
                 int rowWidth = 0;
                 for (int i = 0; i < history.size(); i++) {

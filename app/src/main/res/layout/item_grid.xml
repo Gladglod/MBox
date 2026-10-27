@@ -123,8 +123,7 @@
         android:layout_marginTop="@dimen/vs_5"
         android:ellipsize="end"
         android:gravity="left"
-        android:maxLines="1"
-        android:singleLine="true"
+        android:maxLines="2"
         android:text="Title"
         android:textColor="@color/ui_text_primary"
         android:textSize="@dimen/ts_18" />

@@ -84,11 +84,12 @@ public class SelectDialogAdapter<T> extends ListAdapter<T, SelectDialogAdapter.S
         T value = data.get(position);
         String name = dialogInterface.getDisplay(value);
         TextView view = holder.itemView.findViewById(R.id.tvName);
+        // 之前写死「选中霓虹青 / 未选中纯白」，日间模式下白字压在浅色按钮上看不见
         if (position == select) {
-            view.setTextColor(0xff02f8e1);
+            view.setTextColor(view.getContext().getResources().getColor(R.color.ui_accent));
             view .setTypeface(Typeface.defaultFromStyle(Typeface.BOLD));
         }else {
-            view.setTextColor(Color.WHITE);
+            view.setTextColor(view.getContext().getResources().getColor(R.color.dialog_text_primary));
             view .setTypeface(Typeface.defaultFromStyle(Typeface.NORMAL));
         }
         view.setText(name);

@@ -1,17 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 弹窗里的主按钮：跟随弹窗调色板（日间浅底深字，夜间深底白字） -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape>
             <corners android:radius="@dimen/vs_5" />
-            <!--  选中按钮颜色   -->
-            <!--<solid android:color="@color/color_353744" />-->
-            <solid android:color="@color/color_1890FF" />
+            <solid android:color="@color/dialog_control_bg_focused" />
+            <stroke
+                android:width="@dimen/vs_1"
+                android:color="@color/dialog_control_stroke_focused" />
         </shape>
     </item>
-    <item android:state_focused="false">
+    <item>
         <shape>
             <corners android:radius="@dimen/vs_5" />
-            <solid android:color="@color/color_CC353744" />
+            <solid android:color="@color/dialog_control_bg" />
+            <stroke
+                android:width="@dimen/vs_1"
+                android:color="@color/dialog_control_stroke" />
         </shape>
     </item>
 </selector>

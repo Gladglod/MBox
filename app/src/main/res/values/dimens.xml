@@ -1,21 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 文本尺寸（手机 dp，360 宽基准） -->
-    <dimen name="ts_10">10dp</dimen>
-    <dimen name="ts_14">12dp</dimen>
-    <dimen name="ts_16">13dp</dimen>
-    <dimen name="ts_18">14dp</dimen>
-    <dimen name="ts_19">14dp</dimen>
-    <dimen name="ts_20">14dp</dimen>
-    <dimen name="ts_22">15dp</dimen>
-    <dimen name="ts_24">16dp</dimen>
-    <dimen name="ts_26">15dp</dimen>
-    <dimen name="ts_28">16dp</dimen>
-    <dimen name="ts_30">17dp</dimen>
-    <dimen name="ts_34">20dp</dimen>
-    <dimen name="ts_40">22dp</dimen>
-    <dimen name="ts_50">28dp</dimen>
-    <dimen name="ts_100">40dp</dimen>
+    <!--
+      文本尺寸（手机，360 宽基准）
+
+      必须用 sp，不能用 dp：
+      AutoSize 只改写 density、不改 fontScale，写成 dp 的话文字完全无视
+      系统「字体大小」设置（无障碍设置里最大可到 200%）。
+      改成 sp 后两层缩放会叠加（AutoSize 的 density × 系统的 fontScale），
+      所以任何装文字的地方都不要写死高度，用 minHeight + wrap_content。
+    -->
+    <dimen name="ts_10">10sp</dimen>
+    <dimen name="ts_14">12sp</dimen>
+    <dimen name="ts_16">13sp</dimen>
+    <dimen name="ts_18">14sp</dimen>
+    <dimen name="ts_19">14sp</dimen>
+    <dimen name="ts_20">14sp</dimen>
+    <dimen name="ts_22">15sp</dimen>
+    <dimen name="ts_24">16sp</dimen>
+    <dimen name="ts_26">15sp</dimen>
+    <dimen name="ts_28">16sp</dimen>
+    <dimen name="ts_30">17sp</dimen>
+    <dimen name="ts_34">20sp</dimen>
+    <dimen name="ts_40">22sp</dimen>
+    <dimen name="ts_50">28sp</dimen>
+    <dimen name="ts_100">40sp</dimen>
 
     <!-- 焦点描边 / 圆角（dp） -->
     <dimen name="focus_border_1">1dp</dimen>

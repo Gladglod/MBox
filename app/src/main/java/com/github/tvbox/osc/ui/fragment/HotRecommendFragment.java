@@ -17,8 +17,10 @@ import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.ui.activity.DetailActivity;
 import com.github.tvbox.osc.ui.activity.FastSearchActivity;
+import com.github.tvbox.osc.ui.activity.HomeActivity;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
 import com.github.tvbox.osc.ui.adapter.GridAdapter;
+import com.github.tvbox.osc.ui.widget.GridSpacingItemDecoration;
 import com.github.tvbox.osc.ui.widget.SmoothTopScroller;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -59,7 +61,7 @@ public class HotRecommendFragment extends BaseLazyFragment {
     }
 
     private RecyclerView mGridView;
-    private TextView tvEmpty;
+    private View tvEmpty;
     private GridAdapter gridAdapter;
     private SourceViewModel sourceViewModel;
     private ImgUtil.Style style;
@@ -99,6 +101,19 @@ public class HotRecommendFragment extends BaseLazyFragment {
         tvEmpty = findViewById(R.id.tvHotEmpty);
         if (mGridView == null) return;
 
+        View emptyAction = findViewById(R.id.tvHotEmptyAction);
+        if (emptyAction != null) {
+            emptyAction.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    if (getActivity() instanceof HomeActivity) {
+                        ((HomeActivity) getActivity()).onHomeEmptyAction();
+                    }
+                }
+            });
+        }
+
         mGridView.setHasFixedSize(true);
         mGridView.setItemViewCacheSize(8);
         mGridView.setItemAnimator(null);
@@ -113,6 +128,8 @@ public class HotRecommendFragment extends BaseLazyFragment {
         } else {
             mGridView.setLayoutManager(new GridLayoutManager(mContext, spanCount));
         }
+        // 和分类页用同一套间距：以前这里没加，落地页是 0dp，两页呼吸感不一致
+        mGridView.addItemDecoration(new GridSpacingItemDecoration((int) getResources().getDimension(R.dimen.vs_8)));
 
         gridAdapter = new GridAdapter(false, style);
         mGridView.setAdapter(gridAdapter);

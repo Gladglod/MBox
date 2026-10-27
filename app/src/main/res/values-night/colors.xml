@@ -8,6 +8,7 @@
     <color name="ui_bg">#FF0E0E12</color>
     <color name="ui_surface">#FF14141A</color>
     <color name="ui_surface_alt">#FF1F1F26</color>
+    <color name="ui_surface_pressed">#FF2A2A33</color>
     <color name="ui_bar_bg">#FF17171C</color>
     <color name="ui_text_primary">#FFFFFFFF</color>
     <color name="ui_text_secondary">#BBFFFFFF</color>
@@ -23,4 +24,21 @@
     <color name="ui_accent_soft">#1A02F8E1</color>
     <color name="ui_poster_placeholder">#FF1E1E1E</color>
     <color name="ui_poster_stroke">#24FFFFFF</color>
+    <color name="ui_material">#F50E0E12</color>
+
+    <!-- 弹窗调色板：夜间保持深色面板（日间那套浅色在 values/colors.xml 里） -->
+    <color name="dialog_panel_bg">#D91D202A</color>
+    <color name="dialog_panel_stroke">#33FFFFFF</color>
+    <color name="dialog_control_bg">#80353744</color>
+    <color name="dialog_control_bg_focused">#CC1890FF</color>
+    <color name="dialog_control_stroke">#22FFFFFF</color>
+    <color name="dialog_control_stroke_focused">#CC02F8E1</color>
+    <color name="dialog_input_bg">#66353744</color>
+    <color name="dialog_text_primary">#FFFFFFFF</color>
+    <color name="dialog_text_hint">#80FFFFFF</color>
+
+    <!-- 壁纸模式下的半透明表面（夜间用深色半透明，保证白色文字可读） -->
+    <color name="ui_surface_glass">#B814141A</color>
+    <color name="ui_material_glass">#CC0E0E12</color>
+    <color name="ui_bar_glass">#CC17171C</color>
 </resources>

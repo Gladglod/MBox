@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 「配图模式下这个 view 的底色被抹成透明了」的标记，恢复时靠它认回来 -->
+    <item name="tag_page_bg_transparent" type="id" />
+</resources>

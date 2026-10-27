@@ -34,7 +34,7 @@
         android:layout_marginLeft="4dp"
         android:includeFontPadding="false"
         android:text="✓"
-        android:textColor="@color/color_02F8E1"
+        android:textColor="@color/ui_accent"
         android:textSize="13sp"
         android:textStyle="bold"
         android:visibility="invisible" />

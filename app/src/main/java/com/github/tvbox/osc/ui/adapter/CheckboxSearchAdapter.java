@@ -87,8 +87,8 @@ public class CheckboxSearchAdapter extends ListAdapter<SourceBean, CheckboxSearc
     private void applyCheckedStyle(ViewHolder holder, boolean checked) {
         holder.itemRoot.setBackgroundResource(checked ? R.drawable.bg_chip_selected : R.drawable.bg_chip);
         holder.tvSourceName.setTextColor(checked
-                ? holder.itemRoot.getContext().getResources().getColor(R.color.color_02F8E1)
-                : Color.WHITE);
+                ? holder.itemRoot.getContext().getResources().getColor(R.color.ui_accent)
+                : holder.itemRoot.getContext().getResources().getColor(R.color.dialog_text_primary));
         holder.tvSourceCheck.setVisibility(checked ? View.VISIBLE : View.INVISIBLE);
     }
 

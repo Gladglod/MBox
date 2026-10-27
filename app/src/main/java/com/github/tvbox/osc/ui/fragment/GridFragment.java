@@ -35,6 +35,7 @@ import com.github.tvbox.osc.ui.adapter.GridAdapter;
 import com.github.tvbox.osc.ui.adapter.GridFilterKVAdapter;
 import com.github.tvbox.osc.ui.dialog.GridFilterDialog;
 import com.github.tvbox.osc.ui.tv.widget.LoadMoreView;
+import com.github.tvbox.osc.ui.widget.GridSpacingItemDecoration;
 import com.github.tvbox.osc.ui.widget.SmoothTopScroller;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -253,7 +254,7 @@ public class GridFragment extends BaseLazyFragment {
                 mGridView.setLayoutManager(new GridLayoutManager(this.mContext, spanCount));
             }
         }
-        mGridView.addItemDecoration(new SpacesItemDecoration((int) getResources().getDimension(R.dimen.vs_8)));
+        mGridView.addItemDecoration(new GridSpacingItemDecoration((int) getResources().getDimension(R.dimen.vs_8)));
         mGridView.setAdapter(gridAdapter);
 
         gridAdapter.setOnLoadMoreListener(new BaseQuickAdapter.RequestLoadMoreListener() {
@@ -328,22 +329,6 @@ public class GridFragment extends BaseLazyFragment {
         gridAdapter.setLoadMoreView(new LoadMoreView());
         setLoadSir2(mGridView);
         initPullRefresh();
-    }
-
-    private static class SpacesItemDecoration extends RecyclerView.ItemDecoration {
-        private final int space;
-
-        SpacesItemDecoration(int space) {
-            this.space = space;
-        }
-
-        @Override
-        public void getItemOffsets(@NonNull android.graphics.Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
-            outRect.left = space;
-            outRect.right = space;
-            outRect.top = space;
-            outRect.bottom = space;
-        }
     }
 
     private void initPullRefresh() {

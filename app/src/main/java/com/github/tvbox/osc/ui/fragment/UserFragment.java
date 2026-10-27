@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.ui.fragment;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
@@ -59,17 +60,27 @@ public class UserFragment extends BaseLazyFragment {
         }
     }
 
-    private static final MenuEntry[] MENU_ENTRIES = {
-            new MenuEntry("数据源地址", R.drawable.ic_mine_source, ACTION_SOURCE, null),
-            new MenuEntry("外观主题", R.drawable.ic_mine_theme, ACTION_SECTION, MineSettingActivity.SECTION_APPEARANCE),
-            new MenuEntry("播放历史", R.drawable.ic_mine_history, ACTION_HISTORY, null),
-            new MenuEntry("收藏", R.drawable.icon_collect, ACTION_COLLECT, null),
-            new MenuEntry("播放设定", R.drawable.ic_mine_play, ACTION_SECTION, MineSettingActivity.SECTION_PLAY),
-            new MenuEntry("界面偏好", R.drawable.ic_mine_ui, ACTION_SECTION, MineSettingActivity.SECTION_UI),
-            new MenuEntry("播放手势", R.drawable.ic_mine_gesture, ACTION_SECTION, MineSettingActivity.SECTION_GESTURE),
-            new MenuEntry("弹幕设定", R.drawable.ic_mine_danmu, ACTION_SECTION, MineSettingActivity.SECTION_DANMU),
-            new MenuEntry("关于", R.drawable.ic_mine_about, ACTION_SECTION, MineSettingActivity.SECTION_ABOUT)
+    private static final MenuEntry E_SOURCE = new MenuEntry("数据源地址", R.drawable.ic_mine_source, ACTION_SOURCE, null);
+    private static final MenuEntry E_THEME = new MenuEntry("外观主题", R.drawable.ic_mine_theme, ACTION_SECTION, MineSettingActivity.SECTION_APPEARANCE);
+    private static final MenuEntry E_HISTORY = new MenuEntry("播放历史", R.drawable.ic_mine_history, ACTION_HISTORY, null);
+    private static final MenuEntry E_COLLECT = new MenuEntry("收藏", R.drawable.icon_collect, ACTION_COLLECT, null);
+    private static final MenuEntry E_PLAY = new MenuEntry("播放设定", R.drawable.ic_mine_play, ACTION_SECTION, MineSettingActivity.SECTION_PLAY);
+    private static final MenuEntry E_UI = new MenuEntry("界面偏好", R.drawable.ic_mine_ui, ACTION_SECTION, MineSettingActivity.SECTION_UI);
+    private static final MenuEntry E_GESTURE = new MenuEntry("播放手势", R.drawable.ic_mine_gesture, ACTION_SECTION, MineSettingActivity.SECTION_GESTURE);
+    private static final MenuEntry E_DANMU = new MenuEntry("弹幕设定", R.drawable.ic_mine_danmu, ACTION_SECTION, MineSettingActivity.SECTION_DANMU);
+    private static final MenuEntry E_ABOUT = new MenuEntry("关于", R.drawable.ic_mine_about, ACTION_SECTION, MineSettingActivity.SECTION_ABOUT);
+
+    /**
+     * 分组（每组一张卡片，组间留白）。分组标题为 null 表示该组不显示组头。
+     * 采用 Apple Settings 的「分组卡片 + 组头」结构，信息层级更清晰。
+     */
+    private static final MenuEntry[][] MENU_GROUPS = {
+            {E_SOURCE, E_THEME},
+            {E_HISTORY, E_COLLECT},
+            {E_PLAY, E_UI, E_GESTURE, E_DANMU},
+            {E_ABOUT}
     };
+    private static final String[] GROUP_TITLES = {null, "媒体库", "播放设置", null};
 
     private static final int CONTINUE_LIMIT = 12;
 
@@ -116,38 +127,59 @@ public class UserFragment extends BaseLazyFragment {
     /* ======================== 条状菜单 ======================== */
 
     private void buildMenu() {
-        LinearLayout card = findViewById(R.id.menuCard);
-        if (card == null) return;
-        card.removeAllViews();
+        LinearLayout container = findViewById(R.id.menuCard);
+        if (container == null) return;
+        container.removeAllViews();
         LayoutInflater inflater = LayoutInflater.from(mContext);
-        for (int i = 0; i < MENU_ENTRIES.length; i++) {
-            if (i > 0) card.addView(makeDivider());
-            final MenuEntry entry = MENU_ENTRIES[i];
-            View row = inflater.inflate(R.layout.item_user_menu, card, false);
-            ImageView menuIcon = row.findViewById(R.id.ivMenuIcon);
-            menuIcon.setImageResource(entry.icon);
-            // 图标是白色矢量图，日间模式下必须换成主题色，否则白底白图看不见
-            menuIcon.setColorFilter(getResources().getColor(R.color.ui_icon));
-            ((TextView) row.findViewById(R.id.tvMenuName)).setText(entry.title);
-            TextView value = row.findViewById(R.id.tvMenuValue);
-            if (entry.action == ACTION_SOURCE) {
-                tvSourceValue = value;
-                refreshSourceValue();
-            } else {
-                value.setVisibility(View.GONE);
+        for (int g = 0; g < MENU_GROUPS.length; g++) {
+            boolean hasHeader = GROUP_TITLES[g] != null;
+            if (hasHeader) {
+                container.addView(inflater.inflate(R.layout.item_group_header, container, false));
             }
-            row.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
-                    openMenu(entry);
+            LinearLayout card = new LinearLayout(mContext);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setBackgroundResource(R.drawable.bg_phone_card);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                card.setClipToOutline(true); // 行内水波纹跟随卡片圆角
+            }
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (g > 0 && !hasHeader) {
+                clp.topMargin = dp(18); // 无组头时用上间距区分分组
+            }
+            card.setLayoutParams(clp);
+
+            MenuEntry[] group = MENU_GROUPS[g];
+            for (int i = 0; i < group.length; i++) {
+                if (i > 0) card.addView(makeDivider());
+                final MenuEntry entry = group[i];
+                View row = inflater.inflate(R.layout.item_user_menu, card, false);
+                ImageView menuIcon = row.findViewById(R.id.ivMenuIcon);
+                menuIcon.setImageResource(entry.icon);
+                // 图标是白色矢量图，日间模式下必须换成主题色，否则白底白图看不见
+                menuIcon.setColorFilter(getResources().getColor(R.color.ui_icon));
+                ((TextView) row.findViewById(R.id.tvMenuName)).setText(entry.title);
+                TextView value = row.findViewById(R.id.tvMenuValue);
+                if (entry.action == ACTION_SOURCE) {
+                    tvSourceValue = value;
+                    refreshSourceValue();
+                } else {
+                    value.setVisibility(View.GONE);
                 }
-            });
-            card.addView(row);
-            // 「播放历史」下面挂「继续观看」小方块
-            if (entry.action == ACTION_HISTORY) {
-                card.addView(makeContinueStrip());
+                row.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        FastClickCheckUtil.check(v);
+                        openMenu(entry);
+                    }
+                });
+                card.addView(row);
+                // 「播放历史」下面挂「继续观看」小方块
+                if (entry.action == ACTION_HISTORY) {
+                    card.addView(makeContinueStrip());
+                }
             }
+            container.addView(card);
         }
     }
 
@@ -209,12 +241,13 @@ public class UserFragment extends BaseLazyFragment {
 
     private View makeDivider() {
         View divider = new View(mContext);
-        int margin = dp(12);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(0.5f)));
-        lp.leftMargin = margin;
-        lp.rightMargin = margin;
-        divider.setBackgroundColor(0x14FFFFFF);
+        // 左侧缩进与标题文字对齐（padding 10 + icon 20 + gap 8），右侧留白：Apple 分组列表的分隔线细节
+        lp.leftMargin = dp(38);
+        lp.rightMargin = dp(10);
+        // 用语义色，日间为浅黑细线、夜间为浅白细线（原来写死 0x14FFFFFF，日间白卡上完全看不见）
+        divider.setBackgroundColor(getResources().getColor(R.color.ui_divider));
         divider.setLayoutParams(lp);
         return divider;
     }

@@ -31,7 +31,7 @@
                 android:paddingRight="@dimen/vs_2"
                 android:paddingBottom="@dimen/vs_10"
                 android:textColor="@color/dialog_text_primary"
-                android:textColorHint="@color/color_6CFFFFFF"
+                android:textColorHint="@color/dialog_text_hint"
                 android:textSize="@dimen/ts_26" />
 
             <TextView

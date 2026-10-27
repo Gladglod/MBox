@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      以下 color_XXX 系列是历史遗留的绝对色（TV 版沿用），名字与值并不总是一致：
+      color_FFB800 是 #FF6600、color_99FFFFFF 是 #4D000000、color_CCFFFFFF 是 #BBFFFFFF。
+      新增界面请一律使用文件下半部分的 ui_* 语义色，不要再引用这些。
+    -->
     <color name="color_6200EE">#6200EE</color>
     <color name="color_3700B3">#3700B3</color>
     <color name="color_03DAC5">#03DAC5</color>
@@ -40,16 +45,19 @@
     <color name="color_scrollview_bg">#44000000</color>
     <color name="color_text_primary">#FFFF0000</color>
 
-    <!-- Unified dialog palette. Change these to update dialog surfaces globally. -->
-    <color name="dialog_panel_bg">#D91D202A</color>
-    <color name="dialog_panel_stroke">#33FFFFFF</color>
-    <color name="dialog_control_bg">#80353744</color>
-    <color name="dialog_control_bg_focused">#CC1890FF</color>
-    <color name="dialog_control_stroke">#22FFFFFF</color>
-    <color name="dialog_control_stroke_focused">#CC02F8E1</color>
-    <color name="dialog_input_bg">#66353744</color>
-    <color name="dialog_text_primary">#FFFFFFFF</color>
-    <color name="dialog_text_hint">#80FFFFFF</color>
+    <!--
+      统一弹窗调色板。日间为浅色面板，夜间在 values-night/colors.xml 里覆盖回深色。
+      所有 dialog_* 都只用于弹窗内部（顶栏、按钮、输入框、文字），不用于播放器浮层。
+    -->
+    <color name="dialog_panel_bg">#FFF8F9FB</color>
+    <color name="dialog_panel_stroke">#1F000000</color>
+    <color name="dialog_control_bg">#FFEDEFF4</color>
+    <color name="dialog_control_bg_focused">#FFD9EEE9</color>
+    <color name="dialog_control_stroke">#1A000000</color>
+    <color name="dialog_control_stroke_focused">#FF007A70</color>
+    <color name="dialog_input_bg">#FFEDEFF4</color>
+    <color name="dialog_text_primary">#FF17181D</color>
+    <color name="dialog_text_hint">#66000000</color>
 
     <!--
       ==================== 界面语义色（日间） ====================
@@ -64,6 +72,8 @@
     <color name="ui_surface">#FFFFFFFF</color>
     <!-- 次级卡片 / 输入框 / 占位块 -->
     <color name="ui_surface_alt">#FFF0F1F5</color>
+    <!-- 可点表面按下态（假搜索框等） -->
+    <color name="ui_surface_pressed">#FFE4E6EC</color>
     <!-- 历史、收藏页底部操作条 -->
     <color name="ui_bar_bg">#FFFFFFFF</color>
     <!-- 主文字 -->
@@ -80,8 +90,14 @@
     <color name="ui_icon">#FF2A2C33</color>
     <!-- 小胶囊背景（年份、备注、按钮底） -->
     <color name="ui_chip_bg">#FFE7E9EF</color>
-    <!-- 品牌强调色（日间用深一档保证白底可读） -->
-    <color name="ui_accent">#FF00A396</color>
+    <!--
+      品牌强调色（日间用深一档保证白底可读）
+
+      #00A396 在白底上只有 3.14:1，12sp 的选中态标签（底部导航）读不清；
+      #007A70 在白底 5.23:1、在 ui_bg 上 4.75:1，同时满足小字 4.5:1
+      和非文字控件 3:1（页签指示条）。
+    -->
+    <color name="ui_accent">#FF007A70</color>
     <!-- 链接 / 可点击文字 -->
     <color name="ui_link">#FF2A6BE0</color>
     <!-- 弱化文字（灰色说明） -->
@@ -89,8 +105,19 @@
     <!-- 危险操作（删除） -->
     <color name="ui_danger">#FFD9343C</color>
     <!-- 强调色的浅底（选中态胶囊、标签底色） -->
-    <color name="ui_accent_soft">#1A00A396</color>
+    <color name="ui_accent_soft">#1A007A70</color>
     <!-- 海报占位底色 / 描边 -->
     <color name="ui_poster_placeholder">#FFE2E4EA</color>
     <color name="ui_poster_stroke">#14000000</color>
+    <!-- 浮动栏（底部导航）的半透明「材质」：近似 iOS 毛玻璃观感 -->
+    <color name="ui_material">#F5FFFFFF</color>
+
+    <!--
+      壁纸模式（自定义配图 / 纯色背景）下的半透明表面。
+      用户设了背景时，顶栏、底栏、卡片会换成这几个颜色，让配图真正透出来；
+      没设背景时依旧用上面的不透明色，避免多画一层透明合成。
+    -->
+    <color name="ui_surface_glass">#B8FFFFFF</color>
+    <color name="ui_material_glass">#CCFFFFFF</color>
+    <color name="ui_bar_glass">#CCFFFFFF</color>
 </resources>

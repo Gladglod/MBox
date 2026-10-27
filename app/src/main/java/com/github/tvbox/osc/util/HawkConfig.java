@@ -85,7 +85,8 @@ public class HawkConfig {
     public static final int UI_MODE_DAY = 0;
     public static final int UI_MODE_NIGHT = 1;
     public static final int UI_MODE_SYSTEM = 2;
-    public static final int DEFAULT_UI_MODE = UI_MODE_DAY;
+    // 默认跟随系统：手机开了深色就该是深色，不该让用户自己来设置里找
+    public static final int DEFAULT_UI_MODE = UI_MODE_SYSTEM;
 
     /* ===== 播放手势 ===== */
     /** 长按屏幕进入变速 */

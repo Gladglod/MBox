@@ -25,6 +25,6 @@
         android:paddingRight="@dimen/vs_12"
         android:paddingBottom="@dimen/vs_14"
         android:singleLine="true"
-        android:textColor="@color/color_FFFFFF"
+        android:textColor="@color/ui_text_primary"
         android:textSize="@dimen/ts_18" />
 </FrameLayout>

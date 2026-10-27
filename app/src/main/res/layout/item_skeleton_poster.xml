@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 骨架屏的单个海报位：尺寸与 item_grid 一致，数据回来时位置不跳 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/vs_410"
+        android:background="@drawable/bg_skeleton_poster" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/ts_14"
+        android:layout_marginTop="@dimen/vs_6"
+        android:background="@drawable/bg_skeleton_line" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/vs_4"
+        android:orientation="horizontal">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="@dimen/ts_10"
+            android:layout_weight="0.55"
+            android:background="@drawable/bg_skeleton_line" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="@dimen/ts_10"
+            android:layout_weight="0.45" />
+    </LinearLayout>
+</LinearLayout>
