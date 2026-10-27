@@ -94,7 +94,7 @@
             android:background="?android:attr/selectableItemBackground"
             android:gravity="center"
             android:text="全选"
-            android:textColor="@color/color_CCFFFFFF"
+            android:textColor="@color/ui_text_primary"
             android:textSize="@dimen/ts_18" />
 
         <TextView
@@ -105,7 +105,7 @@
             android:background="?android:attr/selectableItemBackground"
             android:gravity="center"
             android:text="全不选"
-            android:textColor="@color/color_CCFFFFFF"
+            android:textColor="@color/ui_text_primary"
             android:textSize="@dimen/ts_18" />
 
         <TextView
@@ -116,7 +116,7 @@
             android:background="?android:attr/selectableItemBackground"
             android:gravity="center"
             android:text="恢复默认"
-            android:textColor="@color/color_CCFFFFFF"
+            android:textColor="@color/ui_text_primary"
             android:textSize="@dimen/ts_18" />
     </LinearLayout>
 </LinearLayout>

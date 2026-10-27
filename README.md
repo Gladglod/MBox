@@ -1,6 +1,6 @@
 # MBox（手机竖屏版）
 
-基于 TVBoxOS 改造的 **手机竖屏** 客户端（纯 XML + Java，无 Compose，包名 `com.github.tvbox.osc`）。
+基于 [TVBoxOS](https://github.com/q215613905/TVBoxOS) 改造的 **手机竖屏** 客户端（纯 XML + Java，无 Compose，包名 `com.github.tvbox.osc`）。
 本仓库在原生 TV 交互之上重做了详情页与播放器，使整体适配手机触摸操作。
 
 ## 构建

@@ -382,7 +382,7 @@ public class DetailActivity extends BaseActivity {
                     if (vodInfo.playIndex >= 0) customSeriesScrollPos(vodInfo.playIndex);
                     if(currentSeriesGroupView != null) {
                         TextView txtView = currentSeriesGroupView.findViewById(R.id.tvSeriesFlag);
-                        txtView.setTextColor(Color.WHITE);
+                        txtView.setTextColor(androidx.core.content.ContextCompat.getColor(mContext, R.color.ui_text_primary));
                     }
                 }
             }
@@ -507,7 +507,7 @@ public class DetailActivity extends BaseActivity {
                 }
                 if(currentSeriesGroupView != null) {
                     TextView txtView = currentSeriesGroupView.findViewById(R.id.tvSeriesFlag);
-                    txtView.setTextColor(Color.WHITE);
+                    txtView.setTextColor(androidx.core.content.ContextCompat.getColor(mContext, R.color.ui_text_primary));
                 }
                 currentSeriesGroupView = view;
                 currentSeriesGroupView.isSelected();
@@ -1008,7 +1008,9 @@ public class DetailActivity extends BaseActivity {
         if (content == null) {
             content = "";
         }
-        return label + "<font color=\"#FFFFFF\">" + content + "</font>";
+        // 内容（数据值）改用主题感知色：日间近黑、夜间白色，避免在浅色背景上出现白字。
+        int contentColor = androidx.core.content.ContextCompat.getColor(this, R.color.ui_text_primary);
+        return label + "<font color=\"#" + String.format(Locale.US, "%08x", contentColor) + "\">" + content + "</font>";
     }
 
     private String  vod_picture="";

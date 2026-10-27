@@ -38,7 +38,7 @@
     <color name="color_000000_60">#99000000</color>
     <color name="color_dialog_bg">#88000000</color>
     <color name="color_scrollview_bg">#44000000</color>
-    <color name="color_text_primary">#FFFFFAE0</color>
+    <color name="color_text_primary">#FFFF0000</color>
 
     <!-- Unified dialog palette. Change these to update dialog surfaces globally. -->
     <color name="dialog_panel_bg">#D91D202A</color>

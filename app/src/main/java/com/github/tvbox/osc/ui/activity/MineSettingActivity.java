@@ -930,7 +930,9 @@ public class MineSettingActivity extends BaseActivity {
         addInfoRow("项目来源", new TextProvider() {
             @Override
             public String get() {
-                return "基于 TVBoxOS 二次开发，针对手机竖屏重做详情页与播放器交互";
+                return "基于 TVBoxOS 二次开发，针对手机竖屏重做详情页与播放器交互\n" +
+                        "https://github.com/q215613905/TVBoxOS\n" +
+                        "https://github.com/Gladglod/MBox";
             }
         });
     }
@@ -1048,6 +1050,9 @@ public class MineSettingActivity extends BaseActivity {
         row.findViewById(R.id.tvRowValue).setVisibility(View.GONE);
         row.findViewById(R.id.tvRowArrow).setVisibility(View.GONE);
         row.setClickable(false);
+        // 信息行内容可能较长（如项目来源含网址），放开行数并关闭末尾省略号，避免网址被截断
+        tvSub.setEllipsize(null);
+        tvSub.setMaxLines(10);
         Runnable refresher = new Runnable() {
             @Override
             public void run() {

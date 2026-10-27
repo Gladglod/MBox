@@ -68,9 +68,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="@android:color/white"
-                android:textSize="@dimen/ts_18" />
+            android:maxLines="1"
+            android:textColor="@color/ui_text_primary"
+            android:textSize="@dimen/ts_18" />
 
             <TextView
                 android:id="@+id/tvSource"
@@ -79,7 +79,7 @@
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="@color/color_CCFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="@dimen/ts_14" />
 
             <TextView
@@ -89,7 +89,7 @@
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="@color/color_CCFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="@dimen/ts_14" />
         </LinearLayout>
 

@@ -112,6 +112,8 @@ public class VodController extends BaseController {
     private static final float SPEED_TIP_ALPHA = 0.55f;
     /** 固定 / 解除固定时的触感反馈时长（毫秒） */
     private static final long SPEED_LOCK_VIBRATE_MS = 22L;
+    /** 倍速按钮常态文字颜色（始终叠在深色播放条上，与 XML 一致） */
+    private static final int SPEED_BTN_COLOR_NORMAL = 0xF2FFFFFF;
 
     private boolean speedBoostActive;
     private float speedBoostStartY;
@@ -262,6 +264,7 @@ public class VodController extends BaseController {
         speedBoostSpeed = speed;
         if (mControlWrapper != null) mControlWrapper.setSpeed(speed);
         showSpeedBoostTip(speed);
+        syncSpeedButton(speed, false, false);
     }
 
     /**
@@ -288,9 +291,11 @@ public class VodController extends BaseController {
             speedBoostSpeed = speedBoostNaturalSpeed;
             speedBoostBaseSpeed = speedBoostNaturalSpeed;
             if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostNaturalSpeed);
+            syncSpeedButton(speedBoostNaturalSpeed, false, true);
         } else {
             speedBoostLocked = true;
             speedBoostBaseSpeed = speedBoostSpeed;
+            syncSpeedButton(speedBoostSpeed, true, true);
         }
         // 以当前位置作为新的竖直基准，切换后不会因为历史位移让倍速突然跳变
         speedBoostStartY = event.getY();
@@ -308,10 +313,12 @@ public class VodController extends BaseController {
         if (speedBoostLocked) {
             // 已固定：抬手保持当前倍速
             speedBoostBaseSpeed = speedBoostSpeed;
+            syncSpeedButton(speedBoostSpeed, true, true);
             return;
         }
         if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostBaseSpeed);
         speedBoostSpeed = speedBoostBaseSpeed;
+        syncSpeedButton(speedBoostBaseSpeed, false, true);
     }
 
     private void showSpeedBoostTip(float speed) {
@@ -321,6 +328,31 @@ public class VodController extends BaseController {
         mSpeedBoostTip.setText(text);
         mSpeedBoostTip.setAlpha(SPEED_TIP_ALPHA);
         mSpeedBoostTip.setVisibility(VISIBLE);
+    }
+
+    /** 取「固定」态倍速按钮高亮色（强调色，随日 / 夜间主题切换） */
+    private int getSpeedLockColor() {
+        try {
+            return androidx.core.content.ContextCompat.getColor(getContext(), R.color.ui_accent);
+        } catch (Throwable ignore) {
+            return 0xFF00A396;
+        }
+    }
+
+    /**
+     * 把长按手势得到的倍速同步到「倍速」按钮与播放配置，并反映「固定」状态。
+     *
+     * <p>persist=true 时通知监听器落盘（用于锁定 / 解除 / 手势结束等离散时刻）；
+     * 滑动过程中逐帧调用时传 false，仅刷新内存与按钮文本，避免频繁写盘。</p>
+     */
+    private void syncSpeedButton(float speed, boolean locked, boolean persist) {
+        if (mPlayerSpeedBtn == null) return;
+        try {
+            if (mPlayerConfig != null) mPlayerConfig.put("sp", speed);
+        } catch (JSONException ignore) { }
+        mPlayerSpeedBtn.setText(String.format(Locale.getDefault(), "%.1fx%s", speed, locked ? " 固定" : ""));
+        mPlayerSpeedBtn.setTextColor(locked ? getSpeedLockColor() : SPEED_BTN_COLOR_NORMAL);
+        if (persist && listener != null) listener.updatePlayerCfg();
     }
 
     /** 固定 / 解除固定时的触感反馈（短促一下） */
@@ -957,6 +989,11 @@ public class VodController extends BaseController {
                     listener.updatePlayerCfg();
                     speed_old = 1.0f;
                     mControlWrapper.setSpeed(1.0f);
+                    // 长按重置倍速到 1.0x 时，同步清除手势「固定」状态
+                    speedBoostLocked = false;
+                    speedBoostNaturalSpeed = 1.0f;
+                    speedBoostBaseSpeed = 1.0f;
+                    speedBoostSpeed = 1.0f;
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -1994,6 +2031,7 @@ public class VodController extends BaseController {
             if (codecRow != null) codecRow.setVisibility(playerType == 1 ? VISIBLE : GONE);
             mPlayerScaleBtn.setText(PlayerHelper.getScaleName(mPlayerConfig.getInt("sc")));
             mPlayerSpeedBtn.setText(mPlayerConfig.getDouble("sp") + "x");
+            if (mPlayerSpeedBtn != null) mPlayerSpeedBtn.setTextColor(SPEED_BTN_COLOR_NORMAL);
             int start = mPlayerConfig.getInt("st");
             int end = mPlayerConfig.getInt("et");
             mPlayerTimeStartBtn.setText(start == 0 ? "片头" : stringForTime(start * 1000));
