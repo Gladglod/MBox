@@ -2,4 +2,13 @@
 <resources>
     <!-- 「配图模式下这个 view 的底色被抹成透明了」的标记，恢复时靠它认回来 -->
     <item name="tag_page_bg_transparent" type="id" />
+
+    <!--
+      右上角「转圈图标 + 频道名」的加载提示已经从 activity_live_play.xml 删掉了，
+      但老代码里还有几处 setVisibility 调用。把 id 留在 ids.xml 里，
+      findViewById 会返回 null（代码里有兜底），不会因为 R.id 不存在而编译不过。
+    -->
+    <item name="ll_right_top_loading" type="id" />
+    <item name="iv_circle_bg" type="id" />
+    <item name="tv_right_top_channel_name" type="id" />
 </resources>

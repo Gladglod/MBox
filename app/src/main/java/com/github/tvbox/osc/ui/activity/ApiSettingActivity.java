@@ -26,6 +26,7 @@ import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
+import com.github.tvbox.osc.util.ShortDramaConfig;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.hjq.permissions.OnPermissionCallback;
 import com.hjq.permissions.Permission;
@@ -50,6 +51,7 @@ public class ApiSettingActivity extends BaseActivity {
     private EditText inputApi;
     private EditText inputLive;
     private LinearLayout historyContainer;
+    private TextView tvDramaSourceValue;
     private boolean selectLocalLive;
 
     @Override
@@ -113,8 +115,33 @@ public class ApiSettingActivity extends BaseActivity {
         inputApi.setText(Hawk.get(HawkConfig.API_URL, ""));
         inputLive.setText(Hawk.get(HawkConfig.LIVE_API_URL, ""));
 
+        tvDramaSourceValue = findViewById(R.id.tvDramaSourceValue);
+        findViewById(R.id.rowDramaSource).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                jumpActivity(ShortDramaSourceActivity.class);
+            }
+        });
+        refreshDramaSourceValue();
+
         refreshQRCode();
         buildHistory();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 从「短剧源」页回来时数量可能变了
+        refreshDramaSourceValue();
+    }
+
+    private void refreshDramaSourceValue() {
+        if (tvDramaSourceValue == null) return;
+        int count = ShortDramaConfig.enabledCount();
+        tvDramaSourceValue.setText(count > 0
+                ? getString(R.string.short_drama_entry_value, count)
+                : getString(R.string.short_drama_entry_none));
     }
 
     /* ============================ 保存 / 切换 ============================ */

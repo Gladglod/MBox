@@ -74,6 +74,9 @@
             android:name=".ui.activity.HomeTabSettingActivity"
             />
         <activity
+            android:name=".ui.activity.ShortDramaSourceActivity"
+            />
+        <activity
             android:name=".ui.activity.HistoryActivity"
             />
         <activity

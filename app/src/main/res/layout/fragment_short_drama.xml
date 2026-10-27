@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  短剧页。
+
+  结构：大标题 + 状态行 + 源胶囊 + 海报网格。
+  源胶囊是这一页的核心控件 —— 短剧内容分散在配置里的不同站点上，
+  「现在看的是哪个源」必须一直可见，所以它不放进菜单、也不做成下拉，而是常驻一行。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ui_bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/vs_14"
+        android:paddingLeft="@dimen/vs_14"
+        android:paddingTop="@dimen/vs_14"
+        android:paddingEnd="@dimen/vs_8"
+        android:paddingRight="@dimen/vs_8">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/short_drama_title"
+            android:textColor="@color/ui_text_primary"
+            android:textSize="@dimen/ts_34"
+            android:textStyle="bold" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tvManage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:paddingStart="@dimen/vs_12"
+            android:paddingLeft="@dimen/vs_12"
+            android:paddingTop="@dimen/vs_8"
+            android:paddingEnd="@dimen/vs_12"
+            android:paddingRight="@dimen/vs_12"
+            android:paddingBottom="@dimen/vs_8"
+            android:text="@string/short_drama_manage"
+            android:textColor="@color/ui_link"
+            android:textSize="@dimen/ts_18" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/vs_14"
+        android:paddingLeft="@dimen/vs_14"
+        android:paddingEnd="@dimen/vs_14"
+        android:paddingRight="@dimen/vs_14"
+        android:textColor="@color/ui_muted"
+        android:textSize="@dimen/ts_14"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/chipList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/vs_8"
+        android:clipToPadding="false"
+        android:overScrollMode="never"
+        android:paddingStart="@dimen/vs_14"
+        android:paddingLeft="@dimen/vs_14"
+        android:paddingEnd="@dimen/vs_14"
+        android:paddingRight="@dimen/vs_14"
+        android:scrollbars="none"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/mGridView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingLeft="@dimen/vs_4"
+            android:paddingTop="@dimen/vs_4"
+            android:paddingRight="@dimen/vs_4"
+            android:paddingBottom="@dimen/vs_4" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="@dimen/vs_60"
+            android:layout_height="@dimen/vs_60"
+            android:layout_gravity="center"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/ui_accent"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/emptyState"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/vs_30"
+            android:paddingLeft="@dimen/vs_30"
+            android:paddingEnd="@dimen/vs_30"
+            android:paddingRight="@dimen/vs_30"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="@dimen/vs_120"
+                android:layout_height="@dimen/vs_120"
+                android:importantForAccessibility="no"
+                android:src="@drawable/icon_empty" />
+
+            <TextView
+                android:id="@+id/tvEmptyTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_20"
+                android:gravity="center"
+                android:textColor="@color/ui_text_primary"
+                android:textSize="@dimen/ts_30"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvEmptyDesc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_8"
+                android:gravity="center"
+                android:lineSpacingExtra="3dp"
+                android:textColor="@color/ui_text_secondary"
+                android:textSize="@dimen/ts_18" />
+
+            <TextView
+                android:id="@+id/btnEmptyPrimary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_24"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minHeight="@dimen/vs_100"
+                android:paddingStart="@dimen/vs_24"
+                android:paddingLeft="@dimen/vs_24"
+                android:paddingEnd="@dimen/vs_24"
+                android:paddingRight="@dimen/vs_24"
+                android:textColor="@color/ui_accent"
+                android:textSize="@dimen/ts_18"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnEmptySecondary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_8"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minHeight="@dimen/vs_100"
+                android:paddingStart="@dimen/vs_24"
+                android:paddingLeft="@dimen/vs_24"
+                android:paddingEnd="@dimen/vs_24"
+                android:paddingRight="@dimen/vs_24"
+                android:textColor="@color/ui_text_secondary"
+                android:textSize="@dimen/ts_18"
+                android:visibility="gone" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

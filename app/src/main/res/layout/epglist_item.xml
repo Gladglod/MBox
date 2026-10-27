@@ -3,7 +3,7 @@
     android:id="@+id/cl_epg"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/shape_live_focus"
+    android:background="@drawable/bg_panel_item"
     android:focusable="true"
     android:focusableInTouchMode="false"
     android:gravity="center_vertical"
@@ -28,7 +28,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:singleLine="true"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_text_secondary"
             android:textSize="10sp" />
 
         <com.github.tvbox.osc.ui.tv.widget.MarqueeTextView
@@ -40,7 +40,7 @@
             android:gravity="center|left"
             android:marqueeRepeatLimit="marquee_forever"
             android:singleLine="true"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_text_primary"
             android:textSize="12sp" />
     </LinearLayout>
 

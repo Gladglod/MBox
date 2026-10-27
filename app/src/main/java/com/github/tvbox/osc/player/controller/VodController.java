@@ -432,7 +432,8 @@ public class VodController extends BaseController {
         int duration = safeTimeMs(mControlWrapper.getDuration());
         if (duration <= 0) return true;
         int seekMs = Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, DOUBLE_TAP_SEEK_MS);
-        if (seekMs <= 0) seekMs = DOUBLE_TAP_SEEK_MS;
+        // 0 = 用户关闭了双击快进快退
+        if (seekMs <= 0) return true;
         boolean forward = x > rightEdge;
         int current = safeTimeMs(mControlWrapper.getCurrentPosition());
         int target = current + (forward ? seekMs : -seekMs);
@@ -559,9 +560,14 @@ public class VodController extends BaseController {
 
     /* ===== 手机竖屏主按钮行 / 右上角菜单 / 抽屉 ===== */
     private LinearLayout mTopBar;            // 顶部整栏（返回/标题/投屏/菜单）
+    private LinearLayout mRowPrimary;        // 按钮主行（竖屏单行 / 横屏按钮行共用）
+    private LinearLayout mProgressRow;       // 进度条块（竖屏内联，横屏独立成行）
+    private View mBottomSpacer;              // 横屏时把倍速推到右侧的空白
     private LinearLayout mPlayPauseBtn;      // 播放·暂停
     private ImageView mPlayPauseIcon;
     private TextView mDanmuBtn;              // 弹幕开关
+    private LinearLayout mPortraitBtn;       // 竖屏满屏（短剧）
+    private TextView mPortraitLabel;
     private LinearLayout mFullScreenBtn;     // 全屏
     private ImageView mFullScreenIcon;
     private ImageView mMenuBtn;              // 右上角菜单
@@ -613,8 +619,8 @@ public class VodController extends BaseController {
     };
     
     private void showLockView() {
-        if (previewMode || getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-            if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) isLock = false;
+        // 详情页内嵌预览区域很小，锁定没有意义，也会挡住控制条
+        if (previewMode) {
             mHandler.removeCallbacks(lockRunnable);
             if (mLockView != null) {
                 mLockView.setVisibility(INVISIBLE);
@@ -628,6 +634,72 @@ public class VodController extends BaseController {
         }
     }
 
+    /* ==================== 锁定态触摸 ==================== */
+
+    private float lockedDownX;
+    private float lockedDownY;
+    private boolean lockedLongPressPending;
+
+    private final Runnable lockedLongPressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            lockedLongPressPending = false;
+            if (!isLock) return;
+            startSpeedBoostWhileLocked(lockedDownX, lockedDownY);
+        }
+    };
+
+    /**
+     * 锁定后普通点击 / 滑动一律吞掉（防误触），只保留长按加速与返回退出。
+     * 这里不走手势识别器，避免解锁状态下才该有的双击、滑动、单击等行为一起被放开。
+     */
+    private void handleLockedTouch(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                lockedDownX = event.getX();
+                lockedDownY = event.getY();
+                lockedLongPressPending = true;
+                mHandler.removeCallbacks(lockedLongPressRunnable);
+                mHandler.postDelayed(lockedLongPressRunnable, ViewConfiguration.getLongPressTimeout());
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (speedBoostActive) {
+                    handleSpeedLockSwipe(event);
+                    updateSpeedBoost(event.getY());
+                } else if (lockedLongPressPending) {
+                    int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                    if (Math.abs(event.getX() - lockedDownX) > slop
+                            || Math.abs(event.getY() - lockedDownY) > slop) {
+                        lockedLongPressPending = false;
+                        mHandler.removeCallbacks(lockedLongPressRunnable);
+                    }
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                mHandler.removeCallbacks(lockedLongPressRunnable);
+                lockedLongPressPending = false;
+                if (speedBoostActive) {
+                    exitSpeedBoost();
+                } else {
+                    // 轻点一下唤出锁图标，方便解除锁定
+                    showLockView();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** 锁定状态下的长按加速：受「锁定时可加速」开关控制 */
+    private void startSpeedBoostWhileLocked(float x, float y) {
+        if (!Hawk.get(HawkConfig.GESTURE_SPEED_BOOST, true)) return;
+        if (!Hawk.get(HawkConfig.GESTURE_SPEED_BOOST_LOCKED, true)) return;
+        if (videoPlayState == VideoView.STATE_PAUSED) return;
+        if (!isInPlaybackState()) return;
+        enterSpeedBoost(x, y);
+    }
+
     public void setPreviewMode(boolean previewMode) {
         this.previewMode = previewMode;
         mHandler.removeCallbacks(lockRunnable);
@@ -635,6 +707,7 @@ public class VodController extends BaseController {
             mLockView.setVisibility(INVISIBLE);
         }
         updateFullScreenIcon(!previewMode);
+        applyControlBarMode();
     }
 
     @Override
@@ -693,6 +766,11 @@ public class VodController extends BaseController {
         mPlayPauseBtn = findViewById(R.id.btn_play_pause);
         mPlayPauseIcon = findViewById(R.id.iv_play_pause);
         mDanmuBtn = findViewById(R.id.btn_danmu);
+        mRowPrimary = findViewById(R.id.bottom_row_primary);
+        mProgressRow = findViewById(R.id.bottom_progress_row);
+        mBottomSpacer = findViewById(R.id.bottom_spacer);
+        mPortraitBtn = findViewById(R.id.btn_portrait);
+        mPortraitLabel = findViewById(R.id.tv_portrait);
         mFullScreenBtn = findViewById(R.id.btn_fullscreen);
         mFullScreenIcon = findViewById(R.id.iv_fullscreen);
         mMenuBtn = findViewById(R.id.iv_player_menu);
@@ -750,12 +828,13 @@ public class VodController extends BaseController {
                 if (previewMode) {
                     return false;
                 }
-                if (isLock) {
-                    if (event.getAction() == MotionEvent.ACTION_UP) {
-                        showLockView();
-                    }
+                if (!isLock) {
+                    // 未锁定：不消费，事件继续冒泡给手势识别器
+                    return false;
                 }
-                return isLock;
+                // 已锁定：吞掉全部点击与滑动防误触，只放行长按加速这一条通道
+                handleLockedTouch(event);
+                return true;
             }
         });
 
@@ -1511,7 +1590,7 @@ public class VodController extends BaseController {
         if (mTotalTime != null) mTotalTime.setVisibility(VISIBLE);
         if (isPortrait) {
             if (backBtn != null) backBtn.setVisibility(INVISIBLE);
-            if (mLockView != null) mLockView.setVisibility(INVISIBLE);
+            // 锁定按钮的显隐统一交给 showLockView()，竖屏同样支持锁定
         }
         updatePortraitMenu(isPortrait);
 
@@ -1595,6 +1674,15 @@ public class VodController extends BaseController {
                 }
             });
         }
+        if (mPortraitBtn != null) {
+            mPortraitBtn.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    togglePortraitFullScreen();
+                }
+            });
+        }
         if (mMenuBtn != null) {
             mMenuBtn.setOnClickListener(new OnClickListener() {
                 @Override
@@ -1604,13 +1692,89 @@ public class VodController extends BaseController {
                 }
             });
         }
+        applyControlBarMode();
         updateFullScreenIcon(isPlayerFullScreen());
     }
 
-    /** 切换全屏：非全屏 → 横屏铺满；全屏 → 退出全屏回到详情页 */
+    /**
+     * 按当前屏幕方向重排底部控制条（只有一套控件，避免两份 seekBar 各记一套状态）：
+     * 竖屏 → [播放] [进度条] [竖屏] [全屏] 单行；
+     * 横屏 → 进度条独立成行，按钮行 = 左组[播放 下一集 弹] + 中缝空白 + 右组[倍速]。
+     */
+    private void applyControlBarMode() {
+        if (mBottomRoot == null || mRowPrimary == null || mProgressRow == null) return;
+        boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        boolean tv = ScreenUtils.isTv(getContext());
+
+        if (portrait) {
+            if (mProgressRow.getParent() != mRowPrimary) {
+                ViewGroup parent = (ViewGroup) mProgressRow.getParent();
+                if (parent != null) parent.removeView(mProgressRow);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+                mRowPrimary.addView(mProgressRow, 1, lp);
+            }
+            if (mPortraitLabel != null) {
+                mPortraitLabel.setText(isPortraitFullScreen() ? "退出" : "竖屏");
+            }
+        } else {
+            if (mProgressRow.getParent() != mBottomRoot) {
+                ViewGroup parent = (ViewGroup) mProgressRow.getParent();
+                if (parent != null) parent.removeView(mProgressRow);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.bottomMargin = dp(2);
+                mBottomRoot.addView(mProgressRow, 0, lp);
+            }
+        }
+
+        // 竖屏只留「播放 / 进度条 / 竖屏 / 全屏」；横屏留「播放 / 下一集 / 弹幕 / 倍速」
+        if (mNextBtn != null) mNextBtn.setVisibility(portrait ? GONE : VISIBLE);
+        if (mDanmuBtn != null) mDanmuBtn.setVisibility(portrait ? GONE : VISIBLE);
+        if (mBottomSpacer != null) mBottomSpacer.setVisibility(portrait ? GONE : VISIBLE);
+        if (mPlayerSpeedBtn != null) mPlayerSpeedBtn.setVisibility(portrait ? GONE : VISIBLE);
+        if (mPortraitBtn != null) mPortraitBtn.setVisibility(portrait ? VISIBLE : GONE);
+        // 横屏全屏下退出全屏靠左上角返回键；TV 的返回键是隐藏的，必须保留全屏键
+        if (mFullScreenBtn != null) mFullScreenBtn.setVisibility(portrait || tv ? VISIBLE : GONE);
+    }
+
+    /** 当前是否处于「竖屏满屏」状态（短剧播放模式） */
+    public boolean isPortraitFullScreen() {
+        return isPlayerFullScreen()
+                && getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+    }
+
+    /**
+     * 竖屏按钮：铺满整屏但保持竖屏（短剧场景），再点一次退回详情页内嵌预览。
+     * 与全屏按钮的区别只在锁定的屏幕方向。
+     */
+    private void togglePortraitFullScreen() {
+        if (mActivity == null) return;
+        if (isPortraitFullScreen()) {
+            if (listener != null) {
+                listener.exitFullScreen();
+            }
+            mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        } else {
+            if (listener != null) {
+                listener.enterFullScreen();
+            }
+            mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        }
+        mRowPrimary.post(new Runnable() {
+            @Override
+            public void run() {
+                applyControlBarMode();
+                updateFullScreenIcon(isPlayerFullScreen());
+            }
+        });
+    }
+
+    /** 切换全屏：非全屏（含竖屏满屏）→ 横屏铺满；横屏全屏 → 退出全屏回到详情页 */
     private void togglePlayerFullScreen() {
         if (mActivity == null) return;
-        if (isPlayerFullScreen()) {
+        boolean landscape = getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT;
+        if (isPlayerFullScreen() && landscape) {
             if (listener != null) {
                 listener.exitFullScreen();
             } else {
@@ -1623,11 +1787,18 @@ public class VodController extends BaseController {
             mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         }
         updateFullScreenIcon(isPlayerFullScreen());
+        applyControlBarMode();
     }
 
+    /**
+     * 全屏键的图标语义是「点下去会发生什么」：
+     * 竖屏时点它一定是转横屏，所以始终画「进入全屏」；
+     * 只有横屏且已铺满时，才画「退出全屏」。
+     */
     private void updateFullScreenIcon(boolean fullscreen) {
         if (mFullScreenIcon == null) return;
-        mFullScreenIcon.setImageResource(fullscreen
+        boolean landscape = getResources().getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT;
+        mFullScreenIcon.setImageResource(fullscreen && landscape
                 ? R.drawable.ic_player_exit_fullscreen
                 : R.drawable.ic_player_fullscreen);
     }
@@ -1798,7 +1969,11 @@ public class VodController extends BaseController {
 
     private void updateDanmuSwitch(boolean opened) {
         if (mDanmuBtn == null) return;
-        mDanmuBtn.setText(opened ? "弹幕开" : "弹幕关");
+        // 一个带「弹」字的开关：开启时描边高亮，关闭时压暗
+        mDanmuBtn.setText("弹");
+        mDanmuBtn.setBackgroundResource(opened
+                ? R.drawable.bg_player_switch_on
+                : R.drawable.bg_player_switch_off);
         mDanmuBtn.setTextColor(opened ? getResources().getColor(R.color.color_02F8E1) : 0x99FFFFFF);
     }
 
@@ -1995,6 +2170,7 @@ public class VodController extends BaseController {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         initLandscapePortraitBtnInfo();
+        applyControlBarMode();
         updateFullScreenIcon(isPlayerFullScreen());
     }
 

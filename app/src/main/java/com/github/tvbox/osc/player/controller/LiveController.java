@@ -41,6 +41,9 @@ public class LiveController extends BaseController {
 
         void longPress();
 
+        /** 双击画面：竖屏进全屏、全屏退回来 */
+        void doubleTap();
+
         void playStateChanged(int playState);
 
         void changeSource(int direction);
@@ -57,6 +60,12 @@ public class LiveController extends BaseController {
         if (listener.singleTap())
             return true;
         return super.onSingleTapConfirmed(e);
+    }
+
+    @Override
+    public boolean onDoubleTap(MotionEvent e) {
+        listener.doubleTap();
+        return true;
     }
 
     @Override

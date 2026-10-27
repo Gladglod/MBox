@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 短剧源胶囊：选中。描边 + 浅强调底色，不靠颜色深浅单独承担「选中」这一信息 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/ui_accent_soft" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/ui_accent" />
+    <corners android:radius="16dp" />
+</shape>

@@ -205,6 +205,65 @@
                 android:layout_marginLeft="@dimen/vs_5"
                 android:layout_marginTop="@dimen/vs_16"
                 android:layout_marginBottom="@dimen/vs_5"
+                android:text="短剧"
+                android:textColor="@color/ui_muted"
+                android:textSize="@dimen/ts_16" />
+
+            <LinearLayout
+                android:id="@+id/rowDramaSource"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_phone_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/vs_140"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/vs_12"
+                android:paddingLeft="@dimen/vs_12"
+                android:paddingTop="@dimen/vs_10"
+                android:paddingEnd="@dimen/vs_12"
+                android:paddingRight="@dimen/vs_12"
+                android:paddingBottom="@dimen/vs_10">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/short_drama_entry_title"
+                        android:textColor="@color/ui_text_primary"
+                        android:textSize="@dimen/ts_18" />
+
+                    <TextView
+                        android:id="@+id/tvDramaSourceValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/short_drama_entry_none"
+                        android:textColor="@color/ui_muted"
+                        android:textSize="@dimen/ts_14" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginStart="@dimen/vs_8"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_chevron_right"
+                    android:tint="@color/ui_muted" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="@dimen/vs_5"
+                android:layout_marginTop="@dimen/vs_16"
+                android:layout_marginBottom="@dimen/vs_5"
                 android:text="扫码导入"
                 android:textColor="@color/ui_muted"
                 android:textSize="@dimen/ts_16" />

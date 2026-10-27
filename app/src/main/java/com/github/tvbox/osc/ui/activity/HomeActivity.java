@@ -51,7 +51,7 @@ import com.github.tvbox.osc.ui.adapter.SelectDialogAdapter;
 import com.github.tvbox.osc.ui.adapter.SortAdapter;
 import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.TipDialog;
-import com.github.tvbox.osc.ui.fragment.CategoryFragment;
+import com.github.tvbox.osc.ui.fragment.ShortDramaFragment;
 import com.github.tvbox.osc.ui.fragment.GridFragment;
 import com.github.tvbox.osc.ui.fragment.HotRecommendFragment;
 import com.github.tvbox.osc.ui.fragment.UserFragment;
@@ -79,7 +79,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public class HomeActivity extends BaseActivity implements CategoryFragment.OnCategorySelectListener {
+public class HomeActivity extends BaseActivity {
     private LinearLayout topLayout;
     private View searchBar;
     private TextView tvMenu;
@@ -87,8 +87,8 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     private ViewPager mViewPager;
     private View homeContent;
     private View flFragment;
-    private ImageView ivNavHome, ivNavCategory, ivNavLive, ivNavMine;
-    private TextView tvNavHome, tvNavCategory, tvNavLive, tvNavMine;
+    private ImageView ivNavHome, ivNavDrama, ivNavLive, ivNavMine;
+    private TextView tvNavHome, tvNavDrama, tvNavLive, tvNavMine;
     private int currentBottomTab = 0;
     private List<Movie.Video> lastRecList;
     private SourceViewModel sourceViewModel;
@@ -240,11 +240,11 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         this.homeContent = findViewById(R.id.homeContent);
         this.flFragment = findViewById(R.id.flFragment);
         this.ivNavHome = findViewById(R.id.ivNavHome);
-        this.ivNavCategory = findViewById(R.id.ivNavCategory);
+        this.ivNavDrama = findViewById(R.id.ivNavDrama);
         this.ivNavLive = findViewById(R.id.ivNavLive);
         this.ivNavMine = findViewById(R.id.ivNavMine);
         this.tvNavHome = findViewById(R.id.tvNavHome);
-        this.tvNavCategory = findViewById(R.id.tvNavCategory);
+        this.tvNavDrama = findViewById(R.id.tvNavDrama);
         this.tvNavLive = findViewById(R.id.tvNavLive);
         this.tvNavMine = findViewById(R.id.tvNavMine);
 
@@ -255,7 +255,7 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
                 selectBottomTab(0);
             }
         });
-        findViewById(R.id.navCategory).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.navDrama).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
@@ -280,7 +280,7 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
     }
 
     /**
-     * 底部四栏切换：0 首页 / 1 分类 / 2 直播 / 3 我的
+     * 底部四栏切换：0 首页 / 1 短剧 / 2 直播 / 3 我的
      */
     private void selectBottomTab(int tab) {
         if (tab == 2) {
@@ -299,7 +299,8 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
                 scrollPageToTop(currentSelected);
             }
         } else if (tab == 1) {
-            showSubFragment(CategoryFragment.newInstance(getCategoryList()));
+            // 短剧页自己去读配置里的短剧源，不需要首页把分类传进来
+            showSubFragment(ShortDramaFragment.newInstance());
         } else if (tab == 3) {
             showSubFragment(UserFragment.newInstance(lastRecList));
         }
@@ -348,7 +349,7 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         int on = getResources().getColor(R.color.ui_accent);
         int off = getResources().getColor(R.color.ui_text_secondary);
         applyNavState(ivNavHome, tvNavHome, selected == 0, on, off);
-        applyNavState(ivNavCategory, tvNavCategory, selected == 1, on, off);
+        applyNavState(ivNavDrama, tvNavDrama, selected == 1, on, off);
         applyNavState(ivNavLive, tvNavLive, selected == 2, on, off);
         applyNavState(ivNavMine, tvNavMine, selected == 3, on, off);
     }
@@ -385,33 +386,6 @@ public class HomeActivity extends BaseActivity implements CategoryFragment.OnCat
         });
         fLabel.setTag(animator);
         animator.start();
-    }
-
-    private ArrayList<MovieSort.SortData> getCategoryList() {
-        return new ArrayList<>(getVisibleSortData());
-    }
-
-    @Override
-    public void onCategorySelect(MovieSort.SortData sortData) {
-        if (sortData == null) {
-            return;
-        }
-        // 页 0 是「热门推荐」，分类从第 1 页开始
-        int index = -1;
-        for (int i = 0; i < pageSorts.size(); i++) {
-            MovieSort.SortData data = pageSorts.get(i);
-            if (data != null && sortData.id != null && sortData.id.equals(data.id)) {
-                index = i + 1;
-                break;
-            }
-        }
-        selectBottomTab(0);
-        if (mTabLayout != null && index >= 0) {
-            TabLayout.Tab tab = mTabLayout.getTabAt(index);
-            if (tab != null) {
-                tab.select();
-            }
-        }
     }
 
     private void initViewModel() {

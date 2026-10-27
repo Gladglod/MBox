@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  直播分类 / 频道 chip 的底色。
+  未选中：和「选集」一致的小胶囊（ui_chip_bg + 1dp 描边）；
+  选中 / 聚焦：换成强调色描边，和剧集页的选集状态保持同一套语言。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/bg_chip_selected" android:state_focused="true" />
+    <item android:drawable="@drawable/bg_chip_selected" android:state_selected="true" />
+    <item android:drawable="@drawable/bg_chip" />
+</selector>

@@ -49,11 +49,12 @@ public class LiveEpgAdapter extends BaseQuickAdapter<Epginfo, BaseViewHolder> {
         timeview.setSelected(true);
         wqddg_AudioWaveView.setVisibility(View.GONE);
         if (value.index == selectedEpgIndex && value.index != focusedEpgIndex && (value.currentEpgDate.equals(shiyiDate) || value.currentEpgDate.equals(timeFormat.format(new Date())))) {
-            textview.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
-            timeview.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
+            textview.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
+            timeview.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
         }else {
-            textview.setTextColor(Color.WHITE);
-            timeview.setTextColor(Color.WHITE);
+            // 节目单现在铺在白色面板上，写死白字等于看不见
+            textview.setTextColor(mContext.getResources().getColor(R.color.ui_text_primary));
+            timeview.setTextColor(mContext.getResources().getColor(R.color.ui_text_secondary));
         }
         if (new Date().compareTo(value.startdateTime) >= 0 && new Date().compareTo(value.enddateTime) <= 0) {
             shiyi.setVisibility(View.VISIBLE);

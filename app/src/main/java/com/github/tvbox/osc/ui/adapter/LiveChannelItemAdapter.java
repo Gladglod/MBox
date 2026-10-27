@@ -1,6 +1,5 @@
 package com.github.tvbox.osc.ui.adapter;
 
-import android.graphics.Color;
 import android.widget.TextView;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
@@ -11,36 +10,28 @@ import com.github.tvbox.osc.bean.LiveChannelItem;
 import java.util.ArrayList;
 
 /**
- * @author pj567
- * @date :2021/1/12
- * @description:
+ * 直播频道（网格 chip，按「选集」的观感做）。
+ *
+ * <p>频道号以前占一格、名字占另一格，竖排窄列表里还行，铺成网格之后纯属浪费宽度，
+ * 现在只在 chip 里显示频道名；频道号在切台提示和底部信息条里仍然看得到。</p>
  */
 public class LiveChannelItemAdapter extends BaseQuickAdapter<LiveChannelItem, BaseViewHolder> {
     private int selectedChannelIndex = -1;
     private int focusedChannelIndex = -1;
 
     public LiveChannelItemAdapter() {
-        super(R.layout.item_live_channel, new ArrayList<>());
+        super(R.layout.item_live_channel_chip, new ArrayList<>());
     }
 
     @Override
     protected void convert(BaseViewHolder holder, LiveChannelItem item) {
-        TextView tvChannelNum = holder.getView(R.id.tvChannelNum);
         TextView tvChannel = holder.getView(R.id.tvChannelName);
-        tvChannelNum.setText(String.format("%s", item.getChannelNum()));
         tvChannel.setText(item.getChannelName());
-        tvChannelNum.setSelected(true);
-        tvChannel.setSelected(true);
         int channelIndex = item.getChannelIndex();
-        holder.itemView.setSelected(channelIndex == selectedChannelIndex);
-        if (channelIndex == selectedChannelIndex && channelIndex != focusedChannelIndex) {
-            tvChannelNum.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
-            tvChannel.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
-        }
-        else{
-            tvChannelNum.setTextColor(Color.WHITE);
-            tvChannel.setTextColor(Color.WHITE);
-        }
+        boolean selected = channelIndex == selectedChannelIndex;
+        holder.itemView.setSelected(selected);
+        tvChannel.setTextColor(mContext.getResources().getColor(
+                selected ? R.color.ui_accent : R.color.ui_text_primary));
     }
 
     public void setSelectedChannelIndex(int selectedChannelIndex) {

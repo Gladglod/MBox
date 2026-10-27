@@ -6,9 +6,49 @@
     <string name="search_hint">搜索影片</string>
     <string name="action_search">搜索影片</string>
     <string name="nav_home">首页</string>
-    <string name="nav_category">分类</string>
+    <string name="nav_short_drama">短剧</string>
     <string name="nav_live">直播</string>
     <string name="nav_mine">我的</string>
+
+    <!-- 短剧页 -->
+    <string name="short_drama_title">短剧</string>
+    <string name="short_drama_manage">管理</string>
+    <string name="short_drama_status">共 %1$d 个短剧源</string>
+    <string name="short_drama_scanning">正在识别短剧源 %1$d/%2$d</string>
+    <string name="short_drama_scan_partial">还有 %1$d 个站点没扫，点「重新识别」继续</string>
+    <string name="short_drama_empty_title">还没有短剧源</string>
+    <string name="short_drama_scanning_title">正在识别短剧源…</string>
+    <string name="short_drama_scanning_desc">会从当前配置的各站点里找「短剧 / 竖屏 / 迷你剧」分类，找到就自动加载</string>
+    <string name="short_drama_empty_desc">去「我的 → 数据源地址 → 短剧源」自动识别或手动添加</string>
+    <string name="short_drama_empty_add">去添加</string>
+    <string name="short_drama_empty_rescan">重新识别</string>
+    <string name="short_drama_content_empty">这个短剧源暂时没有内容</string>
+    <string name="short_drama_content_empty_action">换个源</string>
+    <string name="short_drama_load_more_end">没有更多了</string>
+    <!-- 短剧源设置页 -->
+    <string name="short_drama_source_title">短剧源</string>
+    <string name="short_drama_source_done">完成</string>
+    <string name="short_drama_source_tip">自动识别点播配置里含「短剧 / 竖屏 / 迷你剧」的分类，也可以手动指定。勾选决定它是否出现在首页「短剧」页。</string>
+    <string name="short_drama_source_rescan">重新识别</string>
+    <string name="short_drama_source_add">手动添加</string>
+    <string name="short_drama_source_empty">还没有短剧源，点「重新识别」扫描当前配置里的站点</string>
+    <string name="short_drama_source_scanned">已扫描 %1$d 个站点</string>
+    <string name="short_drama_source_pick_site">选择站点</string>
+    <string name="short_drama_source_pick_category">选择分类</string>
+    <string name="short_drama_source_loading">正在读取分类…</string>
+    <string name="short_drama_source_failed">没读到这个站点的分类</string>
+    <string name="short_drama_source_remove">移除这个短剧源</string>
+    <string name="short_drama_source_removed">已移除</string>
+    <string name="short_drama_entry_title">短剧源</string>
+    <string name="short_drama_entry_value">已识别 %1$d 个，点进去管理</string>
+    <string name="short_drama_entry_none">自动识别配置里的短剧分类，也可以手动添加</string>
+    <string name="short_drama_source_manual_tag">手动添加</string>
+    <string name="short_drama_source_dead_tag">站点已移除</string>
+    <string name="short_drama_source_added">已添加「%1$s」</string>
+    <string name="short_drama_source_exists">这个分类已经在列表里了</string>
+    <string name="short_drama_source_no_site">当前配置里没有可选的站点</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_confirm">确定</string>
 
     <!-- 首页空状态 -->
     <string name="home_rec_empty">这个数据源没有推荐内容</string>

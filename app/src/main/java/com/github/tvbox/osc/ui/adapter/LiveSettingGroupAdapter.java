@@ -32,9 +32,10 @@ public class LiveSettingGroupAdapter extends BaseQuickAdapter<LiveSettingGroup, 
         int groupIndex = group.getGroupIndex();
         holder.itemView.setSelected(groupIndex == selectedGroupIndex);
         if (groupIndex == selectedGroupIndex && groupIndex != focusedGroupIndex) {
-            tvGroupName.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
+            tvGroupName.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
         } else {
-            tvGroupName.setTextColor(Color.WHITE);
+            // 抽屉底改成主题色之后，写死白字在日间模式下等于看不见
+            tvGroupName.setTextColor(mContext.getResources().getColor(R.color.ui_text_primary));
         }
     }
 

@@ -7,7 +7,7 @@
     android:layout_marginRight="2dp"
     android:layout_marginBottom="2dp"
     android:layout_gravity="center"
-    android:background="@drawable/shape_live_focus"
+    android:background="@drawable/bg_panel_item"
     android:focusable="true"
     android:focusableInTouchMode="false"
     android:orientation="horizontal">
@@ -23,6 +23,6 @@
         android:paddingLeft="4dp"
         android:paddingRight="4dp"
         android:singleLine="true"
-        android:textColor="@android:color/white"
+        android:textColor="@color/ui_text_primary"
         android:textSize="12sp" />
 </LinearLayout>

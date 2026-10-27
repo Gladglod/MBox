@@ -9,16 +9,21 @@ import android.animation.IntEvaluator;
 import android.animation.ObjectAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.CountDownTimer;
 import android.os.Handler;
+import android.os.Build;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -29,6 +34,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -56,6 +62,7 @@ import com.github.tvbox.osc.ui.adapter.LiveSettingItemAdapter;
 import com.github.tvbox.osc.ui.adapter.MyEpgAdapter;
 import com.github.tvbox.osc.ui.dialog.LivePasswordDialog;
 import com.github.tvbox.osc.ui.tv.widget.ViewObj;
+import com.github.tvbox.osc.ui.widget.GridSpacingItemDecoration;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.EpgUtil;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
@@ -249,6 +256,39 @@ public class LivePlayActivity extends BaseActivity {
     private int selectedChannelNumber = 0;
     private TextView tvSelectedChannel;
 
+    /* ------------------------- 单击控制层 / 横屏全屏 ------------------------- */
+    /** 单击屏幕唤出的那条控制栏（返回 / 频道信息） */
+    private View liveControlBar;
+    /** 全屏时贴在右下角的两个操作按钮（节目单 / 退出全屏） */
+    private View liveActionBar;
+    private ImageView ivLiveFullscreen;
+    private TextView tvLiveBarName;
+    private TextView tvLiveBarProgram;
+    private TextView tvCurrentProgramName;
+    private TextView tvNextProgramName;
+    /** 控制层当前是否展开 */
+    private boolean liveControlsShown = false;
+    /** 控制层自动收起时间 */
+    private static final long CONTROLS_HIDE_DELAY = 4000L;
+    /** 设置抽屉的高度（dp），横屏会按屏高收一点 */
+    private static final int PANEL_HEIGHT_SETTING_PORTRAIT = 240;
+
+    /* ------------------------- 剧集式频道面板 ------------------------- */
+    /** 竖屏时播放器所在的那块 16:9 区域，高度由代码按屏宽算 */
+    private View livePlayerBox;
+    private View liveBottomBar;
+    private ImageView ivLivePanelBack;
+    private TextView tvLivePanelName;
+    private TextView tvLivePanelProgram;
+    private View ivLiveBottomSetting;
+    private View ivLiveBottomFullscreen;
+    private ImageView ivLiveBottomFullscreenIcon;
+    private TextView tvLiveBottomFullscreenLabel;
+    /** 频道网格列数 */
+    private static final int LIVE_CHANNEL_SPAN = 3;
+    /** 全屏时点了「节目单」，退出全屏后要把节目单打开 */
+    private boolean pendingOpenEpgAfterExitFullscreen = false;
+
 
     @Override
     protected int getLayoutResID() {
@@ -294,7 +334,11 @@ public class LivePlayActivity extends BaseActivity {
         iv_back_bg = (ImageView) findViewById(R.id.iv_back_bg);
         tv_shownum = (TextView) findViewById(R.id.tv_shownum);
         txtNoEpg = (TextView) findViewById(R.id.txtNoEpg);
+        // 右上角「转圈图标 + 频道名」的加载提示已从布局里删除，
+        // 这里给个游离的空 view 兜底，免得下面那些老代码 setVisibility 时空指针
         ll_right_top_loading = findViewById(R.id.ll_right_top_loading);
+        if (ll_right_top_loading == null) ll_right_top_loading = new View(this);
+        if (tv_right_top_channel_name == null) tv_right_top_channel_name = new TextView(this);
         ll_right_top_huikan = findViewById(R.id.ll_right_top_huikan);
         divLoadEpg = (View) findViewById(R.id.divLoadEpg);
         divLoadEpgDivider = findViewById(R.id.divLoadEpgDivider);
@@ -332,13 +376,20 @@ public class LivePlayActivity extends BaseActivity {
 
         tvSelectedChannel = findViewById(R.id.tv_selected_channel);
 
+        tvCurrentProgramName = findViewById(R.id.tv_current_program_name);
+        tvNextProgramName = findViewById(R.id.tv_next_program_name);
+        bindLiveControlBar();
+        bindLiveChannelPanel();
+        // 播放器 16:9 的尺寸要等面板那边的 view 都拿到之后再算一遍
+        applyOrientationUi(false);
+
         if(show){
             backcontroller.setVisibility(View.VISIBLE);
-            ll_epg.setVisibility(View.GONE);
+            setBottomEpgBarVisible(false);
 
         }else{
             backcontroller.setVisibility(View.GONE);
-            ll_epg.setVisibility(View.VISIBLE);
+            setBottomEpgBarVisible(true);
         }
 
 
@@ -518,8 +569,9 @@ public class LivePlayActivity extends BaseActivity {
             txtNoEpg.setVisibility(View.GONE);
             mRightEpgList.setVisibility(View.GONE);
             divEpg.setVisibility(View.GONE);
-            divLoadEpg.setVisibility(View.GONE);
-            divLoadEpgDivider.setVisibility(View.GONE);
+            // 没有节目单时按钮也要留着 —— 底部操作栏缺一块比按钮点了没反应更难看
+            divLoadEpg.setVisibility(View.VISIBLE);
+            divLoadEpgDivider.setVisibility(View.VISIBLE);
             divLoadEpgleft.setVisibility(View.GONE);
             mChannelGroupView.setVisibility(View.VISIBLE);
         }
@@ -1001,8 +1053,10 @@ public class LivePlayActivity extends BaseActivity {
         if (channel_Name.getChannelName() != null) {
             tip_chname.setText(channel_Name.getChannelName());
             tv_channelnum.setText("" + channel_Name.getChannelNum());
-            TextView tv_current_program_name = findViewById(R.id.tv_current_program_name);
-            TextView tv_next_program_name = findViewById(R.id.tv_next_program_name);
+            TextView tv_current_program_name = tvCurrentProgramName != null
+                    ? tvCurrentProgramName : (TextView) findViewById(R.id.tv_current_program_name);
+            TextView tv_next_program_name = tvNextProgramName != null
+                    ? tvNextProgramName : (TextView) findViewById(R.id.tv_next_program_name);
             setDefaultBottomEpg(tv_current_program_name, tv_next_program_name);
             String savedEpgKey = channel_Name.getChannelName() + "_" + Objects.requireNonNull(liveEpgDateAdapter.getItem(liveEpgDateAdapter.getSelectedIndex())).getDatePresented();
 
@@ -1047,14 +1101,14 @@ public class LivePlayActivity extends BaseActivity {
             if(!tip_epg1.getText().equals("暂无信息")){
                 ll_right_top_loading.setVisibility(View.VISIBLE);
                 updateTopStatusVisibility();
-                ll_epg.setVisibility(View.VISIBLE);
+                setBottomEpgBarVisible(true);
                 countDownTimer = new CountDownTimer(postTimeout, 1000) {//底部epg隐藏时间设定
                     public void onTick(long j) {
                     }
                     public void onFinish() {
                         ll_right_top_loading.setVisibility(View.GONE);
                         ll_right_top_huikan.setVisibility(View.GONE);
-                        ll_epg.setVisibility(View.GONE);
+                        setBottomEpgBarVisible(false);
                         updateTopStatusVisibility();
                     }
                 };
@@ -1062,7 +1116,7 @@ public class LivePlayActivity extends BaseActivity {
             }else {
                 ll_right_top_loading.setVisibility(View.GONE);
                 ll_right_top_huikan.setVisibility(View.GONE);
-                ll_epg.setVisibility(View.GONE);
+                setBottomEpgBarVisible(false);
                 updateTopStatusVisibility();
             }
             if (channel_Name == null || channel_Name.getSourceNum() <= 0) {
@@ -1072,6 +1126,8 @@ public class LivePlayActivity extends BaseActivity {
             }
             tv_right_top_channel_name.setText(channel_Name.getChannelName());
             tv_right_top_epg_name.setText(channel_Name.getChannelName());
+            // 面板头部常显，不管控制层开没开都要同步
+            syncLiveControlText();
         }
     }
 
@@ -1151,13 +1207,13 @@ public class LivePlayActivity extends BaseActivity {
     //频道列表
     @SuppressLint("NotifyDataSetChanged")
     public  void divLoadEpgRight(View view) {
-        if (epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
+        if (epgListAdapter == null || epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
             updateEpgPanelState(false);
+            Toast.makeText(App.getInstance(), "当前频道暂无节目信息", Toast.LENGTH_SHORT).show();
             return;
         }
-        mHandler.removeCallbacks(mHideChannelListRun);
-        mHandler.postDelayed(mHideChannelListRun, postTimeout);
         mChannelGroupView.setVisibility(View.GONE);
+        mLiveChannelView.setVisibility(View.GONE);
         divEpg.setVisibility(View.VISIBLE);
         mRightEpgList.setVisibility(View.VISIBLE);
         divLoadEpgleft.setVisibility(View.VISIBLE);
@@ -1173,9 +1229,8 @@ public class LivePlayActivity extends BaseActivity {
     }
     //频道列表
     public  void divLoadEpgLeft(View view) {
-        mHandler.removeCallbacks(mHideChannelListRun);
-        mHandler.postDelayed(mHideChannelListRun, postTimeout);
         mChannelGroupView.setVisibility(View.VISIBLE);
+        mLiveChannelView.setVisibility(View.VISIBLE);
         divEpg.setVisibility(View.GONE);
         divLoadEpgleft.setVisibility(View.GONE);
         divLoadEpg.setVisibility(View.VISIBLE);
@@ -1185,18 +1240,21 @@ public class LivePlayActivity extends BaseActivity {
 
     @Override
     public void onBackPressed() {
-        if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
-            mHandler.removeCallbacks(mHideChannelListRun);
-            mHandler.post(mHideChannelListRun);
-        } else if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
+        if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
             mHandler.removeCallbacks(mHideSettingLayoutRun);
             mHandler.post(mHideSettingLayoutRun);
-        } else if( backcontroller.getVisibility() == View.VISIBLE){ //
+        } else if (divEpg.getVisibility() == View.VISIBLE) {
+            // 正在看节目单，先退回频道列表
+            divLoadEpgLeft(null);
+        } else if (isLandscapeNow()) {
+            // 横屏全屏时返回键先退出全屏，而不是直接退出直播
+            exitFullscreen();
+        } else if (backcontroller.getVisibility() == View.VISIBLE) { //
             backcontroller.setVisibility(View.GONE);
-        }else if(isBack){
-            isBack= false;
+        } else if (isBack) {
+            isBack = false;
             playPreSource();
-        }else {
+        } else {
             mHandler.removeCallbacks(mConnectTimeoutChangeSourceRun);
             mHandler.removeCallbacks(mUpdateNetSpeedRun);
             exitingLivePlay = true;
@@ -1250,21 +1308,14 @@ public class LivePlayActivity extends BaseActivity {
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
-                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && isFocusInView(mChannelGroupView)) {
-                    focusChannelFromSelectedGroup();
-                    return true;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && isFocusInView(mLiveChannelView)) {
-                    divLoadEpgRight(null);
-                    return true;
-                }
+            // 节目单页才需要左右键在两个列表之间来回切；频道网格交给 RecyclerView 自己走焦点
+            if (divEpg.getVisibility() == View.VISIBLE) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && isFocusInView(mRightEpgList)) {
                     divLoadEpgLeft(null);
                     return true;
                 }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && !isFocusInView(mLiveChannelView) && !isFocusInView(mRightEpgList)) {
-                    focusCurrentGroupInMenu();
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && isFocusInView(mEpgDateGridView)) {
+                    divLoadEpgLeft(null);
                     return true;
                 }
             }
@@ -1316,7 +1367,7 @@ public class LivePlayActivity extends BaseActivity {
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             if (!isListOrSettingLayoutVisible()) {
                 if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) && event.getRepeatCount() == 0) {
-                    showChannelList();
+                    toggleLiveControls();
                 }
             }
         }
@@ -1355,6 +1406,10 @@ public class LivePlayActivity extends BaseActivity {
         if (mVideoView != null) {
             mVideoView.resume();
         }
+        // 从后台回来时横屏的系统栏可能又冒出来了，重新让一次位
+        if (isLandscapeNow()) {
+            hideSystemBarsForFullscreen();
+        }
     }
 
 
@@ -1378,6 +1433,7 @@ public class LivePlayActivity extends BaseActivity {
         mHandler.removeCallbacks(mLoadEpgRun);
         mHandler.removeCallbacks(mUpdateResolutionInfoRun);
         mHandler.removeCallbacks(mHideResolutionInfoRun);
+        mHandler.removeCallbacks(mHideControlsRun);
         // 清掉静态的频道引用，避免下次进入直播页时用到上一次的残留状态（空指针闪退）
         channel_Name = null;
         currentLiveChannelItem = null;
@@ -1387,31 +1443,395 @@ public class LivePlayActivity extends BaseActivity {
         }
     }
 
-    private void showChannelList() {
+    /* ==================== 单击控制层 / 横屏全屏 ==================== */
+
+    private void bindLiveControlBar() {
+        liveControlBar = findViewById(R.id.liveControlBar);
+        liveActionBar = findViewById(R.id.liveActionBar);
+        ivLiveFullscreen = findViewById(R.id.ivLiveFullscreen);
+        tvLiveBarName = findViewById(R.id.tvLiveBarName);
+        tvLiveBarProgram = findViewById(R.id.tvLiveBarProgram);
+
+        View back = findViewById(R.id.ivLiveBack);
+        if (back != null) {
+            back.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    if (isLandscapeNow()) {
+                        exitFullscreen();
+                    } else {
+                        onBackPressed();
+                    }
+                }
+            });
+        }
+        View channelListBtn = findViewById(R.id.ivLiveChannelList);
+        if (channelListBtn != null) {
+            channelListBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    hideLiveControls();
+                    // 频道面板已经常驻，这个按钮改成切「节目单」
+                    showChannelList();
+                }
+            });
+        }
+        if (ivLiveFullscreen != null) {
+            ivLiveFullscreen.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    toggleFullscreen();
+                }
+            });
+        }
+        applyOrientationUi(false);
+    }
+
+    /** 下方常驻面板：返回、频道信息、底部操作栏 */
+    private void bindLiveChannelPanel() {
+        livePlayerBox = findViewById(R.id.livePlayerBox);
+        liveBottomBar = findViewById(R.id.liveBottomBar);
+        ivLivePanelBack = findViewById(R.id.ivLivePanelBack);
+        tvLivePanelName = findViewById(R.id.tvLivePanelName);
+        tvLivePanelProgram = findViewById(R.id.tvLivePanelProgram);
+        ivLiveBottomSetting = findViewById(R.id.ivLiveBottomSetting);
+        ivLiveBottomFullscreen = findViewById(R.id.ivLiveBottomFullscreen);
+        ivLiveBottomFullscreenIcon = findViewById(R.id.ivLiveBottomFullscreenIcon);
+        tvLiveBottomFullscreenLabel = findViewById(R.id.tvLiveBottomFullscreenLabel);
+
+        if (ivLivePanelBack != null) {
+            ivLivePanelBack.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    onBackPressed();
+                }
+            });
+        }
+        if (ivLiveBottomSetting != null) {
+            ivLiveBottomSetting.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    showSettingGroup();
+                }
+            });
+        }
+        if (ivLiveBottomFullscreen != null) {
+            ivLiveBottomFullscreen.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    toggleFullscreen();
+                }
+            });
+        }
+    }
+
+    private boolean isLandscapeNow() {
+        return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
+    /**
+     * 播放器底部那条「频道名 + 当前节目」的半透明信息条。
+     *
+     * <p>它本质上是一层压住画面的遮罩：竖屏时播放器小、信息又有用，留着；
+     * 全屏时它会一直盖住画面底部，而且点屏幕也关不掉，所以横屏一律不显示 ——
+     * 全屏要看的频道信息在顶部控制条里已经有了。</p>
+     */
+    private void setBottomEpgBarVisible(boolean visible) {
+        if (ll_epg == null) return;
+        ll_epg.setVisibility(visible && !isLandscapeNow() ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * 单击屏幕。
+     *
+     * <p>竖屏下播放器只占上面一小块，所有操作都在下方常驻栏里，点画面不该再糊一层东西上去；
+     * 横屏全屏时单击才唤出底部控制条。</p>
+     */
+    private void toggleLiveControls() {
         if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
             mHandler.removeCallbacks(mHideSettingLayoutRun);
             mHandler.post(mHideSettingLayoutRun);
             return;
         }
-        if(liveChannelGroupList.isEmpty()) return;
-        if (tvLeftChannelListLayout.getVisibility() == View.INVISIBLE) {
-            if(currentLiveLookBackIndex>-1){
-                mRightEpgList.scrollToPosition(currentLiveLookBackIndex);
-                mRightEpgList.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        mRightEpgList.smoothScrollToPosition(currentLiveLookBackIndex);
-                    }
-                });
-            }
-            refreshChannelList(currentChannelGroupIndex);
-
-            mHandler.postDelayed(mFocusCurrentChannelAndShowChannelList, 50);
+        if (backcontroller.getVisibility() == View.VISIBLE) {
+            backcontroller.setVisibility(View.GONE);
+            return;
         }
-        else {
+        if (!isLandscapeNow()) return;
+        if (liveControlsShown) {
+            hideLiveControls();
+        } else {
+            showLiveControls();
+        }
+    }
+
+    private void showLiveControls() {
+        liveControlsShown = true;
+        syncLiveControlText();
+        if (liveControlBar != null) {
+            liveControlBar.setVisibility(View.VISIBLE);
+            liveControlBar.setAlpha(0f);
+            liveControlBar.animate().alpha(1f).setDuration(150).start();
+        }
+        if (liveActionBar != null) {
+            liveActionBar.setVisibility(View.VISIBLE);
+            liveActionBar.setAlpha(0f);
+            liveActionBar.animate().alpha(1f).setDuration(150).start();
+        }
+        // 全屏下底部那条半透明信息条会压住画面，一律不显示；信息在顶部控制条里
+        if (countDownTimer != null) countDownTimer.cancel();
+        setBottomEpgBarVisible(false);
+        updateTopStatusVisibility();
+        mHandler.removeCallbacks(mHideControlsRun);
+        mHandler.postDelayed(mHideControlsRun, CONTROLS_HIDE_DELAY);
+    }
+
+    private void hideLiveControls() {
+        liveControlsShown = false;
+        mHandler.removeCallbacks(mHideControlsRun);
+        if (liveControlBar != null) {
+            liveControlBar.animate().cancel();
+            liveControlBar.setVisibility(View.GONE);
+        }
+        if (liveActionBar != null) {
+            liveActionBar.animate().cancel();
+            liveActionBar.setVisibility(View.GONE);
+        }
+        updateTopStatusVisibility();
+    }
+
+    private final Runnable mHideControlsRun = new Runnable() {
+        @Override
+        public void run() {
+            hideLiveControls();
+        }
+    };
+
+    /** 频道名 / 当前节目：全屏控制条和下方常驻面板共用同一份数据 */
+    private void syncLiveControlText() {
+        String name = channel_Name == null ? null : channel_Name.getChannelName();
+        if (TextUtils.isEmpty(name) && tip_chname != null) {
+            name = tip_chname.getText().toString();
+        }
+        String time = tip_epg1 == null ? "" : tip_epg1.getText().toString().trim();
+        String program = tvCurrentProgramName == null ? "" : tvCurrentProgramName.getText().toString().trim();
+        boolean noProgram = TextUtils.isEmpty(program) || "暂无信息".equals(program);
+        String programText;
+        if (noProgram) {
+            programText = TextUtils.isEmpty(time) || "暂无信息".equals(time) ? "暂无节目信息" : time;
+        } else {
+            programText = TextUtils.isEmpty(time) ? program : time + "  " + program;
+        }
+        if (tvLiveBarName != null) {
+            tvLiveBarName.setText(name == null ? "" : name);
+        }
+        if (tvLiveBarProgram != null) {
+            tvLiveBarProgram.setText(programText);
+        }
+        if (tvLivePanelName != null) {
+            tvLivePanelName.setText(name == null ? "" : name);
+        }
+        if (tvLivePanelProgram != null) {
+            tvLivePanelProgram.setText(programText);
+        }
+    }
+
+    private void toggleFullscreen() {
+        if (isLandscapeNow()) {
+            exitFullscreen();
+        } else {
+            enterFullscreen();
+        }
+    }
+
+    /** 进横屏全屏：先收起底部抽屉，再转横屏（configChanges 已接管，不会重建页面） */
+    private void enterFullscreen() {
+        if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
             mHandler.removeCallbacks(mHideChannelListRun);
             mHandler.post(mHideChannelListRun);
         }
+        if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
+            mHandler.removeCallbacks(mHideSettingLayoutRun);
+            mHandler.post(mHideSettingLayoutRun);
+        }
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
+    private void exitFullscreen() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        applyOrientationUi(true);
+    }
+
+    /**
+     * 横竖屏切换后整理界面。
+     *
+     * <p>竖屏：播放器固定在 16:9 那一块，下面整块留给频道面板；
+     * 横屏：面板整个收掉，播放器撑满整屏（不重建 Activity，画面不中断）。</p>
+     *
+     * @param fromRotation 是否由旋转触发；首次进入时不弹控制层，免得一进页面就糊一层上去
+     */
+    private void applyOrientationUi(boolean fromRotation) {
+        boolean landscape = isLandscapeNow();
+        if (ivLiveFullscreen != null) {
+            ivLiveFullscreen.setImageResource(landscape
+                    ? R.drawable.ic_player_exit_fullscreen
+                    : R.drawable.ic_player_fullscreen);
+        }
+        if (ivLiveBottomFullscreenIcon != null) {
+            ivLiveBottomFullscreenIcon.setImageResource(landscape
+                    ? R.drawable.ic_player_exit_fullscreen
+                    : R.drawable.ic_player_fullscreen);
+        }
+        if (tvLiveBottomFullscreenLabel != null) {
+            tvLiveBottomFullscreenLabel.setText(landscape ? "退出全屏" : "全屏");
+        }
+        applyPlayerBoxSize(landscape);
+        if (tvLeftChannelListLayout != null) {
+            tvLeftChannelListLayout.setVisibility(landscape ? View.GONE : View.VISIBLE);
+        }
+        if (liveBottomBar != null) {
+            liveBottomBar.setVisibility(landscape ? View.GONE : View.VISIBLE);
+        }
+        resizeBottomPanels(landscape);
+        if (landscape) {
+            // 进全屏先把压在画面底部的信息条撤掉，之后单击也不会再放出来
+            setBottomEpgBarVisible(false);
+            hideSystemBarsForFullscreen();
+            if (fromRotation) showLiveControls();
+        } else {
+            restoreSystemBars();
+            hideLiveControls();
+            if (pendingOpenEpgAfterExitFullscreen) {
+                pendingOpenEpgAfterExitFullscreen = false;
+                // 等面板量好尺寸再开节目单，否则 focusCurrentEpgInMenu 会算错位置
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!isLandscapeNow()) showChannelList();
+                    }
+                }, 200);
+            }
+        }
+    }
+
+    /** 竖屏播放器 = 16:9 的一块；横屏撑满 */
+    private void applyPlayerBoxSize(boolean landscape) {
+        if (livePlayerBox == null) return;
+        ViewGroup.LayoutParams lp = livePlayerBox.getLayoutParams();
+        if (lp == null) return;
+        if (landscape) {
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+        } else {
+            int screenWidth = getResources().getDisplayMetrics().widthPixels;
+            int screenHeight = getResources().getDisplayMetrics().heightPixels;
+            int height = (int) (screenWidth * 9f / 16f + 0.5f);
+            // 屏幕特别矮（分屏、小平板）时别让播放器把面板挤没
+            lp.height = Math.min(height, (int) (screenHeight * 0.56f));
+        }
+        livePlayerBox.setLayoutParams(lp);
+    }
+
+    /** 横屏屏高小，设置抽屉按屏高收一收，避免一拉开就盖住整屏 */
+    private void resizeBottomPanels(boolean landscape) {
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int settingHeight = dp2px(PANEL_HEIGHT_SETTING_PORTRAIT);
+        if (landscape) {
+            settingHeight = Math.min(settingHeight, (int) (screenHeight * 0.62f));
+        }
+        setViewHeight(tvRightSettingLayout, settingHeight);
+    }
+
+    private void setViewHeight(View view, int heightPx) {
+        if (view == null || heightPx <= 0) return;
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null || lp.height == heightPx) return;
+        lp.height = heightPx;
+        view.setLayoutParams(lp);
+    }
+
+    private int dp2px(float dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void hideSystemBarsForFullscreen() {
+        Window window = getWindow();
+        if (window == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.setStatusBarColor(Color.TRANSPARENT);
+            window.setNavigationBarColor(Color.TRANSPARENT);
+        }
+        View decor = window.getDecorView();
+        int flags = decor.getSystemUiVisibility();
+        flags |= View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+        decor.setSystemUiVisibility(flags);
+    }
+
+    private void restoreSystemBars() {
+        Window window = getWindow();
+        if (window == null) return;
+        View decor = window.getDecorView();
+        int flags = decor.getSystemUiVisibility();
+        flags &= ~(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        decor.setSystemUiVisibility(flags);
+        com.github.tvbox.osc.util.ThemeUtil.applySystemBars(this);
+    }
+
+    /**
+     * 频道面板是常驻的，这里实际切的是面板里的「频道 / 节目单」两页。
+     *
+     * <p>横屏时面板整个收起来了（全屏看片），点这个按钮先退回竖屏，让用户回到面板上挑。</p>
+     */
+    private void showChannelList() {
+        if (isLandscapeNow()) {
+            // 横屏是全屏，面板收起来了；退回竖屏后自动把节目单打开，一次点击到位
+            pendingOpenEpgAfterExitFullscreen = true;
+            exitFullscreen();
+            return;
+        }
+        if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
+            mHandler.removeCallbacks(mHideSettingLayoutRun);
+            mHandler.post(mHideSettingLayoutRun);
+            return;
+        }
+        if (divEpg.getVisibility() == View.VISIBLE) {
+            divLoadEpgLeft(null);
+            return;
+        }
+        if (epgListAdapter == null || epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
+            Toast.makeText(App.getInstance(), "当前频道暂无节目信息", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (currentLiveLookBackIndex > -1) {
+            mRightEpgList.scrollToPosition(currentLiveLookBackIndex);
+            mRightEpgList.post(new Runnable() {
+                @Override
+                public void run() {
+                    mRightEpgList.smoothScrollToPosition(currentLiveLookBackIndex);
+                }
+            });
+        }
+        divLoadEpgRight(null);
     }
 
     private int mLastChannelGroupIndex = -1;
@@ -1446,27 +1866,15 @@ public class LivePlayActivity extends BaseActivity {
         return true;
     }
 
+    /** 面板常驻，只需把当前频道滚到可见位置，不再做进出场动画 */
     private Runnable mFocusCurrentChannelAndShowChannelList = new Runnable() {
         @Override
         public void run() {
-            if (isRvScrolling(mChannelGroupView) || isRvScrolling(mLiveChannelView) || mChannelGroupView.isComputingLayout() || mLiveChannelView.isComputingLayout()) {
+            if (isRvScrolling(mChannelGroupView) || isRvScrolling(mLiveChannelView)
+                    || mChannelGroupView.isComputingLayout() || mLiveChannelView.isComputingLayout()) {
                 mHandler.postDelayed(this, 100);
             } else {
-                tvLeftChannelListLayout.setVisibility(View.VISIBLE);
                 focusCurrentChannelInMenu();
-                ViewObj viewObj = new ViewObj(tvLeftChannelListLayout, (ViewGroup.MarginLayoutParams) tvLeftChannelListLayout.getLayoutParams());
-                ObjectAnimator animator = ObjectAnimator.ofObject(viewObj, "marginLeft", new IntEvaluator(), -tvLeftChannelListLayout.getLayoutParams().width, 0);
-                animator.setDuration(200);
-                animator.addListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        super.onAnimationEnd(animation);
-                        focusCurrentChannelInMenu();
-                        mHandler.removeCallbacks(mHideChannelListRun);
-                        mHandler.postDelayed(mHideChannelListRun, postTimeout);
-                    }
-                });
-                animator.start();
             }
         }
     };
@@ -1575,23 +1983,16 @@ public class LivePlayActivity extends BaseActivity {
         syncCurrentEpgSelection(true);
     }
 
+    /**
+     * 频道面板改成常驻之后，「一段时间没操作就自动收起」这套逻辑要作废。
+     *
+     * <p>代码里还有不少地方会 post 它（滚动、切台、回看…），保留一个空实现最省事，
+     * 也不会再有「刚点开列表几秒后自己消失」的怪现象。</p>
+     */
     private Runnable mHideChannelListRun = new Runnable() {
         @Override
         public void run() {
-            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) tvLeftChannelListLayout.getLayoutParams();
-            if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
-                ViewObj viewObj = new ViewObj(tvLeftChannelListLayout, params);
-                ObjectAnimator animator = ObjectAnimator.ofObject(viewObj, "marginLeft", new IntEvaluator(), 0, -tvLeftChannelListLayout.getLayoutParams().width);
-                animator.setDuration(200);
-                animator.addListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        super.onAnimationEnd(animation);
-                        tvLeftChannelListLayout.setVisibility(View.INVISIBLE);
-                    }
-                });
-                animator.start();
-            }
+            // no-op：面板常驻
         }
     };
 
@@ -2199,7 +2600,7 @@ public class LivePlayActivity extends BaseActivity {
         controller.setListener(new LiveController.LiveControlListener() {
             @Override
             public boolean singleTap() {
-                showChannelList();
+                toggleLiveControls();
                 return true;
             }
 
@@ -2209,6 +2610,16 @@ public class LivePlayActivity extends BaseActivity {
                     showProgressBars(true);
                 }else{
                     showSettingGroup();
+                }
+            }
+
+            @Override
+            public void doubleTap() {
+                // 竖屏双击画面进全屏，全屏双击退回来
+                if (isLandscapeNow()) {
+                    exitFullscreen();
+                } else {
+                    enterFullscreen();
                 }
             }
 
@@ -2310,7 +2721,9 @@ public class LivePlayActivity extends BaseActivity {
 
     private void initChannelGroupView() {
         mChannelGroupView.setHasFixedSize(true);
-        mChannelGroupView.setLayoutManager(new LinearLayoutManager(this.mContext));
+        // 分类改成横向滚动的一排 chip
+        mChannelGroupView.setLayoutManager(
+                new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
 
         liveChannelGroupAdapter = new LiveChannelGroupAdapter();
         mChannelGroupView.setAdapter(liveChannelGroupAdapter);
@@ -2374,7 +2787,11 @@ public class LivePlayActivity extends BaseActivity {
 
     private void initLiveChannelView() {
         mLiveChannelView.setHasFixedSize(true);
-        mLiveChannelView.setLayoutManager(new LinearLayoutManager(this.mContext));
+        // 频道铺成网格，像「选集」那样一眼扫完
+        mLiveChannelView.setLayoutManager(new GridLayoutManager(this.mContext, LIVE_CHANNEL_SPAN));
+        if (mLiveChannelView.getItemDecorationCount() == 0) {
+            mLiveChannelView.addItemDecoration(new GridSpacingItemDecoration(dp2px(2)));
+        }
 
         liveChannelItemAdapter = new LiveChannelItemAdapter();
         mLiveChannelView.setAdapter(liveChannelItemAdapter);
@@ -2646,7 +3063,6 @@ public class LivePlayActivity extends BaseActivity {
         mHandler.removeCallbacks(mConnectTimeoutChangeSourceRun);
         mHandler.removeCallbacks(mLoadEpgRun);
         hideSwitchChannelSnapshot();
-        if (tvLeftChannelListLayout != null) tvLeftChannelListLayout.setVisibility(View.INVISIBLE);
         if (tvRightSettingLayout != null) tvRightSettingLayout.setVisibility(View.INVISIBLE);
         if (liveChannelGroupAdapter != null) {
             liveChannelGroupAdapter.clearGroupState();
@@ -2920,7 +3336,6 @@ public class LivePlayActivity extends BaseActivity {
         livePlayerManager.init(mVideoView);
         showTime();
         showNetSpeed();
-        tvLeftChannelListLayout.setVisibility(View.INVISIBLE);
         tvRightSettingLayout.setVisibility(View.INVISIBLE);
         updateTopStatusVisibility();
 
@@ -2930,8 +3345,15 @@ public class LivePlayActivity extends BaseActivity {
         selectChannelGroup(lastChannelGroupIndex, false, lastLiveChannelIndex);
     }
 
+    /**
+     * 「有面板挡在画面上」的判断。
+     *
+     * <p>频道面板现在常驻，不能再拿它当判断条件，否则遥控器上下键切台会一直失效；
+     * 这里只认真正会盖住播放器的两层：节目单页和设置抽屉。</p>
+     */
     private boolean isListOrSettingLayoutVisible() {
-        return tvLeftChannelListLayout.getVisibility() == View.VISIBLE || tvRightSettingLayout.getVisibility() == View.VISIBLE;
+        boolean epgVisible = divEpg != null && divEpg.getVisibility() == View.VISIBLE;
+        return epgVisible || tvRightSettingLayout.getVisibility() == View.VISIBLE;
     }
 
     private boolean hasCurrentLiveChannelSource() {
@@ -3092,8 +3514,9 @@ public class LivePlayActivity extends BaseActivity {
     }
 
     private boolean isTopStatusObstructed() {
+        // 右上角那个加载提示已经从布局里删掉了，不再参与判断
         return (tvRightSettingLayout != null && tvRightSettingLayout.getVisibility() == View.VISIBLE)
-                || (ll_right_top_loading != null && ll_right_top_loading.getVisibility() == View.VISIBLE)
+                || (liveControlBar != null && liveControlBar.getVisibility() == View.VISIBLE)
                 || (ll_right_top_huikan != null && ll_right_top_huikan.getVisibility() == View.VISIBLE);
     }
 
@@ -3330,13 +3753,13 @@ public class LivePlayActivity extends BaseActivity {
             ll_right_top_huikan.setVisibility(View.VISIBLE);
             updateTopStatusVisibility();
             backcontroller.setVisibility(View.VISIBLE);
-            ll_epg.setVisibility(View.GONE);
+            setBottomEpgBarVisible(false);
         }else{
             backcontroller.setVisibility(View.GONE);
             ll_right_top_huikan.setVisibility(View.GONE);
             updateTopStatusVisibility();
             if(!tip_epg1.getText().equals("暂无信息")){
-                ll_epg.setVisibility(View.VISIBLE);
+                setBottomEpgBarVisible(true);
             }
         }
 
@@ -3478,7 +3901,6 @@ public class LivePlayActivity extends BaseActivity {
             liveChannelItemAdapter.setSelectedChannelIndex(-1);
             liveChannelItemAdapter.setNewData(new ArrayList<LiveChannelItem>());
         }
-        if (tvLeftChannelListLayout != null) tvLeftChannelListLayout.setVisibility(View.INVISIBLE);
         if (tvRightSettingLayout != null) tvRightSettingLayout.setVisibility(View.INVISIBLE);
     }
 

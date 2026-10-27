@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 竖屏播放：手机竖屏轮廓 + 播放三角，与全屏的四角括号图标形成对照 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M8.4,2.6h7.2a2,2 0 0 1 2,2v14.8a2,2 0 0 1 -2,2h-7.2a2,2 0 0 1 -2,-2v-14.8a2,2 0 0 1 2,-2z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.5,9.4l4.4,2.6l-4.4,2.6z" />
+</vector>

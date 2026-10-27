@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!--
+      竖屏手机 + 播放三角 = 短剧。
+      用 evenOdd 把三角挖成镂空，而不是叠一块白色：图标在代码里会被 setColorFilter 染色，
+      叠白块在夜间会变成一块死白。
+    -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M7,2h10c1.1,0 2,0.9 2,2v16c0,1.1 -0.9,2 -2,2H7c-1.1,0 -2,-0.9 -2,-2V4c0,-1.1 0.9,-2 2,-2zM10.4,8.9v6.2l5,-3.1z" />
+</vector>

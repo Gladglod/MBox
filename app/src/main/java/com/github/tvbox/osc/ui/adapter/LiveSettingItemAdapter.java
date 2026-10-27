@@ -31,9 +31,10 @@ public class LiveSettingItemAdapter extends BaseQuickAdapter<LiveSettingItem, Ba
         int itemIndex = item.getItemIndex();
         holder.itemView.setSelected(item.isItemSelected());
         if (item.isItemSelected() && itemIndex != focusedItemIndex) {
-            tvItemName.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
+            tvItemName.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
         } else {
-            tvItemName.setTextColor(Color.WHITE);
+            // 抽屉底改成主题色之后，写死白字在日间模式下等于看不见
+            tvItemName.setTextColor(mContext.getResources().getColor(R.color.ui_text_primary));
         }
     }
 

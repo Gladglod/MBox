@@ -437,14 +437,30 @@ public class SourceViewModel extends ViewModel {
         }
     }
     // categoryContent
+    /** 首页各分类页用：读当前首页数据源 */
     public void getList(MovieSort.SortData sortData, int page) {
+        getList(ApiConfig.get().getHomeSourceBean().getKey(), sortData, page);
+    }
+
+    /**
+     * 指定数据源的分类列表。
+     *
+     * <p>「短剧」页需要读<b>非首页源</b>的内容（识别出来的短剧源可能来自配置里的任何站点），
+     * 所以这里必须能把 sourceKey 传进来，而不是靠临时切换首页源 —— 那会把整个首页一起换掉。</p>
+     */
+    public void getList(String sourceKey, MovieSort.SortData sortData, int page) {
         if (sortData == null) {
             LOG.i("echo-getList-sortData-null");
             listResult.postValue(null);
             return;
         }
-        SourceBean homeSourceBean = ApiConfig.get().getHomeSourceBean();
-        int type = homeSourceBean.getType();
+        SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
+        if (sourceBean == null) {
+            LOG.i("echo-getList-source-null--" + sourceKey);
+            listResult.postValue(null);
+            return;
+        }
+        int type = sourceBean.getType();
         if (type == 3) {
             spThreadPool.execute(new Runnable() {
                 @Override
@@ -453,26 +469,26 @@ public class SourceViewModel extends ViewModel {
                     Future<String> future = executor.submit(new Callable<String>() {
                         @Override
                         public String call() throws Exception {
-                            Spider sp = ApiConfig.get().getCSP(homeSourceBean);
+                            Spider sp = ApiConfig.get().getCSP(sourceBean);
                             return sp.categoryContent(sortData.id, page + "", true, sortData.filterSelect);
                         }
                     });
                     String json = null;
                     try {
-                        json = future.get(homeSourceBean.getPlayTimeoutSeconds(), TimeUnit.SECONDS);
+                        json = future.get(sourceBean.getPlayTimeoutSeconds(), TimeUnit.SECONDS);
 //                        LOG.i("echo-categoryContent:"+json);
                     } catch (TimeoutException e) {
-                        LOG.i("echo--getList-timeout--" + homeSourceBean.getKey());
+                        LOG.i("echo--getList-timeout--" + sourceBean.getKey());
                         e.printStackTrace();
                         future.cancel(true);
                     } catch (InterruptedException | ExecutionException e) {
                         Throwable cause = e.getCause();
-                        LOG.i("echo--getList-error--" + homeSourceBean.getKey() + "--" + e.getClass().getSimpleName() + "--" + (cause != null ? cause.getClass().getSimpleName() + ":" + cause.getMessage() : e.getMessage()));
+                        LOG.i("echo--getList-error--" + sourceBean.getKey() + "--" + e.getClass().getSimpleName() + "--" + (cause != null ? cause.getClass().getSimpleName() + ":" + cause.getMessage() : e.getMessage()));
                         e.printStackTrace();
                     } finally {
                         executor.shutdown();
                         if (json != null) {
-                            json(listResult, json,homeSourceBean.getKey());
+                            json(listResult, json,sourceBean.getKey());
                         } else {
                             listResult.postValue(null);
                         }
@@ -480,8 +496,8 @@ public class SourceViewModel extends ViewModel {
                 }
             });
         } else if (type == 0 || type == 1) {
-            OkGo.<String>get(homeSourceBean.getApi())
-                    .tag(homeSourceBean.getApi())
+            OkGo.<String>get(sourceBean.getApi())
+                    .tag(sourceBean.getApi())
                     .params("ac", type == 0 ? "videolist" : "detail")
                     .params("t", sortData.id)
                     .params("pg", page)
@@ -502,10 +518,10 @@ public class SourceViewModel extends ViewModel {
                         public void onSuccess(Response<String> response) {
                             if (type == 0) {
                                 String xml = response.body();
-                                xml(listResult, xml, homeSourceBean.getKey());
+                                xml(listResult, xml, sourceBean.getKey());
                             } else {
                                 String json = response.body();
-                                json(listResult, json, homeSourceBean.getKey());
+                                json(listResult, json, sourceBean.getKey());
                             }
                         }
 
@@ -517,7 +533,7 @@ public class SourceViewModel extends ViewModel {
                     });
         }else if (type == 4) {
             String ext= "";
-            String extend=homeSourceBean.getExt();
+            String extend=sourceBean.getExt();
             extend=getFixUrl(extend);
             if (sortData.filterSelect != null && sortData.filterSelect.size() > 0) {
                 try {
@@ -530,8 +546,8 @@ public class SourceViewModel extends ViewModel {
                 ext = Base64.encodeToString("{}".getBytes(), Base64.DEFAULT |  Base64.NO_WRAP);
             }
 
-            GetRequest<String> request = OkGo.<String>get(homeSourceBean.getApi())
-                    .tag(homeSourceBean.getApi())
+            GetRequest<String> request = OkGo.<String>get(sourceBean.getApi())
+                    .tag(sourceBean.getApi())
                     .params("ac", "detail")
                     .params("filter", "true")
                     .params("t", sortData.id)
@@ -560,7 +576,7 @@ public class SourceViewModel extends ViewModel {
                         public void onSuccess(Response<String> response) {
                             String json = response.body();
 //                            LOG.i("echo-list: " + json);
-                            json(listResult, json, homeSourceBean.getKey());
+                            json(listResult, json, sourceBean.getKey());
                         }
 
                         @Override

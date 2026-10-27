@@ -30,6 +30,7 @@ import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.adapter.SelectDialogAdapter;
 import com.github.tvbox.osc.ui.dialog.DanmuApiDialog;
+import com.github.tvbox.osc.ui.dialog.NumberInputDialog;
 import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.XWalkInitDialog;
 import com.github.tvbox.osc.util.DanmuHelper;
@@ -642,6 +643,8 @@ public class MineSettingActivity extends BaseActivity {
         header("长按加速");
         card();
         addSwitchRow("长按加速", "播放时长按屏幕进入变速，上下滑动调速", HawkConfig.GESTURE_SPEED_BOOST, true, null);
+        addSwitchRow("锁定时可加速", "控制条锁定后仍可长按加速；退出键始终不受锁定影响",
+                HawkConfig.GESTURE_SPEED_BOOST_LOCKED, true, null);
         addSelectRow("最高倍速", "长按加速可达到的最高倍速", "请选择最高倍速",
                 new String[]{"2.0X", "3.0X", "4.0X"},
                 new IntProvider() {
@@ -663,28 +666,78 @@ public class MineSettingActivity extends BaseActivity {
         header("双击");
         card();
         addSwitchRow("双击中间暂停", "关闭后中间区域双击不再暂停", HawkConfig.GESTURE_DOUBLE_TAP_PLAY, true, null);
-        addSelectRow("双击快进/快退", "左右两侧双击的快进快退秒数", "请选择快进快退秒数",
-                new String[]{"3 秒", "5 秒", "10 秒"},
-                new IntProvider() {
-                    @Override
-                    public int get() {
-                        int ms = Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 3000);
-                        if (ms <= 3000) return 0;
-                        if (ms >= 10000) return 2;
-                        return 1;
-                    }
-                },
-                new IntAction() {
-                    @Override
-                    public void run(int value) {
-                        Hawk.put(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, value == 0 ? 3000 : (value == 2 ? 10000 : 5000));
-                    }
-                });
+        addValueRow("双击快进/快退", "左右两侧双击的快进快退秒数，设为 0 即关闭", new TextProvider() {
+            @Override
+            public String get() {
+                int ms = Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 3000);
+                if (ms <= 0) return "关闭";
+                return Math.round(ms / 1000f) + " 秒";
+            }
+        }, new Action() {
+            @Override
+            public void run() {
+                pickDoubleTapSeek();
+            }
+        });
 
         header("滑动");
         card();
         addSwitchRow("竖屏上下滑切集", "竖屏播放时上下滑动切换上一集/下一集",
                 HawkConfig.GESTURE_PORTRAIT_SWIPE, true, null);
+    }
+
+    /** 双击快进快退秒数：常用档位 + 自定义，0 表示关闭该手势 */
+    private void pickDoubleTapSeek() {
+        final String[] items = {"关闭", "3 秒", "5 秒", "10 秒", "自定义…"};
+        final int ms = Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 3000);
+        int selected;
+        if (ms <= 0) selected = 0;
+        else if (ms == 3000) selected = 1;
+        else if (ms == 5000) selected = 2;
+        else if (ms == 10000) selected = 3;
+        else selected = 4;
+        showPick("请选择快进快退秒数", items, selected, new IntAction() {
+            @Override
+            public void run(int value) {
+                switch (value) {
+                    case 0:
+                        Hawk.put(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 0);
+                        break;
+                    case 1:
+                        Hawk.put(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 3000);
+                        break;
+                    case 2:
+                        Hawk.put(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 5000);
+                        break;
+                    case 3:
+                        Hawk.put(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 10000);
+                        break;
+                    default:
+                        // 等选择弹窗关掉之后再弹输入框，避免两个弹窗叠在一起
+                        contentContainer.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                showDoubleTapSeekInput(ms);
+                            }
+                        });
+                        break;
+                }
+            }
+        });
+    }
+
+    private void showDoubleTapSeekInput(int currentMs) {
+        int seconds = currentMs > 0 ? Math.round(currentMs / 1000f) : 5;
+        NumberInputDialog dialog = new NumberInputDialog(this, "双击快进快退秒数",
+                "可填 1 ~ 60 秒；填 0 表示关闭该手势", seconds, 0, 60);
+        dialog.setOnConfirm(new NumberInputDialog.OnConfirm() {
+            @Override
+            public void onConfirm(int value) {
+                Hawk.put(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, value * 1000);
+                refreshRows();
+            }
+        });
+        dialog.show();
     }
 
     /* ============================ 弹幕设定 ============================ */

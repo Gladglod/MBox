@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  直播设置抽屉的底。
+  原来用的是 bg_sheet_panel（固定 #F21A1A20 深色），日间模式下整块是黑的，
+  里面又是白字，看着像另一个 App。这里换成主题感知的 ui_surface：
+  日间白、夜间深，文字再跟着换语义色就一致了。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/ui_surface" />
+    <corners android:radius="18dp" />
+</shape>

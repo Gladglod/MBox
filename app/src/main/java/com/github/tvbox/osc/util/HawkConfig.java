@@ -76,6 +76,18 @@ public class HawkConfig {
      */
     public static final String HOME_TABS = "home_tabs";
 
+    /* ===== 短剧 ===== */
+    /**
+     * 短剧源列表：每行一条
+     * {@code 启用(1/0)\t手动(1/0)\t站点key\t分类id\t分类名}。
+     * 分类名存下来是为了站点被删掉时仍能在设置页里显示「已失效」而不是凭空消失。
+     */
+    public static final String SHORT_DRAMA_SOURCES = "short_drama_sources";
+    /** 已经探测过的站点 key（每行一个），用于下次只补扫没扫过的，避免每次启动都全量拉一遍 */
+    public static final String SHORT_DRAMA_SCANNED = "short_drama_scanned";
+    /** 短剧页当前选中的源：{@code 站点key|分类id} */
+    public static final String SHORT_DRAMA_SELECTED = "short_drama_selected";
+
     /* ===== 外观主题 ===== */
     /**
      * 界面明暗模式：0 日间 / 1 夜间 / 2 跟随系统。默认 0（日间，白色为主）。
@@ -93,6 +105,8 @@ public class HawkConfig {
     public static final String GESTURE_SPEED_BOOST = "gesture_speed_boost";
     /** 长按加速的最高倍速 */
     public static final String GESTURE_MAX_SPEED = "gesture_max_speed";
+    /** 锁定控制条时是否仍允许长按加速 */
+    public static final String GESTURE_SPEED_BOOST_LOCKED = "gesture_speed_boost_locked";
     /** 双击中间区域播放 / 暂停 */
     public static final String GESTURE_DOUBLE_TAP_PLAY = "gesture_double_tap_play";
     /** 双击左右两侧快进 / 快退的毫秒数 */

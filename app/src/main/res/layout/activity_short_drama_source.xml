@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ui_bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="@dimen/vs_12"
+        android:paddingRight="@dimen/vs_12">
+
+        <ImageView
+            android:id="@+id/ivBack"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@null"
+            android:padding="8dp"
+            android:src="@drawable/icon_back"
+            android:tint="@color/ui_icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/vs_8"
+            android:text="@string/short_drama_source_title"
+            android:textColor="@color/ui_text_primary"
+            android:textSize="@dimen/ts_24"
+            android:textStyle="bold" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tvDone"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:paddingLeft="@dimen/vs_12"
+            android:paddingTop="@dimen/vs_6"
+            android:paddingRight="@dimen/vs_12"
+            android:paddingBottom="@dimen/vs_6"
+            android:text="@string/short_drama_source_done"
+            android:textColor="@color/ui_link"
+            android:textSize="@dimen/ts_18"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="@dimen/vs_16"
+        android:layout_marginTop="@dimen/vs_4"
+        android:layout_marginRight="@dimen/vs_16"
+        android:layout_marginBottom="@dimen/vs_6"
+        android:lineSpacingExtra="3dp"
+        android:text="@string/short_drama_source_tip"
+        android:textColor="@color/ui_text_tertiary"
+        android:textSize="@dimen/ts_14" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/sourceList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingLeft="@dimen/vs_12"
+            android:paddingRight="@dimen/vs_12"
+            android:paddingBottom="@dimen/vs_12"
+            android:scrollbars="none" />
+
+        <TextView
+            android:id="@+id/tvEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:paddingStart="@dimen/vs_30"
+            android:paddingLeft="@dimen/vs_30"
+            android:paddingEnd="@dimen/vs_30"
+            android:paddingRight="@dimen/vs_30"
+            android:text="@string/short_drama_source_empty"
+            android:textColor="@color/ui_text_secondary"
+            android:textSize="@dimen/ts_18"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/tvScanStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="@dimen/vs_4"
+        android:paddingBottom="@dimen/vs_4"
+        android:textColor="@color/ui_muted"
+        android:textSize="@dimen/ts_14"
+        android:visibility="gone" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/ui_divider" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnRescan"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:gravity="center"
+            android:text="@string/short_drama_source_rescan"
+            android:textColor="@color/ui_text_primary"
+            android:textSize="@dimen/ts_18" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="@dimen/vs_45"
+            android:layout_gravity="center_vertical"
+            android:background="@color/ui_divider" />
+
+        <TextView
+            android:id="@+id/btnAdd"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:gravity="center"
+            android:text="@string/short_drama_source_add"
+            android:textColor="@color/ui_link"
+            android:textSize="@dimen/ts_18"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
