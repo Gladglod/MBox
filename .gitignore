@@ -101,3 +101,4 @@ lint/tmp/
 .temp/
 output-metadata.json
 .py/
+.opencode
