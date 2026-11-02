@@ -61,8 +61,9 @@ public class EpisodeDialog extends BaseDialog {
         episodeList.setLayoutManager(layoutManager);
         episodeList.setAdapter(adapter);
         adapter.setNewData(episodes);
-        int initialGridWidth = getContext().getResources().getDisplayMetrics().widthPixels / 2
-                - getContext().getResources().getDimensionPixelSize(R.dimen.vs_30) * 2;
+        // 面板只占屏幕右侧 1/4（原为 1/2），这里同步收窄，避免列数算多把条目挤成省略号
+        int initialGridWidth = getContext().getResources().getDisplayMetrics().widthPixels / 4
+                - getContext().getResources().getDimensionPixelSize(R.dimen.vs_16) * 2;
         if (initialGridWidth > 0) {
             layoutManager.setSpanCount(getSpanCount(initialGridWidth));
             scrollToSelectedPosition(layoutManager);
@@ -128,7 +129,7 @@ public class EpisodeDialog extends BaseDialog {
             paint.getTextBounds(name, 0, name.length(), bounds);
             maxTextWidth = Math.max(maxTextWidth, bounds.width());
         }
-        int itemPadding = getContext().getResources().getDimensionPixelSize(R.dimen.vs_10) * 2;
+        int itemPadding = getContext().getResources().getDimensionPixelSize(R.dimen.vs_12) * 2;
         int itemMargin = getContext().getResources().getDimensionPixelSize(R.dimen.vs_5) * 2;
         int itemWidth = maxTextWidth + itemPadding + itemMargin;
         return Math.max(1, Math.min(4, gridWidth / Math.max(1, itemWidth)));
@@ -148,7 +149,8 @@ public class EpisodeDialog extends BaseDialog {
         private final int selectedPosition;
 
         EpisodeAdapter(int selectedPosition) {
-            super(R.layout.item_series, new ArrayList<VodInfo.VodSeries>());
+            // 玻璃面板是深色底，条目改用播放器那套半透明白胶囊 + 白字
+            super(R.layout.item_series_compact, new ArrayList<VodInfo.VodSeries>());
             this.selectedPosition = selectedPosition;
         }
 
@@ -160,8 +162,8 @@ public class EpisodeDialog extends BaseDialog {
                 series.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
                 helper.itemView.setBackgroundResource(R.drawable.bg_chip_selected);
             } else {
-                series.setTextColor(mContext.getResources().getColor(R.color.ui_text_primary));
-                helper.itemView.setBackgroundResource(R.drawable.bg_chip);
+                series.setTextColor(0xF2FFFFFF);
+                helper.itemView.setBackgroundResource(R.drawable.bg_player_chip);
             }
         }
     }

@@ -108,10 +108,43 @@ public class ImgUtil {
         return styleDefaultWidth;
     }
 
+    /** base64 解码的安全上限：超过这个边长的图不信任，按上限降采样 */
+    private static final int DECODE_MAX_EDGE = 2048;
+
     public static Bitmap decodeBase64ToBitmap(String base64Str) {
-        String base64Data = base64Str.substring(base64Str.indexOf(",") + 1);
-        byte[] decodedBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
-        return BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
+        if (base64Str == null || base64Str.length() == 0) return null;
+        try {
+            String base64Data = base64Str.substring(base64Str.indexOf(",") + 1);
+            byte[] decodedBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            // 先只解头拿尺寸：外部源给过损坏 / 被篡改的图头，会报出 3 x 2147483647
+            // 这类尺寸，不预检查直接解码就是一次稳定的 OOM
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length, bounds);
+            boolean sane = bounds.outWidth > 0 && bounds.outHeight > 0
+                    && bounds.outWidth <= 8192 && bounds.outHeight <= 8192
+                    && (long) bounds.outWidth * bounds.outHeight <= (1L << 26);
+            if (!sane) return null;
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = calcInSampleSize(bounds.outWidth, bounds.outHeight,
+                    DECODE_MAX_EDGE, DECODE_MAX_EDGE);
+            return BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length, opts);
+        } catch (Throwable th) {
+            th.printStackTrace();
+            return null;
+        }
+    }
+
+    /** 把解码尺寸压到 maxW x maxH 以内所需的最小采样步长（2 的整次幂） */
+    private static int calcInSampleSize(int width, int height, int maxW, int maxH) {
+        int sample = 1;
+        while (width / 2 >= maxW || height / 2 >= maxH) {
+            sample *= 2;
+            width /= 2;
+            height /= 2;
+            if (sample >= 64) break; // 兜底，防止极端比例打满循环
+        }
+        return sample;
     }
 
     public static void load(String url, ImageView view, int roundingRadius) {
@@ -206,7 +239,12 @@ public class ImgUtil {
     }
 
     public static void loadVideoScreenshot(String uri, ImageView imageView, long frameTimeMicros) {
+        if (imageView == null || TextUtils.isEmpty(uri)) return;
+        // 必须给 override 目标尺寸：不指定时按 ImageView 测量结果解码视频帧，
+        // 个别流媒体返回异常尺寸元数据时会直接申请超大位图引发 OOM
         RequestOptions requestOptions = RequestOptions.frameOf(frameTimeMicros * 1000)
+                .override(380, 214)
+                .format(DecodeFormat.PREFER_RGB_565)
                 .transform(new CenterCrop(), new RoundedCorners(10));
         Glide.with(App.getInstance())
                 .load(uri)

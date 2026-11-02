@@ -36,7 +36,7 @@ public class BaseDialog extends Dialog {
         }
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
         super.show();
-        hideSysBar();
+        inheritImmersiveUi();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
     }
 
@@ -52,5 +52,33 @@ public class BaseDialog extends Dialog {
 
     private void hideSysBar() {
         // 手机端：不再强制沉浸式全屏（会把系统栏顶掉、弹窗高度异常），交给系统默认处理
+    }
+
+    /**
+     * 弹窗是一个独立窗口：抢到焦点后，系统栏会按「弹窗窗口」的系统 UI 标志重新渲染，
+     * 于是播放器全屏沉浸时随便弹个窗状态栏就冒出来。
+     * 这里把宿主 Activity 的沉浸标志同步到弹窗自己的 decor 上；
+     * 宿主不在沉浸式全屏时什么都不做，保持系统默认表现。
+     */
+    private void inheritImmersiveUi() {
+        try {
+            if (!(getContext() instanceof Activity)) {
+                return;
+            }
+            View hostDecor = ((Activity) getContext()).getWindow().getDecorView();
+            int hostFlags = hostDecor.getSystemUiVisibility();
+            int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+            if ((hostFlags & hidden) != hidden) {
+                return;
+            }
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | hidden
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        } catch (Throwable ignore) {
+            // 拿不到宿主 / 标志不兼容时静默降级，不影响弹窗本身
+        }
     }
 }

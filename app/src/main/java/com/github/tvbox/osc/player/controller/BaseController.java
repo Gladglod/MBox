@@ -110,7 +110,10 @@ public abstract class BaseController extends BaseVideoController implements Gest
     @Override
     protected void setProgress(int duration, int position) {
         super.setProgress(duration, position);
-        mPauseTime.setText(PlayerUtils.stringForTime(position) + " / " + PlayerUtils.stringForTime(duration));
+        // 时间文本已从暂停遮罩中移除（暂停只显示居中图标），旧布局仍持有该 tag 时照常更新
+        if (mPauseTime != null) {
+            mPauseTime.setText(PlayerUtils.stringForTime(position) + " / " + PlayerUtils.stringForTime(duration));
+        }
     }
 
     @Override

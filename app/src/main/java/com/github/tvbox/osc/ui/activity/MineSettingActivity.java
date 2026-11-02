@@ -642,7 +642,7 @@ public class MineSettingActivity extends BaseActivity {
     private void buildGesture() {
         header("长按加速");
         card();
-        addSwitchRow("长按加速", "播放时长按屏幕进入变速，上下滑动调速", HawkConfig.GESTURE_SPEED_BOOST, true, null);
+        addSwitchRow("长按加速", "播放时长按屏幕进入变速，左右滑动按 0.2 调速（左减右加）", HawkConfig.GESTURE_SPEED_BOOST, true, null);
         addSwitchRow("锁定时可加速", "控制条锁定后仍可长按加速；退出键始终不受锁定影响",
                 HawkConfig.GESTURE_SPEED_BOOST_LOCKED, true, null);
         addSelectRow("最高倍速", "长按加速可达到的最高倍速", "请选择最高倍速",

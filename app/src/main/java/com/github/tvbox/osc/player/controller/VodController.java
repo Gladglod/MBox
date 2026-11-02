@@ -1,6 +1,7 @@
 package com.github.tvbox.osc.player.controller;
 
 import android.app.Activity;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
@@ -26,12 +27,14 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.PopupWindow;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -53,6 +56,7 @@ import com.github.tvbox.osc.subtitle.widget.SimpleSubtitleView;
 import com.google.android.exoplayer2.ui.SubtitleView;
 import com.github.tvbox.osc.ui.adapter.ParseAdapter;
 import com.github.tvbox.osc.ui.adapter.SelectDialogAdapter;
+import com.github.tvbox.osc.ui.dialog.NumberInputDialog;
 import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.DanmuHelper;
@@ -93,6 +97,7 @@ import java.util.Map;
 import java.util.Locale;
 
 import xyz.doikki.videoplayer.player.VideoView;
+import xyz.doikki.videoplayer.util.PlayerUtils;
 
 import static xyz.doikki.videoplayer.util.PlayerUtils.stringForTime;
 import static xyz.doikki.videoplayer.util.PlayerUtils.safeTimeMs;
@@ -102,31 +107,39 @@ public class VodController extends BaseController {
     private static final long PORTRAIT_EPISODE_TITLE_SHOW_MS = 3000L;
 
     /* ===== 长按加速 ===== */
-    /** 竖直方向滑动多少 dp 对应 1 倍速的变化 */
-    private static final float SPEED_BOOST_RANGE_DP = 240f;
+    /** 横向滑动多少 dp 对应 0.2 倍速的变化（左减右加） */
+    private static final float SPEED_BOOST_STEP_DP = 56f;
     private static final float SPEED_BOOST_MIN = 0.5f;
     private static final float SPEED_BOOST_MAX = 3.0f;
-    /** 横向右滑多少 dp 判定为「固定 / 解除固定当前倍速」 */
-    private static final float SPEED_LOCK_SWIPE_DP = 56f;
-    /** 倍速提示的透明度：调低一档，别太抢画面 */
-    private static final float SPEED_TIP_ALPHA = 0.55f;
-    /** 固定 / 解除固定时的触感反馈时长（毫秒） */
-    private static final long SPEED_LOCK_VIBRATE_MS = 22L;
+    /** 上滑多少 dp 判定为「固定当前倍速」 */
+    private static final float SPEED_PIN_SWIPE_DP = 64f;
+    /** 手势振动反馈：进入加速 / 固定倍速时轻微一震 */
+    private static final long SPEED_VIBRATE_MS = 22L;
+    private static final int SPEED_VIBRATE_AMPLITUDE = 80;
+    /** 固定态抬手后提示文字停留时长 */
+    private static final long SPEED_TIP_LINGER_MS = 1100L;
     /** 倍速按钮常态文字颜色（始终叠在深色播放条上，与 XML 一致） */
     private static final int SPEED_BTN_COLOR_NORMAL = 0xF2FFFFFF;
+    /** 倍速菜单里的预置档位（升序；展示时按「最高倍速」设置过滤） */
+    private static final float[] SPEED_PRESET_VALUES = {
+            0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f
+    };
 
     private boolean speedBoostActive;
-    private float speedBoostStartY;
     private float speedBoostStartX;
+    private float speedBoostStartY;
     private float speedBoostBaseSpeed = 1.0f;
     private float speedBoostSpeed = 1.0f;
-    /** 当前倍速是否已被「右滑固定」：固定后抬手不回落到原速 */
+    /** 上滑固定后：抬手保持该倍速；未固定则抬手回落原速。重新长按自动解除 */
     private boolean speedBoostLocked;
-    /** 固定前的原始倍速，解除固定时回到这里 */
+    /** 一次上滑只固定一次，手指退回阈值一半以内才允许再次触发 */
+    private boolean speedPinSwipeConsumed;
+    /** 进入本轮手势前的原速，未固定抬手时回到这里 */
     private float speedBoostNaturalSpeed = 1.0f;
-    /** 一次横滑只触发一次切换，避免手指轻微抖动来回翻转 */
-    private boolean speedLockSwipeConsumed;
-    private TextView mSpeedBoostTip;
+    /** 顶部加速提示浮层（数值 + 小字手势提示，无底框纯文字） */
+    private LinearLayout mSpeedBoostTip;
+    private TextView mSpeedBoostTipValue;
+    private TextView mSpeedBoostTipHint;
 
     /* ===== 双击左右快退/快进 ===== */
     private static final int DOUBLE_TAP_SEEK_MS = 3000;
@@ -185,12 +198,12 @@ public class VodController extends BaseController {
                         if (mTopBar != null) mTopBar.setVisibility(GONE);
                         mTopRoot1.setVisibility(GONE);
                         mPlayLoadNetSpeedRightTop.setVisibility(GONE);
+                        // 暂停时只保留中央播放图标，剧名不再带出来（点击收起后保持隐藏）
+                        mPlayTitle.setVisibility(GONE);
                         if (videoPlayState == VideoView.STATE_PAUSED) {
                             showPauseRoot();
-                            mPlayTitle.setVisibility(VISIBLE);
                         } else {
                             hidePauseRoot();
-                            mPlayTitle.setVisibility(GONE);
                         }
                         if(Hawk.get(HawkConfig.SCREEN_DISPLAY,GONE)==GONE){
                             mPlayPauseTime.setVisibility(GONE);
@@ -231,79 +244,69 @@ public class VodController extends BaseController {
     }
 
     /**
-     * 长按进入加速状态：此后上下滑动调倍速，**向右滑动**把当前倍速固定下来
-     * （已固定时再右滑一次解除固定）。
+     * 长按进入加速状态：
+     * 左右滑动按 0.2 一步增减倍速（左减右加）；上滑固定当前倍速。
+     * 若上一轮已固定，重新长按会自动解除固定，回到临时变速状态。
      */
     private void enterSpeedBoost(float downX, float downY) {
         speedBoostActive = true;
         speedBoostStartX = downX;
         speedBoostStartY = downY;
         speedBoostBaseSpeed = currentPlaySpeed();
-        if (!speedBoostLocked) {
-            // 未固定时，这一轮加速的「原速」就是进入时的倍速
-            speedBoostNaturalSpeed = speedBoostBaseSpeed;
-        }
         speedBoostSpeed = speedBoostBaseSpeed;
-        speedLockSwipeConsumed = false;
+        if (speedBoostLocked) {
+            // 再次长按即解除固定：本轮属于临时变速，抬手不保持
+            speedBoostLocked = false;
+        }
+        speedBoostNaturalSpeed = speedBoostBaseSpeed;
+        speedPinSwipeConsumed = false;
+        vibrateBoostFeedback();
         showSpeedBoostTip(speedBoostSpeed);
     }
 
-    private void updateSpeedBoost(float currentY) {
+    private void updateSpeedBoost(float currentX) {
         if (!speedBoostActive) return;
-        float range = getResources().getDisplayMetrics().density * SPEED_BOOST_RANGE_DP;
-        if (range <= 0) return;
+        float step = getResources().getDisplayMetrics().density * SPEED_BOOST_STEP_DP;
+        if (step <= 0) return;
         float maxSpeed = Hawk.get(HawkConfig.GESTURE_MAX_SPEED, SPEED_BOOST_MAX);
         if (maxSpeed < SPEED_BOOST_MIN) maxSpeed = SPEED_BOOST_MIN;
-        // 手指向上移动为正 → 加速；向下为负 → 减速
-        float delta = (speedBoostStartY - currentY) / range;
-        float speed = speedBoostBaseSpeed + delta;
+        // 横向滑动位移换算成 0.2 一档：右移为正加速，左移为负减速，上下位移不参与
+        float gear = Math.round((currentX - speedBoostStartX) / step);
+        float speed = speedBoostBaseSpeed + gear * 0.2f;
         if (speed < SPEED_BOOST_MIN) speed = SPEED_BOOST_MIN;
         if (speed > maxSpeed) speed = maxSpeed;
         speed = Math.round(speed * 10) / 10f;
-        if (Math.abs(speed - speedBoostSpeed) < 0.05f) return;
+        if (speed == speedBoostSpeed) return;
         speedBoostSpeed = speed;
         if (mControlWrapper != null) mControlWrapper.setSpeed(speed);
         showSpeedBoostTip(speed);
-        syncSpeedButton(speed, false, false);
+        syncSpeedButton(speed, speedBoostLocked, false);
     }
 
     /**
-     * 横向右滑：固定 / 解除固定当前倍速。
-     *
-     * <p>判定用的是相对按下点的水平位移，超过 {@link #SPEED_LOCK_SWIPE_DP} 才触发；
-     * 手指回到阈值一半以内会重置标记，所以一次长按里可以连续固定 → 解除 → 再固定。</p>
-     *
-     * @return true 表示这次移动已被判定为横滑（调用方仍可继续按竖直位移调倍速）
+     * 上滑固定当前倍速。固定后抬手保持该倍速（否则视为临时变速，回落原速）。
+     * 手指退回阈值一半以内重置标记，但本轮手势内不重复触发固定。
      */
-    private boolean handleSpeedLockSwipe(MotionEvent event) {
-        float threshold = getResources().getDisplayMetrics().density * SPEED_LOCK_SWIPE_DP;
-        if (threshold <= 0) return false;
-        float dx = event.getX() - speedBoostStartX;
-        if (dx < threshold * 0.5f) {
-            // 手指收回去了，允许下一次再触发
-            speedLockSwipeConsumed = false;
-            return false;
+    private void handleSpeedPinSwipe(MotionEvent event) {
+        if (event == null) return;
+        float threshold = getResources().getDisplayMetrics().density * SPEED_PIN_SWIPE_DP;
+        if (threshold <= 0) return;
+        float dy = speedBoostStartY - event.getY(); // 上滑为正
+        if (dy < threshold * 0.5f) {
+            speedPinSwipeConsumed = false;
+            return;
         }
-        if (dx < threshold || speedLockSwipeConsumed) return speedLockSwipeConsumed;
-        speedLockSwipeConsumed = true;
-        if (speedBoostLocked) {
-            speedBoostLocked = false;
-            speedBoostSpeed = speedBoostNaturalSpeed;
-            speedBoostBaseSpeed = speedBoostNaturalSpeed;
-            if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostNaturalSpeed);
-            syncSpeedButton(speedBoostNaturalSpeed, false, true);
-        } else {
-            speedBoostLocked = true;
-            speedBoostBaseSpeed = speedBoostSpeed;
-            syncSpeedButton(speedBoostSpeed, true, true);
-        }
-        // 以当前位置作为新的竖直基准，切换后不会因为历史位移让倍速突然跳变
-        speedBoostStartY = event.getY();
+        if (dy < threshold || speedPinSwipeConsumed || speedBoostLocked) return;
+        speedPinSwipeConsumed = true;
+        speedBoostLocked = true;
+        // 固定后以「此刻的手指位置」作为新的水平基准，否则接着左右滑动会把固定前走过的
+        // 位移再算一遍，倍速会突然跳档
         speedBoostStartX = event.getX();
-        speedLockSwipeConsumed = true;
+        speedBoostStartY = event.getY();
+        speedBoostBaseSpeed = speedBoostSpeed;
+        vibrateBoostFeedback();
         showSpeedBoostTip(speedBoostSpeed);
-        vibrateSpeedLock();
-        return true;
+        syncSpeedButton(speedBoostSpeed, true, false);
     }
 
     private void exitSpeedBoost() {
@@ -311,23 +314,55 @@ public class VodController extends BaseController {
         speedBoostActive = false;
         if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
         if (speedBoostLocked) {
-            // 已固定：抬手保持当前倍速
+            // 已固定：抬手保持当前倍速并落库；提示文字多留一会儿，让用户看到「已固定」的结果
             speedBoostBaseSpeed = speedBoostSpeed;
             syncSpeedButton(speedBoostSpeed, true, true);
+            showSpeedBoostTip(speedBoostSpeed);
+            if (mHandler != null) {
+                mHandler.removeCallbacks(speedTipHideRunnable);
+                mHandler.postDelayed(speedTipHideRunnable, SPEED_TIP_LINGER_MS);
+            }
             return;
         }
-        if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostBaseSpeed);
-        speedBoostSpeed = speedBoostBaseSpeed;
-        syncSpeedButton(speedBoostBaseSpeed, false, true);
+        // 未固定：临时变速，抬手回落到进入手势时的原速
+        if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostNaturalSpeed);
+        speedBoostSpeed = speedBoostNaturalSpeed;
+        syncSpeedButton(speedBoostNaturalSpeed, false, true);
     }
+
+    /** 固定态抬手后，提示文字延迟收起（再次长按时会被新一轮手势重新点亮） */
+    private final Runnable speedTipHideRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (speedBoostActive) return;
+            if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
+        }
+    };
 
     private void showSpeedBoostTip(float speed) {
         if (mSpeedBoostTip == null) return;
-        String text = String.format(Locale.getDefault(), "%.1fX 倍速", speed);
-        if (speedBoostLocked) text = text + " · 已固定";
-        mSpeedBoostTip.setText(text);
-        mSpeedBoostTip.setAlpha(SPEED_TIP_ALPHA);
+        if (mSpeedBoostTipValue != null) {
+            mSpeedBoostTipValue.setText(fmtSpeed(speed) + "x");
+        }
+        if (mSpeedBoostTipHint != null) {
+            mSpeedBoostTipHint.setText(speedBoostLocked ? "已固定 · 再长按可解除" : "左右滑动调整倍速 · 上滑固定");
+        }
         mSpeedBoostTip.setVisibility(VISIBLE);
+    }
+
+    /** 倍速浮点转展示文本：最多两位小数并去掉无意义的 0（1x → 1.0x，1.75 保持 1.75） */
+    private static String fmtSpeed(double speed) {
+        try {
+            String text = new java.math.BigDecimal(speed)
+                    .setScale(2, java.math.BigDecimal.ROUND_HALF_UP)
+                    .stripTrailingZeros()
+                    .toPlainString();
+            if (text.endsWith(".")) text = text.substring(0, text.length() - 1);
+            if (!text.contains(".")) text = text + ".0";
+            return text;
+        } catch (Throwable t) {
+            return String.valueOf(Math.round(speed * 100) / 100.0);
+        }
     }
 
     /** 取「固定」态倍速按钮高亮色（强调色，随日 / 夜间主题切换） */
@@ -342,7 +377,7 @@ public class VodController extends BaseController {
     /**
      * 把长按手势得到的倍速同步到「倍速」按钮与播放配置，并反映「固定」状态。
      *
-     * <p>persist=true 时通知监听器落盘（用于锁定 / 解除 / 手势结束等离散时刻）；
+     * <p>persist=true 时通知监听器落盘（固定 / 解除 / 手势结束等离散时刻）；
      * 滑动过程中逐帧调用时传 false，仅刷新内存与按钮文本，避免频繁写盘。</p>
      */
     private void syncSpeedButton(float speed, boolean locked, boolean persist) {
@@ -350,13 +385,22 @@ public class VodController extends BaseController {
         try {
             if (mPlayerConfig != null) mPlayerConfig.put("sp", speed);
         } catch (JSONException ignore) { }
-        mPlayerSpeedBtn.setText(String.format(Locale.getDefault(), "%.1fx%s", speed, locked ? " 固定" : ""));
+        mPlayerSpeedBtn.setText(fmtSpeed(speed) + "x");
         mPlayerSpeedBtn.setTextColor(locked ? getSpeedLockColor() : SPEED_BTN_COLOR_NORMAL);
         if (persist && listener != null) listener.updatePlayerCfg();
     }
 
-    /** 固定 / 解除固定时的触感反馈（短促一下） */
-    private void vibrateSpeedLock() {
+    /** 进入加速 / 固定倍速时的轻微振动反馈（没有振动马达或权限被拒时静默降级） */
+    private void vibrateBoostFeedback() {
+        vibrateOnce(SPEED_VIBRATE_MS, SPEED_VIBRATE_AMPLITUDE);
+    }
+
+    /** 扇形菜单跟手选择时，切到下一项给一次更轻的「哒」 */
+    private void vibrateTick() {
+        vibrateOnce(8L, 40);
+    }
+
+    private void vibrateOnce(long ms, int amplitude) {
         try {
             Context context = getContext();
             if (context == null) return;
@@ -370,13 +414,11 @@ public class VodController extends BaseController {
             }
             if (vibrator == null || !vibrator.hasVibrator()) return;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(android.os.VibrationEffect.createOneShot(
-                        SPEED_LOCK_VIBRATE_MS, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(ms, amplitude));
             } else {
-                vibrator.vibrate(SPEED_LOCK_VIBRATE_MS);
+                vibrator.vibrate(ms);
             }
         } catch (Throwable ignore) {
-            // 没有振动马达 / 权限被拒时静默降级，不影响手势本身
         }
     }
 
@@ -396,9 +438,9 @@ public class VodController extends BaseController {
         if (speedBoostActive && event != null) {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_MOVE) {
-                // 先判横滑（固定 / 解除固定），再按竖直位移调倍速
-                handleSpeedLockSwipe(event);
-                updateSpeedBoost(event.getY());
+                // 长按后：左右滑动按 0.2 一档变速（左减右加）；上滑固定当前倍速
+                handleSpeedPinSwipe(event);
+                updateSpeedBoost(event.getX());
                 return true;
             }
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
@@ -469,7 +511,8 @@ public class VodController extends BaseController {
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
         if (speedBoostActive) {
-            updateSpeedBoost(e2.getY());
+            handleSpeedPinSwipe(e2);
+            updateSpeedBoost(e2.getX());
             return true;
         }
         if (isPortraitEpisodeSwipe(e1, e2)) {
@@ -664,8 +707,8 @@ public class VodController extends BaseController {
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (speedBoostActive) {
-                    handleSpeedLockSwipe(event);
-                    updateSpeedBoost(event.getY());
+                    handleSpeedPinSwipe(event);
+                    updateSpeedBoost(event.getX());
                 } else if (lockedLongPressPending) {
                     int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
                     if (Math.abs(event.getX() - lockedDownX) > slop
@@ -763,6 +806,8 @@ public class VodController extends BaseController {
         mCastBtn = findViewById(R.id.play_cast);
         mTopBar = findViewById(R.id.player_top_bar);
         mSpeedBoostTip = findViewById(R.id.tv_speed_boost);
+        mSpeedBoostTipValue = findViewById(R.id.tv_speed_boost_value);
+        mSpeedBoostTipHint = findViewById(R.id.tv_speed_boost_hint);
         mPlayPauseBtn = findViewById(R.id.btn_play_pause);
         mPlayPauseIcon = findViewById(R.id.iv_play_pause);
         mDanmuBtn = findViewById(R.id.btn_danmu);
@@ -1052,7 +1097,7 @@ public class VodController extends BaseController {
             public void onClick(View view) {
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
-                showSpeedDialog();
+                showSpeedPicker(view);
             }
         });
 
@@ -1068,9 +1113,8 @@ public class VodController extends BaseController {
                     listener.updatePlayerCfg();
                     speed_old = 1.0f;
                     mControlWrapper.setSpeed(1.0f);
-                    // 长按重置倍速到 1.0x 时，同步清除手势「固定」状态
+                    // 长按重置倍速到 1.0x 时，同步清掉长按手势的滑动基准与固定态
                     speedBoostLocked = false;
-                    speedBoostNaturalSpeed = 1.0f;
                     speedBoostBaseSpeed = 1.0f;
                     speedBoostSpeed = 1.0f;
                 } catch (JSONException e) {
@@ -1331,6 +1375,11 @@ public class VodController extends BaseController {
      */
     private void showOptionList(View anchor, final List<String> options, int checkedIndex,
                                 final OnOptionPicked callback) {
+        showOptionList(anchor, options, checkedIndex, callback, 0);
+    }
+
+    private void showOptionList(View anchor, final List<String> options, int checkedIndex,
+                                final OnOptionPicked callback, int minWidthPx) {
         if (anchor == null || options == null || options.isEmpty()) return;
         try {
             final Context ctx = getContext();
@@ -1340,11 +1389,15 @@ public class VodController extends BaseController {
             int pad = dp(5);
             list.setPadding(pad, pad, pad, pad);
 
+            // 宽度至少跟住锚点；倍速按钮这种小锚点给个兜底最小宽，保证选项文字完整
+            float popupWidth = Math.max(anchor.getWidth(), minWidthPx);
+            if (popupWidth <= 0) popupWidth = dp(80);
             final PopupWindow popup = new PopupWindow(list,
-                    anchor.getWidth(), ViewGroup.LayoutParams.WRAP_CONTENT, true);
+                    (int) popupWidth, ViewGroup.LayoutParams.WRAP_CONTENT, true);
             popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
             popup.setOutsideTouchable(true);
             popup.setFocusable(true);
+            applyImmersiveToPopup(popup);
 
             for (int i = 0; i < options.size(); i++) {
                 TextView tv = new TextView(ctx);
@@ -1380,6 +1433,206 @@ public class VodController extends BaseController {
 
     interface OnOptionPicked {
         void onPicked(int index);
+    }
+
+    /**
+     * 沉浸式全屏（系统栏隐藏）时，弹窗是一个会抢焦点的独立窗口，
+     * 系统栏会按弹窗窗口自己的系统 UI 标志重新渲染，于是一弹窗状态栏就冒出来。
+     * 这里把宿主 Activity 的沉浸标志复制到弹窗内容上，保持系统栏隐藏；
+     * 宿主不在沉浸式时什么都不做，交给系统默认表现。
+     */
+    private void applyImmersiveToPopup(PopupWindow popup) {
+        try {
+            Activity activity = PlayerUtils.scanForActivity(getContext());
+            if (activity == null || popup == null) return;
+            View decor = activity.getWindow().getDecorView();
+            int flags = decor.getSystemUiVisibility();
+            int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+            if ((flags & hidden) != hidden) return;
+            popup.getContentView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | hidden
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        } catch (Throwable ignore) {
+        }
+    }
+
+    /**
+     * 倍速：在「倍速」按钮正上方弹出一列窄菜单（一行一个档位），最后一项是「自定义」。
+     *
+     * <p>档位按当前倍速动态生成：命中预置档位就直接高亮；如果当前是手势 / 输入得到的
+     * 非档位值（例如 1.33x），会把它作为一个额外的选项插进来并高亮，
+     * 避免出现「菜单里没有任何一项被选中、用户无从点选」的情况。</p>
+     */
+    private void showSpeedPicker(View anchor) {
+        if (mPlayerConfig == null || anchor == null) return;
+        final float current = currentPlaySpeed();
+        float max = Hawk.get(HawkConfig.GESTURE_MAX_SPEED, SPEED_BOOST_MAX);
+        if (max < SPEED_BOOST_MIN) max = SPEED_BOOST_MIN;
+
+        List<Float> values = new ArrayList<>();
+        for (float preset : SPEED_PRESET_VALUES) {
+            if (preset <= max + 0.001f) values.add(preset);
+        }
+        if (values.isEmpty()) values.add(1.0f);
+        boolean matched = false;
+        for (float v : values) {
+            if (Math.abs(v - current) < 0.005f) {
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            int pos = 0;
+            while (pos < values.size() && values.get(pos) < current) pos++;
+            values.add(pos, current);
+        }
+
+        List<String> options = new ArrayList<>();
+        int checked = -1;
+        for (int i = 0; i < values.size(); i++) {
+            float v = values.get(i);
+            options.add(fmtSpeed(v) + "x");
+            if (Math.abs(v - current) < 0.005f) checked = i;
+        }
+        final int customIndex = options.size();
+        options.add("自定义");
+
+        showOptionListAbove(anchor, options, checked, new OnOptionPicked() {
+            @Override
+            public void onPicked(int index) {
+                if (index == customIndex) {
+                    showCustomSpeedDialog();
+                    return;
+                }
+                if (index < 0 || index >= values.size()) return;
+                applySpeed(values.get(index));
+            }
+        }, dp(84));
+    }
+
+    /**
+     * 在锚点正上方弹出的窄列表（一行一项），供播放条上的「画面比例 / 倍速」使用。
+     * 与抽屉里的下拉列表同一套视觉，只是定位改到按钮上方；条目多时最高只占屏幕一半并滚动。
+     */
+    private void showOptionListAbove(View anchor, final List<String> options, int checkedIndex,
+                                     final OnOptionPicked callback, int minWidthPx) {
+        if (anchor == null || options == null || options.isEmpty()) return;
+        try {
+            final Context ctx = getContext();
+            final int pad = dp(5);
+
+            LinearLayout list = new LinearLayout(ctx);
+            list.setOrientation(LinearLayout.VERTICAL);
+
+            // 列表放进 ScrollView：词条超过半屏时滚动，面板本身不会顶到画面顶端
+            ScrollView scroll = new ScrollView(ctx);
+            scroll.setBackgroundResource(R.drawable.bg_player_drawer);
+            scroll.setPadding(pad, pad, pad, pad);
+            scroll.setClipToPadding(false);
+            scroll.setVerticalScrollBarEnabled(true);
+            scroll.setScrollbarFadingEnabled(false);
+            scroll.addView(list, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            int popupWidth = Math.max(anchor.getWidth(), minWidthPx);
+            if (popupWidth <= 0) popupWidth = dp(80);
+            final PopupWindow popup = new PopupWindow(scroll, popupWidth,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
+            popup.setOutsideTouchable(true);
+            popup.setFocusable(true);
+            applyImmersiveToPopup(popup);
+            // 菜单打开期间不要自动收起控制条，否则锚点跟着消失、菜单会悬在半空
+            if (myHandle != null) myHandle.removeCallbacks(myRunnable);
+            popup.setOnDismissListener(new PopupWindow.OnDismissListener() {
+                @Override
+                public void onDismiss() {
+                    if (myHandle != null && myRunnable != null) {
+                        myHandle.removeCallbacks(myRunnable);
+                        myHandle.postDelayed(myRunnable, myHandleSeconds);
+                    }
+                }
+            });
+
+            for (int i = 0; i < options.size(); i++) {
+                TextView tv = new TextView(ctx);
+                tv.setText(options.get(i));
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_22));
+                tv.setTextColor(i == checkedIndex
+                        ? getResources().getColor(R.color.color_02F8E1) : 0xFFFFFFFF);
+                tv.setGravity(Gravity.CENTER);
+                tv.setSingleLine(true);
+                tv.setEllipsize(TextUtils.TruncateAt.END);
+                tv.setPadding(dp(8), 0, dp(8), 0);
+                tv.setBackgroundResource(i == checkedIndex
+                        ? R.drawable.bg_chip_selected : R.drawable.bg_player_chip);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
+                lp.topMargin = i == 0 ? 0 : dp(3);
+                tv.setLayoutParams(lp);
+                final int index = i;
+                tv.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        popup.dismiss();
+                        if (callback != null) callback.onPicked(index);
+                    }
+                });
+                list.addView(tv);
+            }
+
+            // 先量一次内容高度：最多占屏幕一半，超出就交给 ScrollView 滚动
+            int widthSpec = View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY);
+            int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+            list.measure(widthSpec, heightSpec);
+            int contentHeight = list.getMeasuredHeight() + pad * 2;
+            int maxHeight = getResources().getDisplayMetrics().heightPixels / 2;
+            int popupHeight = Math.max(dp(36), Math.min(contentHeight, maxHeight));
+            popup.setHeight(popupHeight);
+
+            int xoff = (anchor.getWidth() - popupWidth) / 2;
+            popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    /** 应用一个播放倍速并同步各处 UI / 配置（预置选项与自定义输入共用） */
+    private void applySpeed(float value) {
+        try {
+            mPlayerConfig.put("sp", value);
+            updatePlayerCfgView();
+            listener.updatePlayerCfg();
+            speed_old = value;
+            mControlWrapper.setSpeed(value);
+            // 手动选定后同步长按手势的基准，避免下次长按从旧值跳变；同时解除「固定」态
+            speedBoostBaseSpeed = value;
+            speedBoostSpeed = value;
+            speedBoostLocked = false;
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** 自定义倍速输入：0.5 ~ 最高档位（手势设置里的「最高倍速」），最多两位小数 */
+    private void showCustomSpeedDialog() {
+        if (mPlayerConfig == null || mActivity == null) return;
+        try {
+            float current = (float) mPlayerConfig.getDouble("sp");
+            final double max = Hawk.get(HawkConfig.GESTURE_MAX_SPEED, SPEED_BOOST_MAX);
+            NumberInputDialog dialog = new NumberInputDialog(mActivity, "自定义倍速",
+                    "可填 " + fmtSpeed(SPEED_BOOST_MIN) + " ~ " + fmtSpeed(max) + "，最多两位小数",
+                    current, SPEED_BOOST_MIN, max);
+            dialog.setOnConfirm((NumberInputDialog.OnConfirmFloat) value -> {
+                applySpeed((float) value);
+            });
+            dialog.show();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
     }
 
     private void showPlayerPicker(View anchor) {
@@ -1453,6 +1706,7 @@ public class VodController extends BaseController {
         }
     }
 
+    /** 画面比例：与倍速同一套「按钮上方窄列表」，不再用系统对话框 */
     private void showScalePicker(View anchor) {
         if (mPlayerConfig == null || anchor == null) return;
         try {
@@ -1461,7 +1715,7 @@ public class VodController extends BaseController {
             for (int i = 0; i <= 5; i++) {
                 names.add(PlayerHelper.getScaleName(i));
             }
-            showOptionList(anchor, names, current, new OnOptionPicked() {
+            showOptionListAbove(anchor, names, current, new OnOptionPicked() {
                 @Override
                 public void onPicked(int index) {
                     if (index < 0 || index > 5) return;
@@ -1474,7 +1728,7 @@ public class VodController extends BaseController {
                         e.printStackTrace();
                     }
                 }
-            });
+            }, dp(88));
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -1516,51 +1770,6 @@ public class VodController extends BaseController {
                     return oldItem.intValue() == newItem.intValue();
                 }
             }, scales, scaleType);
-            dialog.show();
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void showSpeedDialog() {
-        try {
-            float speed = (float) mPlayerConfig.getDouble("sp");
-            ArrayList<Float> speeds = new ArrayList<>();
-            float[] speedOptions = {0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 3.0f};
-            for (float value : speedOptions) speeds.add(value);
-            int defaultPos = speeds.indexOf(speed);
-            SelectDialog<Float> dialog = new SelectDialog<>(mActivity);
-            dialog.setTip("请选择播放倍速");
-            dialog.setAdapter(new SelectDialogAdapter.SelectDialogInterface<Float>() {
-                @Override
-                public void click(Float value, int pos) {
-                    try {
-                        dialog.cancel();
-                        mPlayerConfig.put("sp", value);
-                        updatePlayerCfgView();
-                        listener.updatePlayerCfg();
-                        speed_old = value;
-                        mControlWrapper.setSpeed(value);
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
-                }
-
-                @Override
-                public String getDisplay(Float value) {
-                    return value + "x";
-                }
-            }, new DiffUtil.ItemCallback<Float>() {
-                @Override
-                public boolean areItemsTheSame(@NonNull @NotNull Float oldItem, @NonNull @NotNull Float newItem) {
-                    return oldItem.equals(newItem);
-                }
-
-                @Override
-                public boolean areContentsTheSame(@NonNull @NotNull Float oldItem, @NonNull @NotNull Float newItem) {
-                    return oldItem.equals(newItem);
-                }
-            }, speeds, defaultPos < 0 ? 1 : defaultPos);
             dialog.show();
         } catch (JSONException e) {
             e.printStackTrace();
@@ -1684,13 +1893,49 @@ public class VodController extends BaseController {
             });
         }
         if (mMenuBtn != null) {
-            mMenuBtn.setOnClickListener(new OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
-                    showDrawer();
-                }
-            });
+            boolean tv = ScreenUtils.isTv(getContext());
+            if (tv) {
+                // TV / 遥控场景保留原抽屉（扇形菜单是触摸优先的交互）
+                mMenuBtn.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        FastClickCheckUtil.check(v);
+                        showDrawer();
+                    }
+                });
+            } else {
+                // 单击展开扇形功能菜单（点选），长按进入跟手选择（按住滑动、到项上松手确认）
+                mMenuBtn.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        FastClickCheckUtil.check(v);
+                        showMenuFan(v, false);
+                    }
+                });
+                mMenuBtn.setOnLongClickListener(new OnLongClickListener() {
+                    @Override
+                    public boolean onLongClick(View v) {
+                        showMenuFan(v, true);
+                        return true;
+                    }
+                });
+                mMenuBtn.setOnTouchListener(new OnTouchListener() {
+                    @Override
+                    public boolean onTouch(View v, MotionEvent event) {
+                        if (menuFan == null || !menuFan.dragArmed) return false;
+                        int action = event.getActionMasked();
+                        if (action == MotionEvent.ACTION_MOVE) {
+                            menuFanPointer(event.getRawX(), event.getRawY());
+                        } else if (action == MotionEvent.ACTION_UP
+                                || action == MotionEvent.ACTION_CANCEL) {
+                            FanLayer fan = menuFan;
+                            fan.dragArmed = false;
+                            menuFanDragEnd(event.getRawX(), event.getRawY());
+                        }
+                        return true;
+                    }
+                });
+            }
         }
         applyControlBarMode();
         updateFullScreenIcon(isPlayerFullScreen());
@@ -1728,10 +1973,11 @@ public class VodController extends BaseController {
             }
         }
 
-        // 竖屏只留「播放 / 进度条 / 竖屏 / 全屏」；横屏留「播放 / 下一集 / 弹幕 / 倍速」
+        // 竖屏只留「播放 / 进度条 / 竖屏 / 全屏」；横屏留「播放 / 下一集 / 弹幕 / 画面比例 / 倍速」
         if (mNextBtn != null) mNextBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mDanmuBtn != null) mDanmuBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mBottomSpacer != null) mBottomSpacer.setVisibility(portrait ? GONE : VISIBLE);
+        if (mPlayerScaleBtn != null) mPlayerScaleBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mPlayerSpeedBtn != null) mPlayerSpeedBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mPortraitBtn != null) mPortraitBtn.setVisibility(portrait ? VISIBLE : GONE);
         // 横屏全屏下退出全屏靠左上角返回键；TV 的返回键是隐藏的，必须保留全屏键
@@ -1888,6 +2134,444 @@ public class VodController extends BaseController {
                     mDrawerScrim.setVisibility(GONE);
                 }
             }).start();
+        }
+    }
+
+    /* ==================== 右上角扇形功能菜单 ==================== */
+
+    /** 一级扇形：半径 / 气泡尺寸 / 展开角度（以菜单键为圆心向下扇开） */
+    private static final int MENU_FAN_RADIUS_DP = 78;
+    private static final int MENU_FAN_ITEM_DP = 30;
+    /** 起始角 110°：整条弧相对竖直向下顺时针转过 26°，第一个气泡更靠左下 */
+    private static final float MENU_FAN_START_DEG = 100f;
+    private static final float MENU_FAN_SWEEP_DEG = 92f;
+    /** 二级扇形（片头片尾）：从一级气泡的位置再扇开 */
+    private static final int MENU_FAN_SUB_RADIUS_DP = 64;
+    private static final int MENU_FAN_SUB_ITEM_DP = 28;
+    private static final float MENU_FAN_SUB_START_DEG = 100f;
+    private static final float MENU_FAN_SUB_SWEEP_DEG = 70f;
+    /** 一级里「片头片尾」的下标：跟手滑到它上面就自动展开二级 */
+    private static final int MENU_FAN_SUB_PARENT = 0;
+
+    /** 一级功能：片头片尾 / 弹幕设置 / 刷新 / 屏显（+ 更多，保留解码、播放器、解析等入口） */
+    private static final String[] MENU_FAN_LABELS = {"片头片尾", "弹幕设置", "刷新", "屏显", "更多"};
+    /** 片头片尾展开的二级功能 */
+    private static final String[] MENU_FAN_SUB_LABELS = {"片头", "片尾", "重置"};
+
+    /** 一级扇形（null 表示未展开） */
+    private FanLayer menuFan;
+    /** 片头片尾展开的二级扇形 */
+    private FanLayer menuFanSub;
+
+    /** 展开扇形菜单；dragArmed=true 表示配合长按：菜单键上的后续移动 / 抬手转发进来选择 */
+    private void showMenuFan(View anchor, boolean dragArmed) {
+        if (menuFan != null) {
+            // 已经展开时再点一次菜单键 = 收起
+            dismissMenuFan();
+            return;
+        }
+        menuFan = new FanLayer(MENU_FAN_LABELS, false);
+        menuFan.dragArmed = dragArmed;
+        menuFan.show(anchor);
+        if (myHandle != null) myHandle.removeCallbacks(myRunnable);
+    }
+
+    private void dismissMenuFan() {
+        closeFanSub();
+        if (menuFan != null) {
+            menuFan.dismiss();
+            menuFan = null;
+        }
+        if (myHandle != null && myRunnable != null) {
+            myHandle.removeCallbacks(myRunnable);
+            myHandle.postDelayed(myRunnable, myHandleSeconds);
+        }
+    }
+
+    private void closeFanSub() {
+        if (menuFanSub == null) return;
+        menuFanSub.dismiss();
+        menuFanSub = null;
+    }
+
+    /** 一级扇形选中 */
+    private void onMenuFanPicked(int index) {
+        switch (index) {
+            case MENU_FAN_SUB_PARENT: // 片头片尾：一级留着，从该项再扇开二级
+                expandFanSub();
+                break;
+            case 1:
+                dismissMenuFan();
+                clickIfBound(mDanmuSettingBtn);
+                break;
+            case 2:
+                dismissMenuFan();
+                clickIfBound(mPlayrefresh);
+                break;
+            case 3:
+                dismissMenuFan();
+                clickIfBound(mScreenDisplay);
+                break;
+            case 4:
+            default:
+                dismissMenuFan();
+                showDrawer();
+                break;
+        }
+    }
+
+    /** 片头片尾的二级扇形：以一级气泡为圆心再扇开三项（已展开则不重建） */
+    private void expandFanSub() {
+        if (menuFan == null || menuFanSub != null) return;
+        View bubble = menuFan.focusedItem();
+        if (bubble == null) return;
+        menuFanSub = new FanLayer(MENU_FAN_SUB_LABELS, true);
+        menuFanSub.show(bubble);
+    }
+
+    /** 二级扇形选中：复用抽屉里「片头 / 片尾 / 重置」的原逻辑 */
+    private void onMenuFanSubPicked(int index) {
+        dismissMenuFan();
+        switch (index) {
+            case 0: {
+                int before = getTimeCfg(true);
+                clickIfBound(mPlayerTimeStartBtn);
+                int after = getTimeCfg(true);
+                if (after > 0 && after != before) {
+                    toast("片头已设为 " + stringForTime(after * 1000));
+                } else if (after == 0) {
+                    toast("请在前半段设置片头");
+                }
+                break;
+            }
+            case 1: {
+                int before = getTimeCfg(false);
+                clickIfBound(mPlayerTimeSkipBtn);
+                int after = getTimeCfg(false);
+                if (after > 0 && after != before) {
+                    toast("片尾已设为倒数 " + stringForTime(after * 1000));
+                } else if (after == 0) {
+                    toast("请在后半段设置片尾");
+                }
+                break;
+            }
+            case 2:
+            default:
+                clickIfBound(mPlayerTimeResetBtn);
+                toast("已清除片头片尾");
+                break;
+        }
+    }
+
+    /**
+     * 长按跟手：移动时先判二级、再回落一级；滑到「片头片尾」上会自动把二级弹出来。
+     */
+    private void menuFanPointer(float rawX, float rawY) {
+        if (menuFan == null) return;
+        if (menuFanSub != null) {
+            int subHit = menuFanSub.itemAt(rawX, rawY);
+            if (subHit >= 0) {
+                menuFanSub.setFocus(subHit);
+                return;
+            }
+            int l1 = menuFan.itemAt(rawX, rawY);
+            if (l1 >= 0 && l1 != MENU_FAN_SUB_PARENT) {
+                // 滑回一级的其它项：二级收起来，别两层同时亮着
+                closeFanSub();
+                menuFan.setFocus(l1);
+                return;
+            }
+            menuFanSub.setFocus(-1);
+            return;
+        }
+        menuFan.setFocus(menuFan.itemAt(rawX, rawY));
+    }
+
+    /** 长按跟手：抬手结算 */
+    private void menuFanDragEnd(float rawX, float rawY) {
+        if (menuFan == null) return;
+        if (menuFanSub != null) {
+            int subHit = menuFanSub.itemAt(rawX, rawY);
+            if (subHit >= 0) {
+                menuFanSub.pickAt(subHit);
+                return;
+            }
+            int l1 = menuFan.itemAt(rawX, rawY);
+            if (l1 >= 0) {
+                menuFan.pickAt(l1);
+                return;
+            }
+            dismissMenuFan();
+            return;
+        }
+        int hit = menuFan.itemAt(rawX, rawY);
+        if (hit >= 0) menuFan.pickAt(hit);
+        else dismissMenuFan();
+    }
+
+    /** 触发抽屉里某个按钮原有的点击逻辑（不复制一份实现，避免两处走偏） */
+    private void clickIfBound(View v) {
+        if (v != null) v.performClick();
+    }
+
+    private void toast(String text) {
+        Context ctx = getContext();
+        if (ctx != null) Toast.makeText(ctx, text, Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * 软糖 Q 弹入场：位置用带过冲的插值飞过去（越过目标再弹回），
+     * 缩放用更强的过冲从很小弹到原大，两者叠加就是果冻感。
+     */
+    private void jellyIn(final View item, final float fromX, final float fromY,
+                         final float toX, final float toY, long delay) {
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setStartDelay(delay);
+        animator.setDuration(420);
+        final OvershootInterpolator moveInterp = new OvershootInterpolator(2.4f);
+        final OvershootInterpolator scaleInterp = new OvershootInterpolator(3.4f);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float t = (float) animation.getAnimatedValue();
+                float p = moveInterp.getInterpolation(t);
+                item.setX(fromX + (toX - fromX) * p);
+                item.setY(fromY + (toY - fromY) * p);
+                float s = 0.32f + 0.68f * scaleInterp.getInterpolation(t);
+                item.setScaleX(s);
+                item.setScaleY(s);
+                item.setAlpha(Math.min(1f, t * 2.4f));
+            }
+        });
+        animator.start();
+    }
+
+    /** 焦点气泡的果冻回弹：先鼓一下再回原大小 */
+    private void jellyPop(final View v, float peak) {
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(220);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float t = (float) animation.getAnimatedValue();
+                float s = 1f + (peak - 1f) * (float) Math.sin(t * Math.PI);
+                v.setScaleX(s);
+                v.setScaleY(s);
+            }
+        });
+        animator.start();
+    }
+
+    /**
+     * 一层扇形菜单：自建浮层、把气泡摆到弧线上、跟手命中判定与选中动画。
+     * 一级（menuFan）与「片头片尾」的二级（menuFanSub）各持有一个实例。
+     */
+    private final class FanLayer {
+        private final String[] labels;
+        private final boolean sub;
+        private FrameLayout root;
+        private TextView[] items;
+        private float[] cx;
+        private float[] cy;
+        private int focus = -1;
+        /** 气泡落位前不做命中判定，避免动画期间按坐标 0,0 误选第一项 */
+        private boolean ready;
+        private boolean dragArmed;
+
+        FanLayer(String[] labels, boolean sub) {
+            this.labels = labels;
+            this.sub = sub;
+        }
+
+        void show(final View anchor) {
+            final Context ctx = getContext();
+            if (ctx == null || root != null) return;
+            try {
+                FrameLayout layer = new FrameLayout(ctx);
+                View scrim = new View(ctx);
+                scrim.setBackgroundColor(sub ? 0x2E000000 : 0x52000000);
+                layer.addView(scrim, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                int size = dp(sub ? MENU_FAN_SUB_ITEM_DP : MENU_FAN_ITEM_DP);
+                items = new TextView[labels.length];
+                for (int i = 0; i < labels.length; i++) {
+                    TextView item = new TextView(ctx);
+                    item.setText(labels[i]);
+                    // 气泡很小，四字标签折成两行（片头 / 片尾），两字标签一行
+                    item.setSingleLine(labels[i].length() <= 3);
+                    item.setMaxLines(labels[i].length() <= 3 ? 1 : 2);
+                    item.setTextSize(TypedValue.COMPLEX_UNIT_SP, labels[i].length() <= 3 ? 10 : 9);
+                    item.setTextColor(0xF2FFFFFF);
+                    item.setGravity(Gravity.CENTER);
+                    item.setIncludeFontPadding(false);
+                    item.setClickable(false);
+                    item.setFocusable(false);
+                    item.setAlpha(0f);
+                    item.setBackgroundResource(R.drawable.bg_menu_fan_item);
+                    item.setLayoutParams(new FrameLayout.LayoutParams(size, size));
+                    layer.addView(item);
+                    items[i] = item;
+                }
+                cx = new float[labels.length];
+                cy = new float[labels.length];
+                root = layer;
+                focus = -1;
+                ready = false;
+                addView(layer, new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                layer.setOnTouchListener(new OnTouchListener() {
+                    @Override
+                    public boolean onTouch(View v, MotionEvent event) {
+                        float rawX = event.getRawX();
+                        float rawY = event.getRawY();
+                        switch (event.getActionMasked()) {
+                            case MotionEvent.ACTION_DOWN:
+                            case MotionEvent.ACTION_MOVE:
+                                setFocus(itemAt(rawX, rawY));
+                                return true;
+                            default: {
+                                int hit = itemAt(rawX, rawY);
+                                if (hit >= 0) pickAt(hit);
+                                else dismissMenuFan();
+                                return true;
+                            }
+                        }
+                    }
+                });
+                layer.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        position(anchor);
+                    }
+                });
+            } catch (Throwable th) {
+                th.printStackTrace();
+            }
+        }
+
+        /** 把气泡沿弧线摆到锚点周围 */
+        private void position(View anchor) {
+            if (root == null || items == null) return;
+            int[] loc = new int[2];
+            int[] rootLoc = new int[2];
+            float ax;
+            float ay;
+            if (anchor != null && anchor.isAttachedToWindow()) {
+                anchor.getLocationOnScreen(loc);
+                root.getLocationOnScreen(rootLoc);
+                ax = loc[0] - rootLoc[0] + anchor.getMeasuredWidth() / 2f;
+                ay = loc[1] - rootLoc[1] + anchor.getMeasuredHeight() / 2f;
+            } else {
+                // 锚点不可用：退化到右上角，避免扇形跑到屏幕外
+                ax = getMeasuredWidth() - dp(32);
+                ay = dp(56);
+            }
+            float radius = dp(sub ? MENU_FAN_SUB_RADIUS_DP : MENU_FAN_RADIUS_DP);
+            float half = dp(sub ? MENU_FAN_SUB_ITEM_DP : MENU_FAN_ITEM_DP) / 2f;
+            float start = sub ? MENU_FAN_SUB_START_DEG : MENU_FAN_START_DEG;
+            float sweep = sub ? MENU_FAN_SUB_SWEEP_DEG : MENU_FAN_SWEEP_DEG;
+            int n = items.length;
+            // 弧整体顺时针转过来后，最靠上的那颗会顶出屏幕（菜单键就贴着右上角）。
+            // 这里只把「弧心」下移到刚好够放，气泡飞出的起点仍是菜单键本身。
+            float arcY = ay;
+            float minSin = Math.min((float) Math.sin(Math.toRadians(start)),
+                    (float) Math.sin(Math.toRadians(start + sweep)));
+            float topLimit = half + dp(6);
+            if (minSin < 0 && arcY + minSin * radius < topLimit) {
+                arcY = topLimit - minSin * radius;
+            }
+            for (int i = 0; i < n; i++) {
+                double theta = Math.toRadians(start + (n <= 1 ? 0 : sweep / (n - 1)) * i);
+                float tx = (float) (ax + Math.cos(theta) * radius);
+                float ty = (float) (arcY + Math.sin(theta) * radius);
+                // setX/setY 设置的是左上角，命中判定用的是圆心，所以这里存圆心坐标
+                cx[i] = tx + half;
+                cy[i] = ty + half;
+                TextView item = items[i];
+                // 从菜单键中心「啵」地弹出来
+                item.setX(ax - half);
+                item.setY(ay - half);
+                item.setScaleX(0.32f);
+                item.setScaleY(0.32f);
+                item.setAlpha(0f);
+                jellyIn(item, ax - half, ay - half, tx, ty, i * 26L);
+            }
+            ready = true;
+        }
+
+        /** 就近命中：气泡很小，取离手指最近且落在容差内的一项，避免邻项误选 */
+        int itemAt(float rawX, float rawY) {
+            if (root == null || cx == null || !ready) return -1;
+            int[] loc = new int[2];
+            root.getLocationOnScreen(loc);
+            float maxDist = dp(sub ? MENU_FAN_SUB_ITEM_DP : MENU_FAN_ITEM_DP) / 2f + dp(14);
+            float best = maxDist * maxDist;
+            int bestIndex = -1;
+            for (int i = 0; i < cx.length; i++) {
+                float dx = rawX - loc[0] - cx[i];
+                float dy = rawY - loc[1] - cy[i];
+                float d = dx * dx + dy * dy;
+                if (d < best) {
+                    best = d;
+                    bestIndex = i;
+                }
+            }
+            return bestIndex;
+        }
+
+        void setFocus(int index) {
+            if (index == focus) return;
+            if (focus >= 0 && focus < items.length) {
+                items[focus].setBackgroundResource(R.drawable.bg_menu_fan_item);
+                items[focus].setTextColor(0xF2FFFFFF);
+                jellyPop(items[focus], 0.9f);
+            }
+            focus = index;
+            if (index >= 0 && index < items.length) {
+                items[index].setBackgroundResource(R.drawable.bg_menu_fan_item_selected);
+                items[index].setTextColor(0xFFFFFFFF);
+                // 焦点项鼓一下，配合一次极轻的「哒」，让跟手选择有落点感
+                jellyPop(items[index], 1.24f);
+                vibrateTick();
+                // 跟手滑到「片头片尾」上：二级自己弹出来
+                if (!sub && index == MENU_FAN_SUB_PARENT) expandFanSub();
+            }
+        }
+
+        /** 当前处于焦点态的气泡（片头片尾展开二级时用它当锚点） */
+        TextView focusedItem() {
+            if (items == null || focus < 0 || focus >= items.length) return null;
+            return items[focus];
+        }
+
+        void pickAt(int index) {
+            if (sub) onMenuFanSubPicked(index);
+            else onMenuFanPicked(index);
+        }
+
+        void dismiss() {
+            if (root == null) return;
+            final FrameLayout layer = root;
+            root = null;
+            items = null;
+            cx = null;
+            cy = null;
+            focus = -1;
+            ready = false;
+            dragArmed = false;
+            layer.animate()
+                    .alpha(0f)
+                    .setDuration(120)
+                    .withEndAction(new Runnable() {
+                        @Override
+                        public void run() {
+                            ViewGroup parent = (ViewGroup) layer.getParent();
+                            if (parent != null) parent.removeView(layer);
+                        }
+                    })
+                    .start();
         }
     }
 
@@ -2172,6 +2856,10 @@ public class VodController extends BaseController {
         initLandscapePortraitBtnInfo();
         applyControlBarMode();
         updateFullScreenIcon(isPlayerFullScreen());
+        // 横竖屏切换 / 分屏尺寸变化后，扇形菜单的落位已失效，直接收起避免错位
+        if (w != oldw || h != oldh) {
+            if (menuFan != null) dismissMenuFan();
+        }
     }
 
     void initSubtitleInfo() {
@@ -2206,7 +2894,7 @@ public class VodController extends BaseController {
             View codecRow = findViewById(R.id.row_codec);
             if (codecRow != null) codecRow.setVisibility(playerType == 1 ? VISIBLE : GONE);
             mPlayerScaleBtn.setText(PlayerHelper.getScaleName(mPlayerConfig.getInt("sc")));
-            mPlayerSpeedBtn.setText(mPlayerConfig.getDouble("sp") + "x");
+            mPlayerSpeedBtn.setText(fmtSpeed(mPlayerConfig.getDouble("sp")) + "x");
             if (mPlayerSpeedBtn != null) mPlayerSpeedBtn.setTextColor(SPEED_BTN_COLOR_NORMAL);
             int start = mPlayerConfig.getInt("st");
             int end = mPlayerConfig.getInt("et");
@@ -2724,7 +3412,7 @@ public class VodController extends BaseController {
         if (!Hawk.get(HawkConfig.GESTURE_SPEED_BOOST, true)) return;
         if (videoPlayState == VideoView.STATE_PAUSED) return;
         if (!isInPlaybackState() || isLocked()) return;
-        // 长按进入加速状态，随后上滑加速、下滑减速、右滑固定倍速
+        // 长按进入加速状态：左右滑动 0.2 一档变速（左减右加），上滑固定，再长按自动解除
         enterSpeedBoost(e.getX(), e.getY());
     }
 
@@ -2892,6 +3580,11 @@ public class VodController extends BaseController {
     
     @Override
     public boolean onBackPressed() {
+        // 扇形菜单浮起时：返回键只收起菜单，不退出播放
+        if (menuFan != null) {
+            dismissMenuFan();
+            return true;
+        }
         if (isClickBackBtn) {
             isClickBackBtn = false;
             if (isBottomVisible()) {
