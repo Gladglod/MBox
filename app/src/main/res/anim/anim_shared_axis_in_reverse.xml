@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 共享轴（X 轴）转场：返回 —— 下层页面从左侧滑回并淡入 -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic">
+    <translate
+        android:fromXDelta="-16%"
+        android:toXDelta="0%"
+        android:duration="280" />
+    <alpha
+        android:fromAlpha="0.4"
+        android:toAlpha="1.0"
+        android:duration="280" />
+</set>

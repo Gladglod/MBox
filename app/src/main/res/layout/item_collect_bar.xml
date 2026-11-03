@@ -4,22 +4,28 @@
     android:layout_height="wrap_content"
     android:layout_marginBottom="@dimen/vs_8">
 
-    <!-- 左滑后露出的操作区 -->
+    <!-- 左滑后露出的操作区：玻璃胶囊按钮，随露出进度级联淡入 + 右漂（SwipeActionLayout 驱动） -->
     <LinearLayout
-        android:layout_width="132dp"
+        android:layout_width="140dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:orientation="horizontal">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="8dp"
+        android:paddingTop="8dp"
+        android:paddingRight="10dp"
+        android:paddingBottom="8dp">
 
         <TextView
             android:id="@+id/btnPin"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="#FF2F4A6B"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_swipe_pin"
             android:gravity="center"
             android:text="置顶"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_accent"
             android:textSize="@dimen/ts_16" />
 
         <TextView
@@ -27,10 +33,10 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="#FF6B2F2F"
+            android:background="@drawable/bg_swipe_delete"
             android:gravity="center"
             android:text="删除"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_danger"
             android:textSize="@dimen/ts_16" />
     </LinearLayout>
 

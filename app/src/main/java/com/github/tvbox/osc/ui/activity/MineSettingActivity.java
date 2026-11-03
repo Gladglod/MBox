@@ -1,23 +1,36 @@
 package com.github.tvbox.osc.ui.activity;
 
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.util.Linkify;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.DiffUtil;
+import androidx.annotation.Nullable;
+import androidx.dynamicanimation.animation.DynamicAnimation;
+import androidx.dynamicanimation.animation.FloatValueHolder;
+import androidx.dynamicanimation.animation.SpringAnimation;
+import androidx.dynamicanimation.animation.SpringForce;
 
 import com.github.tvbox.osc.BuildConfig;
 import com.github.tvbox.osc.R;
@@ -28,16 +41,19 @@ import com.github.tvbox.osc.bean.DanmuSearchResult;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.event.RefreshEvent;
-import com.github.tvbox.osc.ui.adapter.SelectDialogAdapter;
 import com.github.tvbox.osc.ui.dialog.DanmuApiDialog;
 import com.github.tvbox.osc.ui.dialog.NumberInputDialog;
-import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.XWalkInitDialog;
+import com.github.tvbox.osc.ui.widget.GlassGroupView;
+import com.github.tvbox.osc.ui.widget.SpringSwitch;
+import com.github.tvbox.osc.util.BackupUtil;
 import com.github.tvbox.osc.util.DanmuHelper;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
+import com.github.tvbox.osc.util.MotionCompat;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.github.tvbox.osc.util.ThemeUtil;
 import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.FileCallback;
 import com.lzy.okgo.model.Progress;
@@ -45,12 +61,20 @@ import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
 
 import org.greenrobot.eventbus.EventBus;
-import org.jetbrains.annotations.NotNull;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
@@ -67,9 +91,12 @@ public class MineSettingActivity extends BaseActivity {
     public static final String SECTION_UI = "ui";
     public static final String SECTION_GESTURE = "gesture";
     public static final String SECTION_DANMU = "danmu";
+    public static final String SECTION_BACKUP = "backup";
     public static final String SECTION_ABOUT = "about";
 
     private static final int REQUEST_PICK_WALLPAPER = 4001;
+    private static final int REQUEST_BACKUP_EXPORT = 4002;
+    private static final int REQUEST_BACKUP_IMPORT = 4003;
 
     private String section;
     private LinearLayout contentContainer;
@@ -78,6 +105,11 @@ public class MineSettingActivity extends BaseActivity {
 
     private interface Action {
         void run();
+    }
+
+    /** 带「来源行」的 Action：选择类交互需要知道是从哪一行下拉的 */
+    private interface ViewAction {
+        void run(View row);
     }
 
     private interface TextProvider {
@@ -117,6 +149,19 @@ public class MineSettingActivity extends BaseActivity {
         ((TextView) findViewById(R.id.tvTitle)).setText(titleOf(section));
         buildSection();
         refreshRows();
+        // 分组卡片入场：轻微上浮 + 淡入，错开 40ms（尊重系统「移除动画」）
+        if (!sceneIn) {
+            sceneIn = true;
+            MotionCompat.staggerEnter(contentContainer);
+        }
+    }
+
+    private boolean sceneIn;
+
+    @Override
+    public void finish() {
+        // 共享轴返回转场：从二级页回「我的」，反向滑动
+        applyMineBackTransition();
     }
 
     @Override
@@ -136,6 +181,8 @@ public class MineSettingActivity extends BaseActivity {
                 return "播放手势";
             case SECTION_DANMU:
                 return "弹幕设定";
+            case SECTION_BACKUP:
+                return "备份与同步";
             case SECTION_ABOUT:
                 return "关于";
             case SECTION_APPEARANCE:
@@ -157,6 +204,9 @@ public class MineSettingActivity extends BaseActivity {
                 break;
             case SECTION_DANMU:
                 buildDanmu();
+                break;
+            case SECTION_BACKUP:
+                buildBackup();
                 break;
             case SECTION_ABOUT:
                 buildAbout();
@@ -214,7 +264,7 @@ public class MineSettingActivity extends BaseActivity {
             public void run() {
                 resetWallpaper();
             }
-        });
+        }, true);
 
         header("纯色背景");
         card();
@@ -393,11 +443,21 @@ public class MineSettingActivity extends BaseActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_PICK_WALLPAPER || resultCode != RESULT_OK
-                || data == null || data.getData() == null) {
-            return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        switch (requestCode) {
+            case REQUEST_PICK_WALLPAPER:
+                saveWallpaperFromUri(uri);
+                break;
+            case REQUEST_BACKUP_EXPORT:
+                writeBackupToUri(uri);
+                break;
+            case REQUEST_BACKUP_IMPORT:
+                restoreBackupFromUri(uri);
+                break;
+            default:
+                break;
         }
-        saveWallpaperFromUri(data.getData());
     }
 
     /** 把选中的图片压缩后写入 files/wp，作为全局背景 */
@@ -614,6 +674,44 @@ public class MineSettingActivity extends BaseActivity {
                         Hawk.put(HawkConfig.HISTORY_NUM, value);
                     }
                 });
+
+        header("高级");
+        card();
+        buildAdvancedCard();
+    }
+
+    private LinearLayout advancedPanel;
+    private TextView advancedChevron;
+    private SpringAnimation advancedHeightAnim;
+
+    /** 「高级」分组里一个默认收起的抽屉：调试开关这类的低频选项藏进去，点行弹簧展开 */
+    private void buildAdvancedCard() {
+        if (currentCard == null) card();
+        boolean open = Hawk.get(HawkConfig.UI_ADVANCED, false);
+
+        View expander = makeRow("高级选项", "调试开关、嗅探内核等低频选项");
+        advancedChevron = (TextView) expander.findViewById(R.id.tvRowArrow);
+        advancedChevron.setRotation(open ? 90f : 0f);
+        expander.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                toggleAdvanced();
+            }
+        });
+        MotionCompat.attachPressScale(expander);
+        attachRow(expander);
+
+        // 抽屉容器放在展开行的下一格里，默认 0 高度；展开/收起时对高度做弹簧动画，
+        // 行内容随容器淡入淡出。玻璃卡片 clipToOutline 保证不越出 26dp 圆角。
+        advancedPanel = new LinearLayout(this);
+        advancedPanel.setOrientation(LinearLayout.VERTICAL);
+        advancedPanel.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                open ? LinearLayout.LayoutParams.WRAP_CONTENT : 0));
+
+        LinearLayout prev = currentCard;
+        currentCard = advancedPanel;
         addSwitchRow("嗅探 WebView", "开启使用系统 WebView，关闭使用 XWalk", HawkConfig.PARSE_WEBVIEW, true,
                 new Runnable() {
                     @Override
@@ -631,10 +729,94 @@ public class MineSettingActivity extends BaseActivity {
                         }
                     }
                 });
-
-        header("调试");
-        card();
         addSwitchRow("调试模式", "显示播放器调试信息", HawkConfig.DEBUG_OPEN, false, null);
+        currentCard = prev;
+
+        currentCard.addView(advancedPanel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                open ? ViewGroup.LayoutParams.WRAP_CONTENT : 0));
+    }
+
+    private void toggleAdvanced() {
+        boolean open = Hawk.get(HawkConfig.UI_ADVANCED, false);
+        boolean next = !open;
+        Hawk.put(HawkConfig.UI_ADVANCED, next);
+        animateAdvanced(next);
+    }
+
+    private void animateAdvanced(final boolean expand) {
+        if (advancedPanel == null || advancedChevron == null) return;
+        final LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) advancedPanel.getLayoutParams();
+        if (MotionCompat.reducedMotion(this)) {
+            // 「移除动画」：直接置位，无弹簧
+            lp.height = expand ? ViewGroup.LayoutParams.WRAP_CONTENT : 0;
+            advancedPanel.setLayoutParams(lp);
+            advancedPanel.setAlpha(1f);
+            advancedChevron.setRotation(expand ? 90f : 0f);
+            return;
+        }
+        // 起点：展开态参数是 WRAP_CONTENT，要用实测像素值
+        int from = lp.height == ViewGroup.LayoutParams.WRAP_CONTENT
+                ? advancedPanel.getHeight() : Math.max(0, lp.height);
+        final int target = expand ? advancedNaturalHeight() : 0;
+        if (advancedHeightAnim != null) {
+            advancedHeightAnim.cancel(); // 连续点击时先停掉上一次的弹簧
+        }
+
+        SpringAnimation heightAnim = new SpringAnimation(new FloatValueHolder(from));
+        heightAnim.setSpring(new SpringForce()
+                .setStiffness(MotionCompat.SPRING_STIFFNESS)
+                .setDampingRatio(MotionCompat.SPRING_DAMPING));
+        heightAnim.addUpdateListener(new DynamicAnimation.OnAnimationUpdateListener() {
+            @Override
+            public void onAnimationUpdate(DynamicAnimation animation, float value, float velocity) {
+                lp.height = Math.round(value);
+                advancedPanel.setLayoutParams(lp);
+            }
+        });
+        heightAnim.addEndListener(new DynamicAnimation.OnAnimationEndListener() {
+            @Override
+            public void onAnimationEnd(DynamicAnimation animation, boolean canceled, float value, float velocity) {
+                if (expand) {
+                    // 结束后交还给 WRAP_CONTENT，用户在弹窗里改系统字号后仍能正确自适应
+                    lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                } else {
+                    lp.height = 0;
+                }
+                advancedPanel.setLayoutParams(lp);
+            }
+        });
+        heightAnim.animateToFinalPosition(target);
+        advancedHeightAnim = heightAnim;
+
+        // 内容淡入/淡出
+        SpringAnimation fade = new SpringAnimation(advancedPanel, DynamicAnimation.ALPHA);
+        fade.setSpring(new SpringForce()
+                .setStiffness(MotionCompat.SPRING_STIFFNESS)
+                .setDampingRatio(MotionCompat.SPRING_DAMPING));
+        fade.setMinimumVisibleChange(DynamicAnimation.MIN_VISIBLE_CHANGE_ALPHA);
+        fade.animateToFinalPosition(expand ? 1f : 0f);
+
+        // 箭头旋转 90°
+        SpringAnimation rotate = new SpringAnimation(advancedChevron, DynamicAnimation.ROTATION);
+        rotate.setSpring(new SpringForce()
+                .setStiffness(MotionCompat.SPRING_STIFFNESS)
+                .setDampingRatio(MotionCompat.SPRING_DAMPING));
+        // dynamicanimation 1.0.0 没有 MIN_VISIBLE_CHANGE_ROTATION，
+        // 收敛阈值用 0.1°（旋转一圈结束的判定足够平滑）
+        rotate.setMinimumVisibleChange(0.1f);
+        rotate.animateToFinalPosition(expand ? 90f : 0f);
+    }
+
+    /** 展开态的目标高度：按当前真实宽度重新测一次自然高度（副文字可能换行） */
+    private int advancedNaturalHeight() {
+        int width = advancedPanel.getMeasuredWidth();
+        if (width <= 0) width = advancedPanel.getWidth();
+        if (width <= 0) return 0;
+        advancedPanel.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        return advancedPanel.getMeasuredHeight();
     }
 
     /* ============================ 播放手势 ============================ */
@@ -673,10 +855,10 @@ public class MineSettingActivity extends BaseActivity {
                 if (ms <= 0) return "关闭";
                 return Math.round(ms / 1000f) + " 秒";
             }
-        }, new Action() {
+        }, new ViewAction() {
             @Override
-            public void run() {
-                pickDoubleTapSeek();
+            public void run(View row) {
+                pickDoubleTapSeek(row);
             }
         });
 
@@ -687,7 +869,7 @@ public class MineSettingActivity extends BaseActivity {
     }
 
     /** 双击快进快退秒数：常用档位 + 自定义，0 表示关闭该手势 */
-    private void pickDoubleTapSeek() {
+    private void pickDoubleTapSeek(View anchor) {
         final String[] items = {"关闭", "3 秒", "5 秒", "10 秒", "自定义…"};
         final int ms = Hawk.get(HawkConfig.GESTURE_DOUBLE_TAP_SEEK, 3000);
         int selected;
@@ -696,7 +878,7 @@ public class MineSettingActivity extends BaseActivity {
         else if (ms == 5000) selected = 2;
         else if (ms == 10000) selected = 3;
         else selected = 4;
-        showPick("请选择快进快退秒数", items, selected, new IntAction() {
+        showPick(anchor, "请选择快进快退秒数", items, selected, new IntAction() {
             @Override
             public void run(int value) {
                 switch (value) {
@@ -905,6 +1087,158 @@ public class MineSettingActivity extends BaseActivity {
         });
     }
 
+    /* ============================ 备份与同步 ============================ */
+
+    /**
+     * 备份 = 用户用系统文件选择器自选保存位置，把配置快照导出成 JSON；
+     * 同步 = 在另一台设备（或重装后）选择备份文件读回，覆盖现有同名配置。
+     */
+    private void buildBackup() {
+        header("备份");
+        card();
+        addInfoRow("备份范围", new TextProvider() {
+            @Override
+            public String get() {
+                return "数据源配置 · 外观主题 · 播放与字幕 · 直播 · 弹幕 · 播放手势 · 短剧源。\n"
+                        + "观看记录与收藏等媒体数据不包含在内。";
+            }
+        });
+        addActionRow("备份配置", "弹出系统文件选择器，自行选择保存位置与文件名", new Action() {
+            @Override
+            public void run() {
+                startBackupExport();
+            }
+        });
+
+        header("同步");
+        card();
+        addActionRow("从备份导入", "选择之前导出的备份文件，同一项设置将被覆盖", new Action() {
+            @Override
+            public void run() {
+                startBackupImport();
+            }
+        });
+    }
+
+    private void startBackupExport() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
+            Toast.makeText(this, "当前系统版本太低，不支持选择保存位置", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Calendar c = Calendar.getInstance();
+        String name = String.format(Locale.getDefault(),
+                "tvboxos_backup_%04d%02d%02d_%02d%02d.json",
+                c.get(Calendar.YEAR),
+                c.get(Calendar.MONTH) + 1, // MONTH 从 0 起，显示用要 +1
+                c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.putExtra(Intent.EXTRA_TITLE, name);
+        try {
+            startActivityForResult(Intent.createChooser(intent, "选择备份的保存位置"),
+                    REQUEST_BACKUP_EXPORT);
+        } catch (Throwable th) {
+            Toast.makeText(this, "没有找到可用的文件选择器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void startBackupImport() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
+            Toast.makeText(this, "当前系统版本太低，不支持选择备份文件", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        try {
+            startActivityForResult(Intent.createChooser(intent, "选择备份文件"),
+                    REQUEST_BACKUP_IMPORT);
+        } catch (Throwable th) {
+            Toast.makeText(this, "没有找到可用的文件选择器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void writeBackupToUri(Uri uri) {
+        OutputStream output = null;
+        try {
+            byte[] data = BackupUtil.buildJson().getBytes(StandardCharsets.UTF_8);
+            output = getContentResolver().openOutputStream(uri);
+            if (output == null) {
+                Toast.makeText(this, "保存位置无法写入", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            output.write(data);
+            output.flush();
+            Toast.makeText(this, "备份成功（" + data.length / 1024 + " KB）", Toast.LENGTH_SHORT).show();
+        } catch (Throwable th) {
+            Toast.makeText(this, "备份失败：" + th.getMessage(), Toast.LENGTH_SHORT).show();
+        } finally {
+            try {
+                if (output != null) output.close();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private void restoreBackupFromUri(Uri uri) {
+        BufferedReader reader = null;
+        try {
+            InputStream input = getContentResolver().openInputStream(uri);
+            if (input == null) {
+                Toast.makeText(this, "读取备份失败", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            StringBuilder sb = new StringBuilder();
+            reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append('\n');
+            }
+            BackupUtil.RestoreResult result = BackupUtil.restore(sb.toString());
+            // 即时生效的类型：主题 / 播放内核 / 弹幕事件 / 纯色背景
+            if (result.uiModeChanged) {
+                ThemeUtil.setMode(Hawk.get(HawkConfig.UI_MODE, ThemeUtil.getMode()));
+            }
+            if (result.playerChanged) {
+                PlayerHelper.init();
+            }
+            if (result.danmuChanged) {
+                postDanmuSettings();
+            }
+            if (result.wallpaperChanged) {
+                applyWallpaperNow();
+            }
+            refreshRows();
+            Toast.makeText(this, "已同步 " + result.count + " 项配置"
+                    + (isApiConfigIncluded(sb.toString()) ? "；数据源配置重启应用后生效" : ""),
+                    Toast.LENGTH_LONG).show();
+        } catch (org.json.JSONException je) {
+            Toast.makeText(this, "这不是有效的备份文件", Toast.LENGTH_SHORT).show();
+        } catch (Throwable th) {
+            Toast.makeText(this, "读取备份失败：" + th.getMessage(), Toast.LENGTH_SHORT).show();
+        } finally {
+            try {
+                if (reader != null) reader.close();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** 是否在备份里带上了数据源配置（提示重启生效用） */
+    private boolean isApiConfigIncluded(String json) {
+        try {
+            JSONArray entries = new JSONObject(json).optJSONArray("entries");
+            if (entries == null) return false;
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject e = entries.optJSONObject(i);
+                if (e != null && HawkConfig.API_URL.equals(e.optString("k", ""))) return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
     /* ============================ 关于 ============================ */
 
     private void buildAbout() {
@@ -995,30 +1329,34 @@ public class MineSettingActivity extends BaseActivity {
     private void header(String title) {
         TextView tv = new TextView(this);
         tv.setText(title);
+        // 分组标题：小号、中等字重、灰色，浮在玻璃容器外部上方（iOS 设置页分组感）
         tv.setTextColor(getResources().getColor(R.color.ui_muted));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimensionPixelSize(R.dimen.ts_16));
+        tv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimensionPixelSize(R.dimen.ts_14));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.leftMargin = dp(4);
-        lp.topMargin = dp(contentContainer.getChildCount() == 0 ? 6 : 18);
-        lp.bottomMargin = dp(2);
+        lp.leftMargin = dp(16); // 与玻璃卡片内行的左内边距（14dp）+ 一点边际对齐
+        lp.topMargin = dp(contentContainer.getChildCount() == 0 ? 6 : 22);
+        lp.bottomMargin = dp(6);
         contentContainer.addView(tv, lp);
         currentCard = null;
     }
 
     private void card() {
-        LinearLayout card = new LinearLayout(this);
+        // 玻璃分组容器：半透明填充 + 高光描边 + 26dp 大圆角；
+        // Android 12+ 且背后有壁纸时自带 backdrop 预模糊，其余降级为半透明实色
+        GlassGroupView card = new GlassGroupView(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundResource(R.drawable.bg_phone_card);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         contentContainer.addView(card, lp);
         currentCard = card;
     }
 
-    private View makeRow(String title, String sub) {
+    private LinearLayout makeRow(String title, String sub) {
         if (currentCard == null) card();
-        View row = LayoutInflater.from(this).inflate(R.layout.item_mine_setting_row, currentCard, false);
+        LinearLayout row = (LinearLayout) LayoutInflater.from(this)
+                .inflate(R.layout.item_mine_setting_row, currentCard, false);
         ((TextView) row.findViewById(R.id.tvRowTitle)).setText(title);
         TextView tvSub = row.findViewById(R.id.tvRowSub);
         if (TextUtils.isEmpty(sub)) {
@@ -1036,8 +1374,9 @@ public class MineSettingActivity extends BaseActivity {
             divider.setBackgroundColor(getResources().getColor(R.color.ui_divider));
             LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(0.5f)));
-            dlp.leftMargin = dp(12);
-            dlp.rightMargin = dp(12);
+            // 左右缩进对齐行内边距（14dp），Apple 分组列表的分隔线细节
+            dlp.leftMargin = dp(14);
+            dlp.rightMargin = dp(14);
             currentCard.addView(divider, dlp);
         }
         currentCard.addView(row, new LinearLayout.LayoutParams(
@@ -1045,8 +1384,22 @@ public class MineSettingActivity extends BaseActivity {
     }
 
     private void addActionRow(String title, String sub, final Action action) {
+        addActionRow(title, sub, action, false);
+    }
+
+    /**
+     * @param danger 危险项：文字换成红色强调，但行背景仍是普通行（不做红色玻璃，
+     *               避免警报感过强）
+     */
+    private void addActionRow(String title, String sub, final Action action, boolean danger) {
         View row = makeRow(title, sub);
         row.findViewById(R.id.tvRowValue).setVisibility(View.GONE);
+        if (danger) {
+            // 保留普通行外观，只用文字颜色提示后果
+            ((TextView) row.findViewById(R.id.tvRowTitle))
+                    .setTextColor(getResources().getColor(R.color.ui_danger));
+        }
+        MotionCompat.attachPressScale(row);
         row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1079,11 +1432,47 @@ public class MineSettingActivity extends BaseActivity {
             row.setClickable(false);
             row.findViewById(R.id.tvRowArrow).setVisibility(View.GONE);
         } else {
+            MotionCompat.attachPressScale(row);
             row.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     FastClickCheckUtil.check(v);
                     onClick.run();
+                    contentContainer.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            refreshRows();
+                        }
+                    }, 150);
+                }
+            });
+        }
+        attachRow(row);
+    }
+
+    /** 需要「来源行」的值行变体：下拉菜单从这一行下面弹出 */
+    private void addValueRow(String title, String sub, final TextProvider provider, final ViewAction onClick) {
+        View row = makeRow(title, sub);
+        final TextView tvValue = row.findViewById(R.id.tvRowValue);
+        Runnable refresher = new Runnable() {
+            @Override
+            public void run() {
+                String value = provider.get();
+                tvValue.setText(value == null ? "" : value);
+            }
+        };
+        refreshers.add(refresher);
+        refresher.run();
+        if (onClick == null) {
+            row.setClickable(false);
+            row.findViewById(R.id.tvRowArrow).setVisibility(View.GONE);
+        } else {
+            MotionCompat.attachPressScale(row);
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    onClick.run(v);
                     contentContainer.postDelayed(new Runnable() {
                         @Override
                         public void run() {
@@ -1106,12 +1495,17 @@ public class MineSettingActivity extends BaseActivity {
         // 信息行内容可能较长（如项目来源含网址），放开行数并关闭末尾省略号，避免网址被截断
         tvSub.setEllipsize(null);
         tvSub.setMaxLines(10);
+        // 内容里的网址要能点开：悬挂 LinkMovementMethod，链接着色用品牌链接色
+        tvSub.setMovementMethod(LinkMovementMethod.getInstance());
+        tvSub.setLinkTextColor(getResources().getColor(R.color.ui_link));
         Runnable refresher = new Runnable() {
             @Override
             public void run() {
                 String value = provider.get();
                 tvSub.setVisibility(View.VISIBLE);
                 tvSub.setText(value == null ? "" : value);
+                // 每次回填都重新扫描一遍网址并转为可点链接
+                Linkify.addLinks(tvSub, Linkify.WEB_URLS);
             }
         };
         refreshers.add(refresher);
@@ -1119,28 +1513,37 @@ public class MineSettingActivity extends BaseActivity {
         attachRow(row);
     }
 
-    private void addSwitchRow(String title, String sub, final String key, final boolean def, final Runnable after) {
-        View row = makeRow(title, sub);
-        final TextView tvValue = row.findViewById(R.id.tvRowValue);
+    /** 开关行：右侧 SpringSwitch（品牌色选中态 + 弹簧滑块），行内任意位置可点 */
+    private void addSwitchRow(final String title, String sub, final String key, final boolean def, final Runnable after) {
+        LinearLayout row = makeRow(title, sub);
+        row.findViewById(R.id.tvRowValue).setVisibility(View.GONE);
         row.findViewById(R.id.tvRowArrow).setVisibility(View.GONE);
+        final SpringSwitch switchView = new SpringSwitch(this);
+        switchView.setContentDescription(title);
         Runnable refresher = new Runnable() {
             @Override
             public void run() {
                 Object value = Hawk.get(key, def);
                 boolean on = value instanceof Boolean ? (Boolean) value : def;
-                tvValue.setText(on ? "开启" : "关闭");
+                // 回填不做动画（无弹簧、无缩放脉冲），真实切换才有
+                switchView.setChecked(on, false);
             }
         };
         refreshers.add(refresher);
         refresher.run();
+        row.addView(switchView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        // 开关本体不可点，整行统一接管：视觉开关只展示状态
+        MotionCompat.attachPressScale(row);
         row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
-                Object value = Hawk.get(key, def);
-                boolean on = value instanceof Boolean ? (Boolean) value : def;
+                boolean on = switchView.isChecked();
                 Hawk.put(key, !on);
-                refresher.run();
+                // 真实切换：弹簧滑块 + 轻微脉冲缩放
+                switchView.setChecked(!on);
                 if (after != null) after.run();
             }
         });
@@ -1156,46 +1559,162 @@ public class MineSettingActivity extends BaseActivity {
                 if (idx < 0 || idx >= items.length) return items.length > 0 ? items[0] : "";
                 return items[idx];
             }
-        }, new Action() {
+        }, new ViewAction() {
             @Override
-            public void run() {
-                showPick(tip, items, current.get(), onPick);
+            public void run(View row) {
+                showPick(row, tip, items, current.get(), onPick);
             }
         });
     }
 
-    private void showPick(String tip, String[] items, int selected, final IntAction onPick) {
-        List<String> data = new ArrayList<>();
-        for (String item : items) data.add(item);
-        if (data.isEmpty()) return;
-        if (selected < 0 || selected >= data.size()) selected = 0;
-        SelectDialog<String> dialog = new SelectDialog<>(this);
-        dialog.setTip(tip);
-        dialog.setAdapter(new SelectDialogAdapter.SelectDialogInterface<String>() {
-            @Override
-            public void click(String value, int pos) {
-                onPick.run(pos);
-                // 选项在弹窗里被点选，此刻才拿到新值，必须在这里回刷一次
-                refreshRows();
-                dialog.dismiss();
+    /**
+     * 选择交互：行下方的下拉菜单（不再是居中弹窗）。
+     *
+     * <p>动效设计：PopupWindow 以 {@link com.github.tvbox.osc.R.style#MineDropdownPopup}
+     * 进出场——菜单从行下方下落 12% + 淡入、上收 6% + 淡出；菜单内容在出现的一刻
+     * 再叠加逐项 25ms 的淡入，形成「拉开一层帘」的层次。按压态用品牌色 10% 玻璃底
+     * （bg_dropdown_item），不引入默认灰 ripple。</p>
+     */
+    private void showPick(final View anchor, String tip, final String[] items, int selected, final IntAction onPick) {
+        if (items == null || items.length == 0) return;
+        if (selected < 0 || selected >= items.length) selected = 0;
+        // 面板宽度 = 屏幕宽的 1/3（下限 120dp 保证文字可读），右缘与来源行右缘对齐
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        final int width = Math.max(Math.round(screenWidth / 3.0f), dp(120));
+        final int panelPadding = dp(6);
+        final int itemHeight = dp(44);
+        final float corner = dp(14);
+        final boolean scrollable = items.length > 8;
+        // 展开后的自然高度：给「放不下自动转到行上方打开」用
+        final int naturalHeight = Math.min(
+                items.length * itemHeight + panelPadding * 2 + (TextUtils.isEmpty(tip) ? 0 : dp(28)),
+                dp(360));
+        final int popupHeight = scrollable ? naturalHeight : ViewGroup.LayoutParams.WRAP_CONTENT;
+
+        // 面板外框：菜单玻璃材质、14dp 圆角、6dp 内衬
+        final FrameLayout panel = new FrameLayout(this);
+        panel.setBackgroundResource(R.drawable.bg_dropdown_menu);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            panel.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), corner);
+                }
+            });
+            panel.setClipToOutline(true);
+        }
+        panel.setPadding(panelPadding, panelPadding, panelPadding, panelPadding);
+
+        final LinearLayout menu = new LinearLayout(this);
+        menu.setOrientation(LinearLayout.VERTICAL);
+
+        // 提示语作为菜单页眉（可选），与选项之间留一道弱分隔
+        if (!TextUtils.isEmpty(tip)) {
+            TextView header = new TextView(this);
+            header.setText(tip);
+            header.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                    getResources().getDimensionPixelSize(R.dimen.ts_14));
+            header.setTextColor(getResources().getColor(R.color.ui_muted));
+            header.setPadding(dp(14), dp(4), dp(14), dp(6));
+            menu.addView(header, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        // 先建好 PopupWindow：菜单项的点击回调里要引用它
+        final PopupWindow popup = new PopupWindow(panel, width, popupHeight, true);
+        popup.setOutsideTouchable(true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setAnimationStyle(R.style.MineDropdownPopup);
+
+        for (int i = 0; i < items.length; i++) {
+            final int index = i;
+            final String item = items[i];
+            LinearLayout itemRow = new LinearLayout(this);
+            itemRow.setOrientation(LinearLayout.HORIZONTAL);
+            itemRow.setGravity(Gravity.CENTER_VERTICAL);
+            itemRow.setPadding(dp(14), 0, dp(14), 0);
+            itemRow.setMinimumHeight(itemHeight);
+            itemRow.setBackgroundResource(R.drawable.bg_dropdown_item);
+            itemRow.setClickable(true);
+
+            TextView text = new TextView(this);
+            text.setText(item);
+            text.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                    getResources().getDimensionPixelSize(R.dimen.ts_18));
+            text.setTextColor(getResources().getColor(
+                    index == selected ? R.color.ui_accent : R.color.ui_text_primary));
+            LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            itemRow.addView(text, textLp);
+
+            if (index == selected) {
+                TextView check = new TextView(this);
+                check.setText("✓");
+                check.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                        getResources().getDimensionPixelSize(R.dimen.ts_18));
+                check.setTextColor(getResources().getColor(R.color.ui_accent));
+                itemRow.addView(check, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             }
 
-            @Override
-            public String getDisplay(String val) {
-                return val;
-            }
-        }, new DiffUtil.ItemCallback<String>() {
-            @Override
-            public boolean areItemsTheSame(@NonNull @NotNull String oldItem, @NonNull @NotNull String newItem) {
-                return TextUtils.equals(oldItem, newItem);
-            }
+            itemRow.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    popup.dismiss();
+                    onPick.run(index);
+                    // 选项在菜单里被点选，此刻才拿到新值，必须在这里回刷一次
+                    refreshRows();
+                }
+            });
 
-            @Override
-            public boolean areContentsTheSame(@NonNull @NotNull String oldItem, @NonNull @NotNull String newItem) {
-                return TextUtils.equals(oldItem, newItem);
-            }
-        }, data, selected);
-        dialog.show();
+            // 逐项淡入：25ms 递进的「帘子」层次
+            itemRow.setAlpha(0f);
+            final long itemDelay = i * 25L;
+            menu.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    itemRow.animate().alpha(1f).setDuration(120).start();
+                }
+            }, itemDelay + 20);
+
+            menu.addView(itemRow);
+        }
+
+        if (scrollable) {
+            ScrollView scroller = new ScrollView(this);
+            scroller.setVerticalScrollBarEnabled(false);
+            panel.addView(scroller, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            scroller.addView(menu, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        } else {
+            panel.addView(menu, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        // 右缘对齐来源行（PopupWindow 左缘相对 anchor 左缘偏移即可实现右对齐）
+        final int shownWidth = width;
+        final int rightAlignOffset = (anchor.getWidth() > shownWidth)
+                ? anchor.getWidth() - shownWidth : 0;
+
+        // 屏幕空间探测：行下方放不下完整菜单时，改为从行上方打开（菜单底缘贴行顶）
+        // —— 修复「搜索展示 / 下次进入」这类行处于屏幕下部时菜单被截断的问题
+        int[] anchorOnScreen = new int[2];
+        anchor.getLocationOnScreen(anchorOnScreen);
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int anchorBottom = anchorOnScreen[1] + anchor.getHeight();
+        if (anchorBottom + dp(8) + naturalHeight <= screenH) {
+            // 锚在行正下方；showAsDropDown 会自动在屏幕边缘内收
+            popup.showAsDropDown(anchor, rightAlignOffset, dp(-4));
+        } else {
+            // showAtLocation + NO_GRAVITY 参照屏幕坐标：菜单底缘贴到行顶上方 4dp
+            int leftPos = anchorOnScreen[0] + rightAlignOffset;
+            int topPos = anchorOnScreen[1] - naturalHeight - dp(4);
+            // 上方也放不下时贴顶展开（内部 ScrollView 保证可滚动）
+            if (topPos < dp(16)) topPos = anchorOnScreen[1];
+            popup.showAtLocation(anchor, Gravity.NO_GRAVITY, leftPos, topPos);
+        }
     }
 
     private void refreshRows() {

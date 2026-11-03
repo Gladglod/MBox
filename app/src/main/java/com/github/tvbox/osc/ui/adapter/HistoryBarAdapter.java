@@ -113,7 +113,7 @@ public class HistoryBarAdapter extends BaseQuickAdapter<VodInfo, BaseViewHolder>
         float density = context.getResources().getDisplayMetrics().density;
         thumbWidthPx = (int) (104 * density);
         thumbHeightPx = (int) (60 * density);
-        radiusPx = (int) (4 * density);
+        radiusPx = (int) (10 * density);
     }
 
     @Override

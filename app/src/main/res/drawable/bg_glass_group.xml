@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「我的」页分组玻璃容器。
+
+  三层结构（与 bg_glass_tabbar 同一套材质语义）：
+  1. 主体 —— 半透明白/深灰填充（日/夜各一档，Alpha 约 85%，保证玻璃上的实色行文字不发虚）；
+  2. 1dp 高光描边 —— 日间压在浅底上用极淡暗边，夜间用极淡亮边勾出玻璃轮廓；
+  3. 顶部高光 —— 从容器上沿往下淡出的白色渐变，模拟玻璃上沿反光。
+
+  圆角 26dp。Android 12（API 31）+ 且背后有壁纸时，GlassGroupView 会在
+  这个 drawable 底下再垫一层预模糊的壁纸 backdrop；12 以下没有真实模糊，
+  半透明实色 + 细边框本身就是降级方案。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="26dp" />
+            <solid android:color="@color/glass_card_fill" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/glass_card_stroke" />
+        </shape>
+    </item>
+
+    <item
+        android:bottom="1dp"
+        android:left="1dp"
+        android:right="1dp"
+        android:top="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="25dp" />
+            <gradient
+                android:angle="270"
+                android:endColor="#00FFFFFF"
+                android:startColor="@color/glass_card_highlight"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

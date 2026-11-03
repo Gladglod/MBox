@@ -4,22 +4,28 @@
     android:layout_height="wrap_content"
     android:layout_marginBottom="@dimen/vs_8">
 
-    <!-- 左滑后露出的操作区 -->
+    <!-- 左滑后露出的操作区：玻璃胶囊按钮，随露出进度级联淡入 + 右漂（SwipeActionLayout 驱动） -->
     <LinearLayout
-        android:layout_width="132dp"
+        android:layout_width="140dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:orientation="horizontal">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="8dp"
+        android:paddingTop="8dp"
+        android:paddingRight="10dp"
+        android:paddingBottom="8dp">
 
         <TextView
             android:id="@+id/btnPin"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="#FF2F4A6B"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_swipe_pin"
             android:gravity="center"
             android:text="置顶"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_accent"
             android:textSize="@dimen/ts_16" />
 
         <TextView
@@ -27,29 +33,34 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="#FF6B2F2F"
+            android:background="@drawable/bg_swipe_delete"
             android:gravity="center"
             android:text="删除"
-            android:textColor="@android:color/white"
+            android:textColor="@color/ui_danger"
             android:textSize="@dimen/ts_16" />
     </LinearLayout>
 
-    <!-- 内容区 -->
+    <!-- 内容区 iOS 玻璃卡片：≥56dp 行高、圆角缩略图、16sp/13sp 字级 -->
     <LinearLayout
         android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_phone_card"
+        android:background="@drawable/bg_history_card"
         android:clickable="true"
         android:focusable="false"
         android:focusableInTouchMode="false"
         android:gravity="center_vertical"
+        android:minHeight="64dp"
         android:orientation="horizontal"
-        android:padding="@dimen/vs_8">
+        android:paddingLeft="@dimen/vs_10"
+        android:paddingTop="@dimen/vs_8"
+        android:paddingRight="@dimen/vs_10"
+        android:paddingBottom="@dimen/vs_8">
 
         <FrameLayout
             android:layout_width="104dp"
-            android:layout_height="60dp">
+            android:layout_height="60dp"
+            android:background="@drawable/bg_history_thumb">
 
             <ImageView
                 android:id="@+id/ivThumb"
@@ -87,7 +98,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/ui_text_primary"
-                android:textSize="@dimen/ts_18" />
+                android:textSize="@dimen/ts_24" />
 
             <TextView
                 android:id="@+id/tvSource"
@@ -97,7 +108,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/ui_text_secondary"
-                android:textSize="@dimen/ts_14" />
+                android:textSize="@dimen/ts_16" />
 
             <ProgressBar
                 android:id="@+id/pbProgress"
@@ -117,7 +128,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/ui_text_secondary"
-                android:textSize="@dimen/ts_14" />
+                android:textSize="@dimen/ts_16" />
         </LinearLayout>
 
         <ImageView

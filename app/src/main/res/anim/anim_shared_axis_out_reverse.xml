@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 共享轴（X 轴）转场：返回 —— 二级页面从顶部沿 X 轴向右滑出并淡出 -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/accelerate_cubic">
+    <translate
+        android:fromXDelta="0%"
+        android:toXDelta="22%"
+        android:duration="280" />
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.0"
+        android:duration="280" />
+</set>

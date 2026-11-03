@@ -70,6 +70,9 @@ public class HawkConfig {
     /** 纯色背景（ARGB，0 表示未设置） */
     public static final String WALLPAPER_COLOR = "wallpaper_color";
 
+    /** 「我的」→ 界面偏好 → 高级抽屉是否展开（保留跨进程重启的状态） */
+    public static final String UI_ADVANCED = "ui_advanced";
+
     /**
      * 首页标签配置：每行一条 {@code 可见(1/0)\t分类id}，行序即显示顺序。
      * 空字符串表示「默认」——全部显示，按数据源给出的顺序。

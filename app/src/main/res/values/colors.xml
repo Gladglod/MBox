@@ -127,6 +127,15 @@
     <!-- 下拉菜单面板：比导航条更实一点，避免背后文字透过来干扰阅读 -->
     <color name="glass_menu_bg">#F2FFFFFF</color>
     <color name="glass_menu_stroke">#1A000000</color>
+    <!-- 「我的」页分组玻璃容器：填充比底部导航更透一点透壁纸，描边/高光同导航一套逻辑 -->
+    <color name="glass_card_fill">#D9FFFFFF</color>
+    <color name="glass_card_stroke">#1A000000</color>
+    <color name="glass_card_highlight">#4DFFFFFF</color>
+
+    <!-- 开关（SpringSwitch）：关闭态轨道压暗一档，滑块用表面色加细描边保证在两种轨道上都看得见 -->
+    <color name="switch_track_off">#33000000</color>
+    <color name="switch_thumb_stroke">#26000000</color>
+
     <!--
       选中指示器：品牌色的低透明度填充 + 稍高透明度的描边，像一枚有色玻璃透镜。
 

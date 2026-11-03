@@ -83,7 +83,7 @@
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="52dp"
-        android:background="@color/ui_bar_bg"
+        android:background="@drawable/bg_glass_bottom_bar"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingLeft="@dimen/vs_12"

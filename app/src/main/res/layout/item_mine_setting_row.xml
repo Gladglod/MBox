@@ -1,17 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  二级设置页统一设置行：行高 ≥56dp，主文字 16sp，副文字 13sp 灰，右侧可换
+  13sp 的值（列表选择）或 SpringSwitch（开关）或 chevron（下钻）。
+  不挂系统 ripple —— 按压反馈交给 MotionCompat 的整行轻缩放。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="?android:attr/selectableItemBackground"
+    android:background="@null"
     android:clickable="true"
     android:focusable="false"
     android:focusableInTouchMode="false"
     android:gravity="center_vertical"
-    android:minHeight="52dp"
+    android:minHeight="56dp"
     android:orientation="horizontal"
-    android:paddingLeft="@dimen/vs_12"
+    android:paddingLeft="@dimen/vs_18"
+    android:paddingRight="@dimen/vs_18"
     android:paddingTop="@dimen/vs_10"
-    android:paddingRight="@dimen/vs_12"
     android:paddingBottom="@dimen/vs_10">
 
     <LinearLayout
@@ -27,7 +32,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/ui_text_primary"
-            android:textSize="@dimen/ts_18" />
+            android:textSize="@dimen/ts_24" />
 
         <TextView
             android:id="@+id/tvRowSub"
@@ -37,7 +42,7 @@
             android:ellipsize="end"
             android:maxLines="2"
             android:textColor="@color/ui_text_secondary"
-            android:textSize="@dimen/ts_14"
+            android:textSize="@dimen/ts_16"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -49,7 +54,7 @@
         android:maxWidth="180dp"
         android:ellipsize="end"
         android:maxLines="1"
-        android:textColor="@color/ui_text_secondary"
+        android:textColor="@color/ui_text_tertiary"
         android:textSize="@dimen/ts_16" />
 
     <TextView
@@ -59,5 +64,5 @@
         android:layout_marginStart="@dimen/vs_6"
         android:text="›"
         android:textColor="@color/ui_text_tertiary"
-        android:textSize="@dimen/ts_24" />
+        android:textSize="@dimen/ts_26" />
 </LinearLayout>

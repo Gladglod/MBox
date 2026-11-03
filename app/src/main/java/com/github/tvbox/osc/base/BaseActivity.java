@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
@@ -265,6 +266,19 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         startActivity(intent);
     }
 
+    /**
+     * 「我的」层级的共享轴（X 轴）返回转场。
+     * 正向动效由 UserFragment 在 startActivity 的 ActivityOptions 里指定，
+     * 从「我的」页进入的二级页只在 finish() 里调用本方法换上反向的一组。
+     */
+    protected void applyMineBackTransition() {
+        super.finish();
+        boolean reduced = com.github.tvbox.osc.util.MotionCompat.reducedMotion(mContext);
+        overridePendingTransition(
+                reduced ? R.anim.anim_fade_in : R.anim.anim_shared_axis_in_reverse,
+                reduced ? R.anim.anim_fade_out : R.anim.anim_shared_axis_out_reverse);
+    }
+
     public void jumpActivity(Class<? extends BaseActivity> clazz, Bundle bundle) {
         Intent intent = new Intent(mContext, clazz);
         intent.putExtras(bundle);
@@ -329,6 +343,14 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
     }
 
     protected static BitmapDrawable globalWp = null;
+
+    /**
+     * 玻璃卡片（GlassGroupView）读取当前全局壁纸位图做 backdrop 预模糊。
+     * 没有配图壁纸时返回 null，卡片自动退化成半透明实色。
+     */
+    public static Bitmap currentWallpaperBitmap() {
+        return globalWp == null ? null : globalWp.getBitmap();
+    }
 
     public void changeWallpaper(boolean force) {
         if (!force && globalWp != null) {

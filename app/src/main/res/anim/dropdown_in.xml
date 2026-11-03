@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置行下拉菜单进场：从行下方 12% 高度处下落 + 淡入，温和弹簧的观感 -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic">
+    <translate
+        android:fromYDelta="-12%"
+        android:toYDelta="0%"
+        android:duration="220" />
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="220" />
+</set>

@@ -1,33 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  「我的」页菜单行（玻璃卡片里的实色行）：
+  行高 ≥56dp，图标 24dp，主文字 16sp，右侧值为 13sp 灰，末尾 chevron。
+  不挂系统 ripple（大面积灰色扩散太吵）——按压反馈交给 MotionCompat 的整行轻缩放。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="52dp"
-    android:background="?android:attr/selectableItemBackground"
+    android:layout_height="wrap_content"
+    android:background="@null"
     android:clickable="true"
     android:focusable="false"
     android:focusableInTouchMode="false"
     android:gravity="center_vertical"
+    android:minHeight="56dp"
     android:orientation="horizontal"
-    android:paddingLeft="@dimen/vs_12"
-    android:paddingRight="@dimen/vs_12">
+    android:paddingLeft="@dimen/vs_18"
+    android:paddingRight="@dimen/vs_18"
+    android:paddingTop="@dimen/vs_6"
+    android:paddingBottom="@dimen/vs_6">
 
     <ImageView
         android:id="@+id/ivMenuIcon"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:alpha="0.85"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:contentDescription="@null" />
 
     <TextView
         android:id="@+id/tvMenuName"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/vs_10"
+        android:layout_marginStart="@dimen/vs_12"
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/ui_text_primary"
-        android:textSize="@dimen/ts_18" />
+        android:textSize="@dimen/ts_24" />
 
     <TextView
         android:id="@+id/tvMenuValue"
@@ -37,7 +44,7 @@
         android:maxLines="1"
         android:maxWidth="190dp"
         android:textColor="@color/ui_text_secondary"
-        android:textSize="@dimen/ts_14" />
+        android:textSize="@dimen/ts_16" />
 
     <TextView
         android:id="@+id/tvMenuArrow"
@@ -46,5 +53,5 @@
         android:layout_marginStart="@dimen/vs_6"
         android:text="›"
         android:textColor="@color/ui_text_tertiary"
-        android:textSize="@dimen/ts_24" />
+        android:textSize="@dimen/ts_26" />
 </LinearLayout>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  共享轴（X 轴）转场：进入二级页 —— 新页面从右侧滑入并淡入。
+  距离用 22%（而不是整屏滑动），保留层次感但不做夸张的全屏位移。
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic">
+    <translate
+        android:fromXDelta="22%"
+        android:toXDelta="0%"
+        android:duration="300" />
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="300" />
+</set>

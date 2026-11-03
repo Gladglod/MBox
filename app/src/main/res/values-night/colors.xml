@@ -48,6 +48,15 @@
     <color name="glass_bar_highlight">#1AFFFFFF</color>
     <color name="glass_menu_bg">#F21B1B20</color>
     <color name="glass_menu_stroke">#2EFFFFFF</color>
+    <!-- 「我的」页分组玻璃容器：夜间深灰玻璃（略更实，深底上白字才稳），亮边勾轮廓 -->
+    <color name="glass_card_fill">#DD14141A</color>
+    <color name="glass_card_stroke">#2EFFFFFF</color>
+    <color name="glass_card_highlight">#26FFFFFF</color>
+
+    <!-- 开关：夜间关闭态轨道提亮一档，深色滑块靠细亮边跟轨道拉开层次 -->
+    <color name="switch_track_off">#33FFFFFF</color>
+    <color name="switch_thumb_stroke">#2EFFFFFF</color>
+
     <color name="glass_indicator_fill">#1F02F8E1</color>
     <color name="glass_indicator_stroke">#5C02F8E1</color>
     <color name="glass_indicator_highlight">#1FFFFFFF</color>

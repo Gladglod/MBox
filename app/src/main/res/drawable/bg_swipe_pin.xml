@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 左滑「置顶」按钮：品牌色玻璃胶囊（默认 8% 品牌底，按压缩到 15%），12dp 圆角 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="12dp" />
+            <solid android:color="#26007A70" />
+            <stroke
+                android:width="1dp"
+                android:color="#4D007A70" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="12dp" />
+            <solid android:color="#14007A70" />
+            <stroke
+                android:width="1dp"
+                android:color="#33007A70" />
+        </shape>
+    </item>
+</selector>

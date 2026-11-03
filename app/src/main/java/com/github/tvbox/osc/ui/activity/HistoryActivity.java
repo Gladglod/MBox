@@ -51,6 +51,12 @@ public class HistoryActivity extends BaseActivity {
     }
 
     @Override
+    public void finish() {
+        // 从「我的」页进来的共享轴返回转场（BaseActivity 里统一管理）
+        applyMineBackTransition();
+    }
+
+    @Override
     protected boolean shouldRefreshAutoSize() {
         return true;
     }

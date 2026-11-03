@@ -52,6 +52,16 @@
         <item name="android:textStyle">normal</item>
     </style>
 
+    <!--
+      「我的」设置行的下拉菜单（PopupWindow）进出动效：
+      进入 —— 菜单从行下方向下落 12% + 淡入；退出 —— 上收 6% + 淡出。
+      菜单项内部再叠加逐项 25ms 的淡入，形成"拉开一层帘"的层次。
+    -->
+    <style name="MineDropdownPopup">
+        <item name="android:windowEnterAnimation">@anim/dropdown_in</item>
+        <item name="android:windowExitAnimation">@anim/dropdown_out</item>
+    </style>
+
     <style name="epg_window_btn">
         <item name="android:gravity">center</item>
         <item name="android:background">@drawable/item_bg_selector_right</item>
