@@ -195,6 +195,8 @@ dependencies {
     // 手机端 UI：TabLayout / BottomNavigationView / ViewPager2
     implementation 'androidx.viewpager2:viewpager2:1.0.0'
     implementation 'com.google.android.material:material:1.4.0'
+    // 弹簧动画（底部导航 / 源切换菜单的滑动指示器）
+    implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
 
     implementation 'com.github.getActivity:XXPermissions:13.6'
     implementation 'org.jsoup:jsoup:1.14.1'

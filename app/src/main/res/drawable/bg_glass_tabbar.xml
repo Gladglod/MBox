@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  底部导航胶囊的「玻璃」材质。
+
+  三层：
+  1. 主体 —— 带 alpha 的白/深灰（values-night 里换色），外加 1dp 描边勾出玻璃边缘；
+  2. 顶部高光 —— 从胶囊上沿往下淡出的白色渐变，模拟光打在玻璃上沿的那道反光；
+  3. 圆角写 32dp 是因为导航条高 64dp（vs_162），正好是半高，得到完整胶囊。
+
+  没有做真实模糊：Android 端 blur 要么需要 API 31 的 RenderEffect，
+  要么需要一层层的离屏采样，代价和收益不成比例。半透明 + 描边 + 高光三件套
+  已经能读出「玻璃」这个材质语义，且在任何底色上都成立。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="32dp" />
+            <solid android:color="@color/glass_bar_bg" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/glass_bar_stroke" />
+        </shape>
+    </item>
+
+    <item
+        android:bottom="1dp"
+        android:left="1dp"
+        android:right="1dp"
+        android:top="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="31dp" />
+            <gradient
+                android:angle="270"
+                android:endColor="#00FFFFFF"
+                android:startColor="@color/glass_bar_highlight"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

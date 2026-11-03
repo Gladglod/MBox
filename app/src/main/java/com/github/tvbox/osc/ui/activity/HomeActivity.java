@@ -15,21 +15,18 @@ import android.view.ViewGroup;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.content.res.AppCompatResources;
-import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.DiffUtil;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
 
 import com.github.tvbox.osc.R;
@@ -47,9 +44,7 @@ import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.ui.adapter.HomePageAdapter;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
-import com.github.tvbox.osc.ui.adapter.SelectDialogAdapter;
 import com.github.tvbox.osc.ui.adapter.SortAdapter;
-import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.TipDialog;
 import com.github.tvbox.osc.ui.fragment.ShortDramaFragment;
 import com.github.tvbox.osc.ui.fragment.GridFragment;
@@ -57,6 +52,9 @@ import com.github.tvbox.osc.ui.fragment.HotRecommendFragment;
 import com.github.tvbox.osc.ui.fragment.UserFragment;
 import com.github.tvbox.osc.ui.tv.widget.DefaultTransformer;
 import com.github.tvbox.osc.ui.tv.widget.FixedSpeedScroller;
+import com.github.tvbox.osc.ui.widget.GlassIndicatorView;
+import com.github.tvbox.osc.ui.widget.LiquidTabBar;
+import com.github.tvbox.osc.ui.widget.SourceSwitchPopup;
 import com.github.tvbox.osc.util.AppManager;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
@@ -89,6 +87,14 @@ public class HomeActivity extends BaseActivity {
     private View flFragment;
     private ImageView ivNavHome, ivNavDrama, ivNavLive, ivNavMine;
     private TextView tvNavHome, tvNavDrama, tvNavLive, tvNavMine;
+    /** 底部导航里那枚会滑动的玻璃指示器 */
+    private GlassIndicatorView navIndicator;
+    /** 四个 Tab 的容器，指示器按它的子 View 位置算坐标 */
+    private ViewGroup navItems;
+    private LiquidTabBar navBar;
+    /** 拖拽开始时的选中项与其指示器边界，拖动过程中以它为基准做偏移 */
+    private int dragBaseIndex;
+    private float dragBaseLeft, dragBaseRight;
     private int currentBottomTab = 0;
     private List<Movie.Video> lastRecList;
     private SourceViewModel sourceViewModel;
@@ -247,6 +253,46 @@ public class HomeActivity extends BaseActivity {
         this.tvNavDrama = findViewById(R.id.tvNavDrama);
         this.tvNavLive = findViewById(R.id.tvNavLive);
         this.tvNavMine = findViewById(R.id.tvNavMine);
+        this.navIndicator = findViewById(R.id.navIndicator);
+        this.navItems = findViewById(R.id.navItems);
+        this.navBar = findViewById(R.id.bottomNav);
+
+        if (navIndicator != null) {
+            navIndicator.setOrientation(GlassIndicatorView.HORIZONTAL);
+            // 胶囊高 64dp，上下各缩 6dp → 52dp，四周留出玻璃边缘的呼吸空间
+            navIndicator.setCrossInset(getResources().getDimensionPixelSize(R.dimen.vs_6));
+        }
+        if (navBar != null) {
+            navBar.setOnDragListener(new LiquidTabBar.OnDragListener() {
+                @Override
+                public void onDragStart() {
+                    beginNavDrag();
+                }
+
+                @Override
+                public void onDrag(float dx) {
+                    moveNavDrag(dx);
+                }
+
+                @Override
+                public void onDragEnd(float dx) {
+                    endNavDrag(dx);
+                }
+            });
+        }
+        if (navItems != null) {
+            // 首次布局 / 旋转 / 字号变化后尺寸会变，指示器必须重新对位。
+            // 只有尺寸真的变了才处理，避免普通重绘把正在跑的弹簧打断。
+            navItems.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                           int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                    if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                        moveNavIndicator(currentBottomTab, false);
+                    }
+                }
+            });
+        }
 
         findViewById(R.id.navHome).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -352,6 +398,111 @@ public class HomeActivity extends BaseActivity {
         applyNavState(ivNavDrama, tvNavDrama, selected == 1, on, off);
         applyNavState(ivNavLive, tvNavLive, selected == 2, on, off);
         applyNavState(ivNavMine, tvNavMine, selected == 3, on, off);
+        moveNavIndicator(selected, true);
+        bounceNavIcon(selected);
+    }
+
+    /**
+     * 把玻璃指示器移到第 index 个 Tab 后面。
+     *
+     * <p>animate=false 只用于布局阶段（首次显示、旋转、字号变化）——
+     * 那时候用户没有"点击"这个动作，指示器应该本来就在那儿，滑过去反而像卡了一下。
+     */
+    private void moveNavIndicator(int index, boolean animate) {
+        if (navIndicator == null || navItems == null) return;
+        if (index < 0 || index >= navItems.getChildCount()) return;
+        View tab = navItems.getChildAt(index);
+        if (tab == null) return;
+        int inset = getResources().getDimensionPixelSize(R.dimen.vs_4);
+        navIndicator.setSpan(tab.getLeft() + inset, tab.getRight() - inset, animate);
+    }
+
+    /**
+     * 选中时图标轻轻"压一下再弹回来"。
+     *
+     * <p>这是第二层反馈：指示器告诉用户"选中的是这个位置"，
+     * 图标回弹告诉用户"我确实点到了"。只有颜色变化的话，
+     * 快速连点时用户分不清哪一次点生效了。
+     */
+    private void bounceNavIcon(int index) {
+        if (navItems == null || navItems.getWidth() == 0) return;
+        ImageView icon = index == 0 ? ivNavHome
+                : index == 1 ? ivNavDrama
+                : index == 2 ? ivNavLive
+                : ivNavMine;
+        if (icon == null) return;
+        icon.animate().cancel();
+        icon.setScaleX(0.86f);
+        icon.setScaleY(0.86f);
+        icon.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(280)
+                .setInterpolator(new OvershootInterpolator(1.8f))
+                .start();
+    }
+
+    /** 开始拖拽：记住当前选中 Tab 的指示器边界，后面所有位移都相对它算 */
+    private void beginNavDrag() {
+        if (navItems == null || navIndicator == null) return;
+        dragBaseIndex = currentBottomTab;
+        View tab = navItems.getChildAt(dragBaseIndex);
+        if (tab == null) {
+            dragBaseLeft = 0;
+            dragBaseRight = 0;
+            return;
+        }
+        int inset = getResources().getDimensionPixelSize(R.dimen.vs_4);
+        dragBaseLeft = tab.getLeft() + inset;
+        dragBaseRight = tab.getRight() - inset;
+    }
+
+    /**
+     * 拖动中：把弹簧的目标位置直接设成"手指所在处"。
+     *
+     * <p>弹簧每帧都在追一个新目标，永远追不上，于是视觉上就是透镜被手指拽着、
+     * 但比手指慢半拍 —— 这就是要求里说的"跟随手指但带有弹簧滞后"。
+     * 不用手动做插值，也不需要额外的阻尼计算。
+     */
+    private void moveNavDrag(float dx) {
+        if (navIndicator == null || navItems == null) return;
+        int width = navItems.getWidth();
+        if (width == 0) return;
+        float left = clamp(dragBaseLeft + dx, 0f, width);
+        float right = clamp(dragBaseRight + dx, 0f, width);
+        if (right - left < 1f) return;
+        navIndicator.setSpan(left, right, true);
+    }
+
+    /** 松手：落点最近的那个 Tab 被选中，指示器弹过去 */
+    private void endNavDrag(float dx) {
+        if (navIndicator == null || navItems == null || navItems.getChildCount() == 0) return;
+        float center = (dragBaseLeft + dragBaseRight) / 2f + dx;
+        int best = currentBottomTab;
+        float bestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < navItems.getChildCount(); i++) {
+            View tab = navItems.getChildAt(i);
+            float distance = Math.abs((tab.getLeft() + tab.getRight()) / 2f - center);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+        if (best == 2) {
+            // 直播不驻留在本页（会直接开播放页），指示器要弹回原来的位置
+            moveNavIndicator(currentBottomTab, true);
+            selectBottomTab(2);
+            return;
+        }
+        if (best != currentBottomTab) {
+            selectBottomTab(best);
+        } else {
+            moveNavIndicator(best, true);
+        }
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return value < min ? min : (value > max ? max : value);
     }
 
     private void applyNavState(ImageView icon, TextView label, boolean selected, int on, int off) {
@@ -859,7 +1010,7 @@ public class HomeActivity extends BaseActivity {
         }
     }
 
-    private SelectDialog<SourceBean> mSiteSwitchDialog;
+    private SourceSwitchPopup mSiteSwitchPopup;
 
     /**
      * 首页空状态里「换个数据源」的动作。
@@ -876,49 +1027,31 @@ public class HomeActivity extends BaseActivity {
         }
     }
 
+    /**
+     * 右上角胶囊点开的数据源菜单。
+     *
+     * <p>以前是居中 {@link com.github.tvbox.osc.ui.dialog.SelectDialog}：一块 85% 宽的面板
+     * 压在页面正中间。问题是它遮住了刚加载出来的内容，而用户其实只想换个站点。
+     * 现在是贴着胶囊往下展开的玻璃菜单，视线不用离开右上角。
+     */
     public void showSiteSwitch() {
         if (isActivityUnavailable()) return;
         List<SourceBean> sites = ApiConfig.get().getSwitchSourceBeanList();
-        if (sites.isEmpty()) return;
+        if (sites == null || sites.isEmpty()) return;
         int select = sites.indexOf(ApiConfig.get().getHomeSourceBean());
         if (select < 0 || select >= sites.size()) select = 0;
-        if (mSiteSwitchDialog == null) {
-            mSiteSwitchDialog = new SelectDialog<>(HomeActivity.this);
-            RecyclerView recyclerView = mSiteSwitchDialog.findViewById(R.id.list);
-            ConstraintLayout cl_root = mSiteSwitchDialog.findViewById(R.id.cl_root);
-            if (cl_root != null) {
-                ViewGroup.LayoutParams clp = cl_root.getLayoutParams();
-                if (clp != null) {
-                    clp.width = (int) (getResources().getDisplayMetrics().widthPixels * 0.85f);
-                }
-            }
+        if (mSiteSwitchPopup == null) {
+            mSiteSwitchPopup = new SourceSwitchPopup(this);
         }
-        mSiteSwitchDialog.setAdapter(new SelectDialogAdapter.SelectDialogInterface<SourceBean>() {
+        mSiteSwitchPopup.show(tvMenu, sites, select, new SourceSwitchPopup.OnSourceSelectedListener() {
             @Override
-            public void click(SourceBean value, int pos) {
-                dismissSiteSwitchDialog();
+            public void onSourceSelected(SourceBean bean) {
+                if (bean == null) return;
                 previousHomeSource = ApiConfig.get().getHomeSourceBean();
-                ApiConfig.get().setSourceBean(value);
+                ApiConfig.get().setSourceBean(bean);
                 refreshHome(false);
             }
-
-            @Override
-            public String getDisplay(SourceBean val) {
-                return val.getName();
-            }
-        }, new DiffUtil.ItemCallback<SourceBean>() {
-            @Override
-            public boolean areItemsTheSame(@NonNull SourceBean oldItem, @NonNull SourceBean newItem) {
-                return oldItem == newItem;
-            }
-
-            @Override
-            public boolean areContentsTheSame(@NonNull SourceBean oldItem, @NonNull SourceBean newItem) {
-                return oldItem.getKey().equals(newItem.getKey());
-            }
-        }, sites, select);
-        if (!mSiteSwitchDialog.isShowing())
-            mSiteSwitchDialog.show();
+        });
     }
 
     private void refreshHome() {
@@ -978,11 +1111,9 @@ public class HomeActivity extends BaseActivity {
     }
 
     private void dismissSiteSwitchDialog() {
-        if (mSiteSwitchDialog != null) {
-            if (mSiteSwitchDialog.isShowing()) {
-                mSiteSwitchDialog.dismiss();
-            }
-            mSiteSwitchDialog = null;
+        if (mSiteSwitchPopup != null) {
+            mSiteSwitchPopup.dismiss();
+            mSiteSwitchPopup = null;
         }
     }
 

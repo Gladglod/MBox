@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  右上角「数据源」下拉菜单。
+  结构和底部导航一致：先画指示器，再叠内容 —— 指示器是纵向的玻璃透镜，
+  在选中的那一行背后上下滑动。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/menuPanel"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_glass_menu"
+    android:paddingTop="@dimen/vs_6"
+    android:paddingBottom="@dimen/vs_6">
+
+    <com.github.tvbox.osc.ui.widget.GlassIndicatorView
+        android:id="@+id/menuIndicator"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <ScrollView
+        android:id="@+id/menuScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/menuList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+</FrameLayout>

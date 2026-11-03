@@ -41,4 +41,14 @@
     <color name="ui_surface_glass">#B814141A</color>
     <color name="ui_material_glass">#CC0E0E12</color>
     <color name="ui_bar_glass">#CC17171C</color>
+
+    <!-- Liquid Glass：夜间是带 alpha 的深灰玻璃，描边换成极淡的亮色（深底上才看得见边缘） -->
+    <color name="glass_bar_bg">#B31E1E22</color>
+    <color name="glass_bar_stroke">#33FFFFFF</color>
+    <color name="glass_bar_highlight">#1AFFFFFF</color>
+    <color name="glass_menu_bg">#F21B1B20</color>
+    <color name="glass_menu_stroke">#2EFFFFFF</color>
+    <color name="glass_indicator_fill">#1F02F8E1</color>
+    <color name="glass_indicator_stroke">#5C02F8E1</color>
+    <color name="glass_indicator_highlight">#1FFFFFFF</color>
 </resources>

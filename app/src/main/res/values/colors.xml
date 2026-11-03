@@ -113,6 +113,35 @@
     <color name="ui_material">#F5FFFFFF</color>
 
     <!--
+      ==================== Liquid Glass（浮动胶囊导航 / 下拉菜单） ====================
+      一套「半透明玻璃」的材质色。日间是带 alpha 的白玻璃，夜间是带 alpha 的深灰玻璃；
+      描边单独一层，模拟玻璃边缘的高光（日间用极淡的暗色勾边，夜间用极淡的亮色勾边，
+      因为玻璃边缘的可见性取决于它压着的底色，不是取决于它自己是亮是暗）。
+    -->
+    <!-- 底部导航胶囊主体（85% 白） -->
+    <color name="glass_bar_bg">#D9FFFFFF</color>
+    <!-- 胶囊描边：日间压在浅底上，靠一点点暗边勾出轮廓 -->
+    <color name="glass_bar_stroke">#1A000000</color>
+    <!-- 顶部高光渐变（从玻璃上沿往下淡出） -->
+    <color name="glass_bar_highlight">#66FFFFFF</color>
+    <!-- 下拉菜单面板：比导航条更实一点，避免背后文字透过来干扰阅读 -->
+    <color name="glass_menu_bg">#F2FFFFFF</color>
+    <color name="glass_menu_stroke">#1A000000</color>
+    <!--
+      选中指示器：品牌色的低透明度填充 + 稍高透明度的描边，像一枚有色玻璃透镜。
+
+      填充刻意压到 8%（#14）：透镜下面是 12sp 的选中态标签，
+      品牌色 #007A70 在白底上是 5.23:1，任何有色叠加都会把这个比值往下拉 ——
+      8% 的青色叠加后是 4.58:1，刚好还在 AA 线（4.5:1）之上；
+      再深一档（16%）就掉到 3.96:1 了。
+      所以"看得见"这件事交给描边和顶高光去做，填充只负责染色。
+    -->
+    <color name="glass_indicator_fill">#14007A70</color>
+    <color name="glass_indicator_stroke">#4D007A70</color>
+    <!-- 指示器顶部高光 -->
+    <color name="glass_indicator_highlight">#59FFFFFF</color>
+
+    <!--
       壁纸模式（自定义配图 / 纯色背景）下的半透明表面。
       用户设了背景时，顶栏、底栏、卡片会换成这几个颜色，让配图真正透出来；
       没设背景时依旧用上面的不透明色，避免多画一层透明合成。
