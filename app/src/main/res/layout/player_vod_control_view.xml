@@ -412,6 +412,24 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
+            <!-- 弹幕设置：紧挨弹幕开关，点开透明玻璃面板（颜色 / 速度 / 大小 / 行数 / 透明度） -->
+            <ImageView
+                android:id="@+id/btn_danmu_cfg"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginLeft="3dp"
+                android:alpha="0.9"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="false"
+                android:padding="5dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/icon_setting"
+                android:visibility="gone"
+                tools:ignore="ContentDescription"
+                tools:visibility="visible" />
+
             <!-- 中缝空白：把画面比例 / 倍速推到最右侧 -->
             <View
                 android:id="@+id/bottom_spacer"

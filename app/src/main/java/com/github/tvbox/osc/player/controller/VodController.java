@@ -21,6 +21,7 @@ import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
@@ -609,6 +610,7 @@ public class VodController extends BaseController {
     private LinearLayout mPlayPauseBtn;      // 播放·暂停
     private ImageView mPlayPauseIcon;
     private TextView mDanmuBtn;              // 弹幕开关
+    private ImageView mDanmuCfgBtn;          // 弹幕设置（弹幕开关右侧的小齿轮）
     private LinearLayout mPortraitBtn;       // 竖屏满屏（短剧）
     private TextView mPortraitLabel;
     private LinearLayout mFullScreenBtn;     // 全屏
@@ -811,6 +813,7 @@ public class VodController extends BaseController {
         mPlayPauseBtn = findViewById(R.id.btn_play_pause);
         mPlayPauseIcon = findViewById(R.id.iv_play_pause);
         mDanmuBtn = findViewById(R.id.btn_danmu);
+        mDanmuCfgBtn = findViewById(R.id.btn_danmu_cfg);
         mRowPrimary = findViewById(R.id.bottom_row_primary);
         mProgressRow = findViewById(R.id.bottom_progress_row);
         mBottomSpacer = findViewById(R.id.bottom_spacer);
@@ -1777,19 +1780,29 @@ public class VodController extends BaseController {
     }
 
     private void hideLiveAboutBtn() {
-        if (mControlWrapper != null && mControlWrapper.getDuration() == 0) {
-            mPlayerSpeedBtn.setVisibility(GONE);
-            mPlayerTimeStartEndText.setVisibility(GONE);
-            mPlayerTimeStartBtn.setVisibility(GONE);
-            mPlayerTimeSkipBtn.setVisibility(GONE);
-            mPlayerTimeResetBtn.setVisibility(GONE);
-        } else {
-            mPlayerSpeedBtn.setVisibility(View.VISIBLE);
-            mPlayerTimeStartEndText.setVisibility(GONE);
-            mPlayerTimeStartBtn.setVisibility(View.VISIBLE);
-            mPlayerTimeSkipBtn.setVisibility(View.VISIBLE);
-            mPlayerTimeResetBtn.setVisibility(View.VISIBLE);
+        refreshControlBarVisibility();
+    }
+
+    /**
+     * 统一断言底部控制条各按钮的可见性。
+     * <p>
+     * 首帧时 {@code STATE_PREPARED} 里 {@code getDuration()} 还是 0（时长要等媒体信息解析完才有），
+     * 早期版本在这里直接把倍速置 GONE 就再没人恢复，所以出现「首次播放倍速 / 下一集 / 画面比例
+     * 不显示，暂停再播放才出现」——因为暂停→播放会再走一遍 STATE_PLAYING。
+     * 现在把显隐收敛到这一个方法，并在播放状态与首次拿到时长时反复调用，结果幂等。
+     */
+    private void refreshControlBarVisibility() {
+        if (mBottomRoot == null || mRowPrimary == null || mProgressRow == null) return;
+        // 先按方向铺好：横屏 下一集 / 画面比例 / 倍速 可见，竖屏收起
+        applyControlBarMode();
+        boolean hasDuration = mControlWrapper != null && safeTimeMs(mControlWrapper.getDuration()) > 0;
+        if (!hasDuration) {
+            // 直播 / 时长未知：倍速与片头片尾无意义
+            if (mPlayerSpeedBtn != null) mPlayerSpeedBtn.setVisibility(GONE);
+            if (mPlayerTimeStartBtn != null) mPlayerTimeStartBtn.setVisibility(GONE);
+            if (mPlayerTimeSkipBtn != null) mPlayerTimeSkipBtn.setVisibility(GONE);
         }
+        if (mPlayerTimeStartEndText != null) mPlayerTimeStartEndText.setVisibility(GONE);
     }
 
     public void initLandscapePortraitBtnInfo() {
@@ -1873,6 +1886,15 @@ public class VodController extends BaseController {
                 }
             });
             updateDanmuSwitch(DanmuHelper.isOpen());
+        }
+        if (mDanmuCfgBtn != null) {
+            mDanmuCfgBtn.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    showDanmuSettingPanel(v);
+                }
+            });
         }
         if (mFullScreenBtn != null) {
             mFullScreenBtn.setOnClickListener(new OnClickListener() {
@@ -1976,6 +1998,7 @@ public class VodController extends BaseController {
         // 竖屏只留「播放 / 进度条 / 竖屏 / 全屏」；横屏留「播放 / 下一集 / 弹幕 / 画面比例 / 倍速」
         if (mNextBtn != null) mNextBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mDanmuBtn != null) mDanmuBtn.setVisibility(portrait ? GONE : VISIBLE);
+        if (mDanmuCfgBtn != null) mDanmuCfgBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mBottomSpacer != null) mBottomSpacer.setVisibility(portrait ? GONE : VISIBLE);
         if (mPlayerScaleBtn != null) mPlayerScaleBtn.setVisibility(portrait ? GONE : VISIBLE);
         if (mPlayerSpeedBtn != null) mPlayerSpeedBtn.setVisibility(portrait ? GONE : VISIBLE);
@@ -2154,7 +2177,7 @@ public class VodController extends BaseController {
     private static final int MENU_FAN_SUB_PARENT = 0;
 
     /** 一级功能：片头片尾 / 弹幕设置 / 刷新 / 屏显（+ 更多，保留解码、播放器、解析等入口） */
-    private static final String[] MENU_FAN_LABELS = {"片头片尾", "弹幕设置", "刷新", "屏显", "更多"};
+    private static final String[] MENU_FAN_LABELS = {"片头片尾", "弹幕", "刷新", "屏显", "更多"};
     /** 片头片尾展开的二级功能 */
     private static final String[] MENU_FAN_SUB_LABELS = {"片头", "片尾", "重置"};
 
@@ -2201,8 +2224,9 @@ public class VodController extends BaseController {
                 expandFanSub();
                 break;
             case 1:
+                // 「弹幕」→ 直接弹出搜索弹幕（弹幕参数的调整已挪到弹幕开关旁的小齿轮）
                 dismissMenuFan();
-                clickIfBound(mDanmuSettingBtn);
+                if (listener != null) listener.openSearchDanmuDialog();
                 break;
             case 2:
                 dismissMenuFan();
@@ -2834,6 +2858,190 @@ public class VodController extends BaseController {
         }
     }
 
+    /* ==================== 播放条上的弹幕设置（玻璃面板 + 进度条） ==================== */
+
+    private static final float DM_SPEED_MIN = 0.8f;
+    private static final int DM_SIZE_MIN = 6;
+    private static final int DM_SIZE_MAX = 20;
+    private static final int DM_LINE_MIN = 1;
+    private static final int DM_LINE_MAX = 15;
+    private static final int DM_ALPHA_MIN = 10;
+    private static final int DM_ALPHA_MAX = 100;
+    private static final int DM_SEEK_SPEED = 0;
+    private static final int DM_SEEK_SIZE = 1;
+    private static final int DM_SEEK_LINE = 2;
+    private static final int DM_SEEK_ALPHA = 3;
+
+    private PopupWindow danmuPanelPopup;
+
+    /**
+     * 在「弹」开关右侧的齿轮上弹出弹幕设置面板：与倍速菜单同一套透明玻璃视觉，
+     * 颜色用两枚胶囊，其余（速度 / 大小 / 行数 / 透明度）改成进度条拖动。
+     */
+    private void showDanmuSettingPanel(View anchor) {
+        if (anchor == null) return;
+        if (danmuPanelPopup != null && danmuPanelPopup.isShowing()) {
+            danmuPanelPopup.dismiss();
+            return;
+        }
+        try {
+            final Context ctx = getContext();
+            final int width = dp(272);
+            final View panel = LayoutInflater.from(ctx)
+                    .inflate(R.layout.view_player_danmu_panel, null, false);
+
+            final PopupWindow popup = new PopupWindow(panel, width,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
+            popup.setOutsideTouchable(true);
+            popup.setFocusable(true);
+            applyImmersiveToPopup(popup);
+            // 面板打开期间不要自动收起控制条，否则锚点跟着消失
+            if (myHandle != null) myHandle.removeCallbacks(myRunnable);
+            popup.setOnDismissListener(new PopupWindow.OnDismissListener() {
+                @Override
+                public void onDismiss() {
+                    danmuPanelPopup = null;
+                    if (myHandle != null && myRunnable != null) {
+                        myHandle.removeCallbacks(myRunnable);
+                        myHandle.postDelayed(myRunnable, myHandleSeconds);
+                    }
+                }
+            });
+            danmuPanelPopup = popup;
+
+            // 颜色：默认 / 随机
+            final TextView chipDefault = panel.findViewById(R.id.dm_panel_default);
+            final TextView chipRandom = panel.findViewById(R.id.dm_panel_random);
+            refreshDanmuColorChips(chipDefault, chipRandom);
+            if (chipDefault != null) {
+                chipDefault.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        DanmuHelper.setRandomColor(false);
+                        refreshDanmuColorChips(chipDefault, chipRandom);
+                        postDanmuSettingChanged(true);
+                    }
+                });
+            }
+            if (chipRandom != null) {
+                chipRandom.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        DanmuHelper.setRandomColor(true);
+                        refreshDanmuColorChips(chipDefault, chipRandom);
+                        postDanmuSettingChanged(true);
+                    }
+                });
+            }
+
+            bindDanmuSeek(panel, R.id.dm_seek_speed, R.id.dm_val_speed, DM_SEEK_SPEED,
+                    Math.round(DanmuHelper.getSpeed() * 100) - 80, 100);
+            bindDanmuSeek(panel, R.id.dm_seek_size, R.id.dm_val_size, DM_SEEK_SIZE,
+                    Math.round(DanmuHelper.getSizeScale() * 10) - DM_SIZE_MIN, DM_SIZE_MAX - DM_SIZE_MIN);
+            bindDanmuSeek(panel, R.id.dm_seek_line, R.id.dm_val_line, DM_SEEK_LINE,
+                    DanmuHelper.getMaxLine() - DM_LINE_MIN, DM_LINE_MAX - DM_LINE_MIN);
+            bindDanmuSeek(panel, R.id.dm_seek_alpha, R.id.dm_val_alpha, DM_SEEK_ALPHA,
+                    Math.round(DanmuHelper.getAlpha() * 100) - DM_ALPHA_MIN, DM_ALPHA_MAX - DM_ALPHA_MIN);
+
+            // 先量出真实高度，才能把面板整体顶到按钮上方
+            panel.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            int popupHeight = panel.getMeasuredHeight();
+            popup.setHeight(popupHeight);
+
+            int xoff = (anchor.getWidth() - width) / 2;
+            // 面板贴着屏幕左边缘时会被切掉，往右推回来
+            int[] loc = new int[2];
+            anchor.getLocationOnScreen(loc);
+            int screenW = getResources().getDisplayMetrics().widthPixels;
+            int panelLeft = loc[0] + xoff;
+            int margin = dp(8);
+            if (panelLeft < margin) {
+                xoff += margin - panelLeft;
+            } else if (panelLeft + width > screenW - margin) {
+                xoff -= (panelLeft + width) - (screenW - margin);
+            }
+            popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    private void refreshDanmuColorChips(TextView def, TextView random) {
+        boolean useRandom = DanmuHelper.useRandomColor();
+        applyChoice(def, !useRandom);
+        applyChoice(random, useRandom);
+    }
+
+    /**
+     * 把一条进度条绑定成弹幕参数。
+     *
+     * @param type        {@link #DM_SEEK_SPEED} / {@link #DM_SEEK_SIZE} / {@link #DM_SEEK_LINE} / {@link #DM_SEEK_ALPHA}
+     * @param startValue  当前真实值（会被夹到合法区间并换算成进度）
+     * @param maxProgress 进度条最大值
+     */
+    private void bindDanmuSeek(View root, int seekId, int valueId, final int type,
+                               int startValue, int maxProgress) {
+        SeekBar seek = root.findViewById(seekId);
+        final TextView valueText = root.findViewById(valueId);
+        if (seek == null) return;
+        seek.setMax(Math.max(1, maxProgress));
+        int progress = Math.max(0, Math.min(maxProgress, Math.round(startValue)));
+        seek.setProgress(progress);
+        if (valueText != null) valueText.setText(formatDanmuValue(type, progress));
+
+        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (valueText != null) valueText.setText(formatDanmuValue(type, progress));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                applyDanmuSeekValue(type, bar.getProgress());
+                refreshDanmuPanel();
+                postDanmuSettingChanged(false);
+            }
+        });
+    }
+
+    /** 进度值 → 显示文案（速度带 x，其余带档 / 行 / %） */
+    private String formatDanmuValue(int type, int progress) {
+        switch (type) {
+            case DM_SEEK_SPEED:
+                return String.format(Locale.getDefault(), "%.1fx", DM_SPEED_MIN + progress * 0.016f);
+            case DM_SEEK_SIZE:
+                return (DM_SIZE_MIN + progress) + "档";
+            case DM_SEEK_LINE:
+                return (DM_LINE_MIN + progress) + "行";
+            default:
+                return (DM_ALPHA_MIN + progress) + "%";
+        }
+    }
+
+    /** 进度值 → 写入 DanmuHelper */
+    private void applyDanmuSeekValue(int type, int progress) {
+        switch (type) {
+            case DM_SEEK_SPEED:
+                DanmuHelper.setSpeed(DM_SPEED_MIN + progress * 0.016f);
+                break;
+            case DM_SEEK_SIZE:
+                DanmuHelper.setSizeScale((DM_SIZE_MIN + progress) / 10f);
+                break;
+            case DM_SEEK_LINE:
+                DanmuHelper.setMaxLine(DM_LINE_MIN + progress);
+                break;
+            default:
+                DanmuHelper.setAlpha((DM_ALPHA_MIN + progress) / 100f);
+                break;
+        }
+    }
+
     private void updatePlayPauseIcon(boolean playing) {
         if (mPlayPauseIcon == null) return;
         mPlayPauseIcon.setImageResource(playing ? R.drawable.ic_player_pause : R.drawable.ic_player_play);
@@ -2856,9 +3064,13 @@ public class VodController extends BaseController {
         initLandscapePortraitBtnInfo();
         applyControlBarMode();
         updateFullScreenIcon(isPlayerFullScreen());
-        // 横竖屏切换 / 分屏尺寸变化后，扇形菜单的落位已失效，直接收起避免错位
+        // 横竖屏切换 / 分屏尺寸变化后，扇形菜单与弹幕面板的落位已失效，直接收起避免错位
         if (w != oldw || h != oldh) {
             if (menuFan != null) dismissMenuFan();
+            if (danmuPanelPopup != null) {
+                danmuPanelPopup.dismiss();
+                danmuPanelPopup = null;
+            }
         }
     }
 
@@ -3103,6 +3315,9 @@ public class VodController extends BaseController {
         return Math.max(1, (int) (increment * mSeekBar.getMax() / duration));
     }
 
+    /** 本集是否已经拿到过时长（用于「首次拿到时长时补一次控制条可见性」） */
+    private boolean controlBarDurationKnown = false;
+
     @SuppressLint("SetTextI18n")
     @Override
     protected void setProgress(int duration, int position) {
@@ -3127,10 +3342,16 @@ public class VodController extends BaseController {
         mTotalTime.setText(stringForTime(duration));
         seekTime.setText(formatSeekTime(position) + " | " + formatSeekTime(duration)); //右上角进度条时间显示
         if (duration > 0) {
+            if (!controlBarDurationKnown) {
+                // 首次拿到时长：此时才真正知道是点播，补一次控制条可见性
+                controlBarDurationKnown = true;
+                refreshControlBarVisibility();
+            }
             mSeekBar.setEnabled(true);
             int pos = (int) (position * 1.0 / duration * mSeekBar.getMax());
             mSeekBar.setProgress(pos);
         } else {
+            controlBarDurationKnown = false;
             mSeekBar.setEnabled(false);
         }
         int percent = mControlWrapper.getBufferedPercentage();
@@ -3219,6 +3440,8 @@ public class VodController extends BaseController {
             case VideoView.STATE_PLAYING:
                 updatePlayPauseIcon(true);
                 initLandscapePortraitBtnInfo();
+                // 播放真正开始后再断言一次：PREPARED 阶段时长为 0 造成的误隐藏在这里被纠正
+                refreshControlBarVisibility();
                 startProgress();
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
@@ -3580,6 +3803,12 @@ public class VodController extends BaseController {
     
     @Override
     public boolean onBackPressed() {
+        // 弹幕设置面板浮起时：返回键只收起面板
+        if (danmuPanelPopup != null) {
+            danmuPanelPopup.dismiss();
+            danmuPanelPopup = null;
+            return true;
+        }
         // 扇形菜单浮起时：返回键只收起菜单，不退出播放
         if (menuFan != null) {
             dismissMenuFan();
@@ -3606,6 +3835,10 @@ public class VodController extends BaseController {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         mHandler.removeCallbacks(myRunnable2);
+        if (danmuPanelPopup != null) {
+            danmuPanelPopup.dismiss();
+            danmuPanelPopup = null;
+        }
     }
 
 

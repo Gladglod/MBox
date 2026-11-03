@@ -1,28 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 搜索弹幕第二层：某一集 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingBottom="8dp">
+    android:paddingBottom="6dp">
 
     <LinearLayout
         android:id="@+id/danmuItem"
         android:layout_width="match_parent"
-        android:layout_height="44dp"
+        android:layout_height="40dp"
         android:background="@drawable/bg_player_chip"
         android:clickable="true"
         android:focusable="false"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingLeft="12dp"
-        android:paddingRight="12dp">
+        android:paddingRight="10dp">
 
         <TextView
             android:id="@+id/danmuName"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="@color/dialog_text_primary"
-            android:textSize="13sp" />
+            android:textColor="#F2FFFFFF"
+            android:textSize="12sp" />
+
+        <!-- 与当前播放集数一致时标记为「疑似此集」 -->
+        <TextView
+            android:id="@+id/danmuGuess"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="6dp"
+            android:background="@drawable/bg_player_chip"
+            android:paddingLeft="6dp"
+            android:paddingRight="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="疑似此集"
+            android:textColor="#FF02F8E1"
+            android:textSize="10sp"
+            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>
