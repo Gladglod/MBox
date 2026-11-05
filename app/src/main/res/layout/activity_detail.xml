@@ -35,7 +35,7 @@
                 android:layout_marginRight="-12dp"
                 android:layout_marginBottom="@dimen/vs_12" />
 
-            <!-- 头部：左海报（预览开启时隐藏） + 右信息 -->
+            <!-- 头部：海报 + 剧名 + 收藏星标（★/☆） + 换源 chip -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -63,180 +63,57 @@
                     android:layout_weight="1"
                     android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/tvName"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_6"
-                        android:ellipsize="end"
-                        android:gravity="left"
-                        android:maxLines="2"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <TextView
-                        android:id="@+id/tvType"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_6"
-                        android:background="@drawable/bg_chip"
-                        android:ellipsize="end"
-                        android:gravity="center"
-                        android:maxLines="1"
-                        android:paddingLeft="@dimen/vs_10"
-                        android:paddingTop="@dimen/vs_3"
-                        android:paddingRight="@dimen/vs_10"
-                        android:paddingBottom="@dimen/vs_3"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="11sp" />
+                        <TextView
+                            android:id="@+id/tvName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:gravity="left"
+                            android:maxLines="4"
+                            android:textColor="@color/ui_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
 
-                    <TextView
-                        android:id="@+id/tvSite"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_3"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="12sp" />
+                        <TextView
+                            android:id="@+id/tvCollect"
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
+                            android:layout_marginLeft="6dp"
+                            android:background="?android:attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="加入收藏"
+                            android:gravity="center"
+                            android:text="☆"
+                            android:textColor="@color/ui_muted"
+                            android:textSize="20sp" />
 
-                    <TextView
-                        android:id="@+id/tvYear"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_3"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvArea"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_3"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvLang"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_3"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvActor"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/vs_3"
-                        android:ellipsize="end"
-                        android:maxLines="2"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvDirector"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:maxLines="2"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvPlayUrl"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:textColor="@color/ui_text_tertiary"
-                        android:textSize="12sp"
-                        android:visibility="gone" />
+                        <TextView
+                            android:id="@+id/tvChangeSource"
+                            android:layout_width="wrap_content"
+                            android:layout_height="30dp"
+                            android:layout_marginLeft="6dp"
+                            android:background="@drawable/bg_chip"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:minWidth="44dp"
+                            android:paddingLeft="10dp"
+                            android:paddingRight="10dp"
+                            android:singleLine="true"
+                            android:text="换源"
+                            android:textColor="@color/ui_text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 简介 -->
-            <TextView
-                android:id="@+id/tvDes"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/vs_10"
-                android:ellipsize="end"
-                android:lineSpacingMultiplier="1.25"
-                android:maxLines="3"
-                android:textColor="@color/ui_text_primary"
-                android:textSize="13sp" />
-
-            <!-- 其他操作：一排四个 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/vs_8"
-                android:baselineAligned="false"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/tvCollect"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginEnd="@dimen/vs_6"
-                    android:layout_marginRight="@dimen/vs_6"
-                    android:layout_weight="1"
-                    android:background="@drawable/button_detail_collect"
-                    android:gravity="center"
-                    android:text="收藏"
-                    android:textColor="@android:color/white"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/tvChangeSource"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginEnd="@dimen/vs_6"
-                    android:layout_marginRight="@dimen/vs_6"
-                    android:layout_weight="1"
-                    android:background="@drawable/button_detail_change_source"
-                    android:gravity="center"
-                    android:text="换源"
-                    android:textColor="@android:color/white"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/tvQuickSearch"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginEnd="@dimen/vs_6"
-                    android:layout_marginRight="@dimen/vs_6"
-                    android:layout_weight="1"
-                    android:background="@drawable/button_detail_quick_search"
-                    android:gravity="center"
-                    android:text="搜索"
-                    android:textColor="@android:color/white"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/tvDesc"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/button_detail_sort"
-                    android:gravity="center"
-                    android:text="简介"
-                    android:textColor="@android:color/white"
-                    android:textSize="13sp" />
-            </LinearLayout>
+            <!-- ============================ 剧集选择（顶部） ============================ -->
 
             <!-- 播放源 -->
             <androidx.recyclerview.widget.RecyclerView
@@ -279,7 +156,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/vs_14"
+                android:layout_marginTop="@dimen/vs_10"
                 android:layout_marginBottom="@dimen/vs_6"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
@@ -320,6 +197,181 @@
                 android:overScrollMode="never"
                 android:paddingLeft="8dp"
                 android:paddingRight="8dp" />
+
+            <!-- ============================ 详情信息（底部，两容器） ============================ -->
+
+            <!-- 容器 A：其他信息（来源/年份常驻；地区/语言/演员/导演/播放链接收进折叠块） -->
+            <LinearLayout
+                android:id="@+id/detailInfoBlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_14"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvSite"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/vs_6"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:singleLine="false"
+                    android:textColor="@color/ui_text_secondary"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvYear"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/vs_2"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:textColor="@color/ui_text_secondary"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:id="@+id/infoMoreBlock"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvArea"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/vs_6"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:textColor="@color/ui_text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvLang"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/vs_6"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:textColor="@color/ui_text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvActor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/vs_6"
+                        android:ellipsize="end"
+                        android:maxLines="3"
+                        android:textColor="@color/ui_text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvDirector"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/vs_6"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:textColor="@color/ui_text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvPlayUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/vs_6"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/ui_text_tertiary"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 其他信息折叠开关：小箭头 + 「详情」，与其余信息分离、独立控制 -->
+            <LinearLayout
+                android:id="@+id/infoToggleRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="6dp"
+                android:paddingRight="8dp"
+                android:paddingTop="6dp">
+
+                <TextView
+                    android:id="@+id/tvInfoToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="详情"
+                    android:textColor="@color/ui_muted"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/infoArrowIcon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="4dp"
+                    android:text="▾"
+                    android:textColor="@color/ui_muted"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- 容器 B：内容简介（独立容器，自带折叠开关） -->
+            <LinearLayout
+                android:id="@+id/detailDesBlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_6"
+                android:orientation="vertical">
+
+                <!-- 简介 -->
+                <TextView
+                    android:id="@+id/tvDes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:lineSpacingMultiplier="1.25"
+                    android:maxLines="3"
+                    android:textColor="@color/ui_text_primary"
+                    android:textSize="13sp" />
+
+                <!-- 简介折叠开关：小箭头 + 「详情」，点开展开全文，箭头旋转 180° -->
+                <LinearLayout
+                    android:id="@+id/desToggleRow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingBottom="6dp"
+                    android:paddingRight="8dp"
+                    android:paddingTop="6dp">
+
+                    <TextView
+                        android:id="@+id/tvDesToggle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="详情"
+                        android:textColor="@color/ui_muted"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/desArrowIcon"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="4dp"
+                        android:text="▾"
+                        android:textColor="@color/ui_muted"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  直播频道行 —— 改成播放历史同款单列玻璃卡片：
+  上面是频道名，下面一行是「正在直播」的节目（HH:mm-HH:mm 节目名），
+  没有节目数据时第二行隐藏，行内文字自动垂直居中。
+  宽度撑满，一列排下来像剧集页的选集列表。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="62dp"
+    android:layout_marginLeft="5dp"
+    android:layout_marginTop="3dp"
+    android:layout_marginRight="5dp"
+    android:layout_marginBottom="3dp"
+    android:background="@drawable/bg_live_channel_row"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingLeft="14dp"
+    android:paddingRight="14dp">
+
+    <TextView
+        android:id="@+id/tvChannelName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:singleLine="true"
+        android:textColor="@color/ui_text_primary"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        tools:text="CCTV-1 综合" />
+
+    <TextView
+        android:id="@+id/tvChannelProgram"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:singleLine="true"
+        android:textColor="@color/ui_text_secondary"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:ignore="Overdraw"
+        tools:text="20:00-21:00  新闻联播" />
+
+    <TextView
+        android:id="@+id/tvChannelNum"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+</LinearLayout>

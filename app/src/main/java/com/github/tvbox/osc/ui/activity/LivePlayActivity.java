@@ -34,7 +34,6 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
-import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -62,7 +61,6 @@ import com.github.tvbox.osc.ui.adapter.LiveSettingItemAdapter;
 import com.github.tvbox.osc.ui.adapter.MyEpgAdapter;
 import com.github.tvbox.osc.ui.dialog.LivePasswordDialog;
 import com.github.tvbox.osc.ui.tv.widget.ViewObj;
-import com.github.tvbox.osc.ui.widget.GridSpacingItemDecoration;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.EpgUtil;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
@@ -158,7 +156,12 @@ public class LivePlayActivity extends BaseActivity {
     private static final int RESOLUTION_INFO_MAX_RETRY = 10;
     private static final long RESOLUTION_INFO_RETRY_DELAY = 300L;
     private static final long RESOLUTION_INFO_HIDE_DELAY = 3000L;
-    private static final String DEFAULT_EPG_ADDRESS = "http://epg.51zmt.top:8000/api/diyp/?ch={name}&date={date}";
+    /**
+     * EPG 默认源（diyp JSON 格式）。
+     * 原 epg.51zmt.top:8000 已长时间 503 不可用（2025 庀测），换成社区维护的 epg.112114.xyz，
+     * 返回结构与解析器字段一致（epg_data[].start/end/title）。用户可在设置里用 HawkConfig.EPG_URL 覆盖。
+     */
+    private static final String DEFAULT_EPG_ADDRESS = "https://epg.112114.xyz/?ch={name}&date={date}";
     private static final Pattern CATCHUP_TOKEN_PATTERN = Pattern.compile("(\\$?\\{[^}]*\\})");
     private static final Pattern CATCHUP_TAG_PATTERN = Pattern.compile("\\{([^}]*)\\}");
     private final Runnable mLoadEpgRun = new Runnable() {
@@ -284,8 +287,12 @@ public class LivePlayActivity extends BaseActivity {
     private View ivLiveBottomFullscreen;
     private ImageView ivLiveBottomFullscreenIcon;
     private TextView tvLiveBottomFullscreenLabel;
-    /** 频道网格列数 */
-    private static final int LIVE_CHANNEL_SPAN = 3;
+    /** 「正在直播」节目预取的代次：换分类 / 退出页面后旧结果全部作废 */
+    private volatile int channelProgramGeneration = 0;
+    /** 单线程排队预取每个频道的当前节目，避免一次并发几十个 EPG 请求 */
+    private static final ExecutorService channelProgramExecutor = Executors.newSingleThreadExecutor();
+    /** 频道名|日期 → 节目文案；一天内同一台不重复请求 */
+    private static final Hashtable<String, String> channelProgramCache = new Hashtable<>();
     /** 全屏时点了「节目单」，退出全屏后要把节目单打开 */
     private boolean pendingOpenEpgAfterExitFullscreen = false;
 
@@ -673,7 +680,11 @@ public class LivePlayActivity extends BaseActivity {
     private String getConfiguredEpgAddress() {
         String userEpgAddress = Hawk.get(HawkConfig.EPG_URL, "");
         if (userEpgAddress != null && userEpgAddress.trim().length() >= 5) {
-            return userEpgAddress.trim();
+            // epg.51zmt.top 长时间 503 已不可用；直播配置「epg」字段残留的旧默认地址直接忽略，
+            // 落到新的默认源，否则用户一改配置就又拿不到节目单
+            if (!userEpgAddress.contains("epg.51zmt.top")) {
+                return userEpgAddress.trim();
+            }
         }
         return DEFAULT_EPG_ADDRESS;
     }
@@ -1203,6 +1214,158 @@ public class LivePlayActivity extends BaseActivity {
         }
     }
 
+    /* ==================== 频道行「正在直播」节目预取 ==================== */
+
+    /**
+     * 频道列表换过一批数据后排队预取每个频道的当前节目。
+     *
+     * <p>单线程串行执行：一次分组少则十几台、多则上百台，并发会把 EPG 源打爆。
+     * 复用底部节目单同一套 EPG 解析（JSON / XMLTV / 多备用查询名 / 默认源兜底）。
+     * generation 代次保证：换分类、退出页面后，旧批次的结果直接作废不进 UI。
+     * 结果按「频道名|日期」缓存，一天之内同一台不重复请求。</p>
+     */
+    private void startChannelProgramPreview(final List<LiveChannelItem> channels) {
+        if (channels == null || channels.isEmpty()) return;
+        final int generation = ++channelProgramGeneration;
+        // 缓存只按天有效；量太大（换了很多台 / 新的一天）直接清空重取，防止Hashtable越养越大
+        if (channelProgramCache.size() > 800) {
+            channelProgramCache.clear();
+        }
+        final Date today = new Date();
+        final String dayKey = newGmt8DateFormatter().format(today);
+        channelProgramExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                if (generation != channelProgramGeneration) return;
+                // XMLTV 地址是一份全频道节目单：整个批次只拉一次，后面每行各自解析
+                final String xmlBody;
+                if (isXmlEpgAddress(epgStringAddress) && hasEpgAddress()) {
+                    xmlBody = httpGetBody(buildEpgUrl(epgStringAddress, "", today, newGmt8DateFormatter()));
+                    if (generation != channelProgramGeneration) return;
+                } else {
+                    xmlBody = null;
+                }
+                for (int i = 0; i < channels.size(); i++) {
+                    LiveChannelItem channel = channels.get(i);
+                    if (generation != channelProgramGeneration) return;
+                    if (channel == null) continue;
+                    final String channelName = channel.getChannelName();
+                    if (TextUtils.isEmpty(channelName)) continue;
+                    String cacheKey = channelName + "|" + dayKey;
+                    String program = channelProgramCache.get(cacheKey);
+                    if (program == null) {
+                        program = fetchChannelProgram(channel, today, xmlBody, generation);
+                        if (generation != channelProgramGeneration) return;
+                        if (!TextUtils.isEmpty(program)) {
+                            channelProgramCache.put(cacheKey, program);
+                        }
+                    }
+                    if (!TextUtils.isEmpty(program)) {
+                        final String text = program;
+                        mHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (generation != channelProgramGeneration) return;
+                                if (liveChannelItemAdapter != null) {
+                                    liveChannelItemAdapter.setProgramText(channelName, text);
+                                }
+                            }
+                        });
+                    }
+                    try {
+                        Thread.sleep(60L);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+            }
+        });
+    }
+
+    /** 取一个频道当前正在播的节目文案：「20:00-21:00  新闻联播」，取不到返回空串 */
+    private String fetchChannelProgram(LiveChannelItem channel, Date date, String xmlBody, int generation) {
+        if (!hasEpgAddress()) return "";
+        String channelName = channel.getChannelName();
+        String channelNameReal = normalizeEpgChannelName(getFirstPartBeforeSpace(channelName));
+        String epgTagName = channelNameReal;
+        String tvgName = channel.getChannelTvgName();
+        if (!TextUtils.isEmpty(tvgName) && !TextUtils.isEmpty(tvgName.trim())) {
+            epgTagName = tvgName.trim();
+        }
+        List<Epginfo> epgList = new ArrayList<>();
+        if (xmlBody != null) {
+            // 整份 XMLTV 已经在批次开头拉好了，这里只解析出属于这个频道的节目
+            epgList = TextUtils.isEmpty(xmlBody) ? epgList : parseXmlEpg(xmlBody, channelName, date);
+        } else {
+            SimpleDateFormat timeFormat = newGmt8DateFormatter();
+            ArrayList<String> queryNames = buildEpgQueryNames(channelName, channelNameReal, epgTagName);
+            for (int i = 0; i < queryNames.size(); i++) {
+                if (generation != channelProgramGeneration) return "";
+                List<Epginfo> list = httpFetchEpgList(
+                        buildEpgUrl(epgStringAddress, queryNames.get(i), date, timeFormat),
+                        channelNameReal, date);
+                if (!list.isEmpty()) {
+                    epgList = list;
+                    break;
+                }
+            }
+            // 自定义 EPG 源一个名字都没查到时，按底部节目单同样的路数用默认源兜底
+            if (epgList.isEmpty() && !DEFAULT_EPG_ADDRESS.equals(epgStringAddress) && !queryNames.isEmpty()) {
+                if (generation != channelProgramGeneration) return "";
+                epgList = httpFetchEpgList(
+                        buildEpgUrl(DEFAULT_EPG_ADDRESS, queryNames.get(0), date, timeFormat),
+                        channelNameReal, date);
+            }
+        }
+        int programIndex = findCurrentEpgIndex(epgList);
+        if (programIndex < 0) return "";
+        Epginfo info = epgList.get(programIndex);
+        if (info == null || TextUtils.isEmpty(info.title)) return "";
+        String title = info.title.trim();
+        if (TextUtils.isEmpty(info.start) || TextUtils.isEmpty(info.end)) return "";
+        return info.start + "-" + info.end + "  " + title;
+    }
+
+    /** 同步拉一个 EPG 请求并解析成节目列表（在预取线程里跑，失败返回空列表） */
+    private List<Epginfo> httpFetchEpgList(String url, String channelName, Date date) {
+        List<Epginfo> list = new ArrayList<>();
+        try {
+            String body = httpGetBody(url);
+            if (TextUtils.isEmpty(body)) return list;
+            if (isXmlEpgResponse(body)) {
+                list = parseXmlEpg(body, channelName, date);
+            } else if (body.contains("epg_data") || body.trim().startsWith("{")) {
+                list = parseJsonEpg(body, date);
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        return list;
+    }
+
+    /** 同步 GET：非 200 / 网络异常一律返回空串 */
+    private String httpGetBody(String url) {
+        try {
+            okhttp3.OkHttpClient client = OkGoHelper.getDefaultClient();
+            if (client == null) client = com.github.catvod.net.OkHttp.client();
+            okhttp3.Response response = client.newCall(new okhttp3.Request.Builder().url(url).build()).execute();
+            try {
+                if (response.code() != 200 || response.body() == null) return "";
+                return response.body().string();
+            } finally {
+                response.close();
+            }
+        } catch (Throwable th) {
+            return "";
+        }
+    }
+
+    private SimpleDateFormat newGmt8DateFormatter() {
+        @SuppressLint("SimpleDateFormat")
+        SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy-MM-dd");
+        timeFormat.setTimeZone(TimeZone.getTimeZone("GMT+8:00"));
+        return timeFormat;
+    }
 
     //频道列表
     @SuppressLint("NotifyDataSetChanged")
@@ -1434,6 +1597,8 @@ public class LivePlayActivity extends BaseActivity {
         mHandler.removeCallbacks(mUpdateResolutionInfoRun);
         mHandler.removeCallbacks(mHideResolutionInfoRun);
         mHandler.removeCallbacks(mHideControlsRun);
+        // 让排队中的「正在直播」预取批次全部作废
+        channelProgramGeneration++;
         // 清掉静态的频道引用，避免下次进入直播页时用到上一次的残留状态（空指针闪退）
         channel_Name = null;
         currentLiveChannelItem = null;
@@ -2786,14 +2951,18 @@ public class LivePlayActivity extends BaseActivity {
     }
 
     private void initLiveChannelView() {
-        mLiveChannelView.setHasFixedSize(true);
-        // 频道铺成网格，像「选集」那样一眼扫完
-        mLiveChannelView.setLayoutManager(new GridLayoutManager(this.mContext, LIVE_CHANNEL_SPAN));
-        if (mLiveChannelView.getItemDecorationCount() == 0) {
-            mLiveChannelView.addItemDecoration(new GridSpacingItemDecoration(dp2px(2)));
-        }
+        // 频道改成单列玻璃行列表，像播放历史 / 选集那样一行一台，
+        // 行的下半行显示「正在直播」的节目（EPG 排队预取，见 startChannelProgramPreview）
+        mLiveChannelView.setHasFixedSize(false);
+        mLiveChannelView.setLayoutManager(new LinearLayoutManager(this.mContext));
 
         liveChannelItemAdapter = new LiveChannelItemAdapter();
+        liveChannelItemAdapter.setProgramLoader(new LiveChannelItemAdapter.ChannelProgramLoader() {
+            @Override
+            public void onChannelDataChanged(List<LiveChannelItem> channels) {
+                startChannelProgramPreview(channels);
+            }
+        });
         mLiveChannelView.setAdapter(liveChannelItemAdapter);
         mLiveChannelView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override

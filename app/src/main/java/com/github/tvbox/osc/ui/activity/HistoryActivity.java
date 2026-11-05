@@ -158,14 +158,11 @@ public class HistoryActivity extends BaseActivity {
 
             @Override
             public void onItemLongClick(VodInfo vodInfo) {
-                if (editMode || vodInfo == null) return;
-                Bundle bundle = new Bundle();
-                bundle.putString("title", vodInfo.name);
-                if (Hawk.get(HawkConfig.FAST_SEARCH_MODE, true)) {
-                    jumpActivity(FastSearchActivity.class, bundle);
-                } else {
-                    jumpActivity(SearchActivity.class, bundle);
-                }
+                if (vodInfo == null) return;
+                // 长按 = 直接进入编辑模式，并顺手把这条勾选上（不再跳转搜索）
+                if (!editMode) toggleEditMode();
+                historyAdapter.toggleSelection(vodInfo);
+                updateDeleteLabel();
             }
         });
     }

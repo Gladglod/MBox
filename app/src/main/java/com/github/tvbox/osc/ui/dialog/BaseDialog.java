@@ -6,6 +6,7 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
@@ -65,13 +66,25 @@ public class BaseDialog extends Dialog {
             if (!(getContext() instanceof Activity)) {
                 return;
             }
-            View hostDecor = ((Activity) getContext()).getWindow().getDecorView();
+            Activity activity = (Activity) getContext();
+            Window host = activity.getWindow();
+            Window mine = getWindow();
+            if (host == null || mine == null) return;
+            // 系统栏颜色跟宿主走，不然浅色主题里弹窗后状态栏还是默认深色，观感割裂
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    mine.setStatusBarColor(host.getStatusBarColor());
+                    mine.setNavigationBarColor(host.getNavigationBarColor());
+                }
+            } catch (Throwable ignore) {
+            }
+            View hostDecor = host.getDecorView();
             int hostFlags = hostDecor.getSystemUiVisibility();
             int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
             if ((hostFlags & hidden) != hidden) {
                 return;
             }
-            getWindow().getDecorView().setSystemUiVisibility(
+            mine.getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN

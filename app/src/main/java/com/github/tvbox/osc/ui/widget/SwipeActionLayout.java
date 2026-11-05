@@ -1,10 +1,13 @@
 package com.github.tvbox.osc.ui.widget;
 
 import android.content.Context;
+import android.graphics.Outline;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewOutlineProvider;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
@@ -79,6 +82,19 @@ public class SwipeActionLayout extends FrameLayout {
 
     private void init(Context context) {
         touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+        // 卡片背景直接铺在容器本体上（bg_history_card），操作按钮与内容都在同一张
+        // 「卡」里面，左滑不再是露出卡片下方的独立按钮区；
+        // Lollipop+ 用 outline 裁剪圆角，滑露出的区域也跟着卡的圆角走，一体感强
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            final float radius = 16f * context.getResources().getDisplayMetrics().density;
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                }
+            });
+            setClipToOutline(true);
+        }
     }
 
     @Override
@@ -87,8 +103,13 @@ public class SwipeActionLayout extends FrameLayout {
         if (getChildCount() >= 2) {
             actionsView = getChildAt(0);
             contentView = getChildAt(1);
-            // 复位到「全部隐藏」，防复用时旧状态闪现
-            updateActionsProgress(0f);
+            // 玻璃卡片是半透明的：未滑开时操作按钮必须整体隐藏，
+            // 否则会隔着卡片「透明透视」到按钮底色，观感脏
+            if (actionsView instanceof ViewGroup) {
+                for (int i = 0; i < ((ViewGroup) actionsView).getChildCount(); i++) {
+                    ((ViewGroup) actionsView).getChildAt(i).setAlpha(0f);
+                }
+            }
         }
     }
 

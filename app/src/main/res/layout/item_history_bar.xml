@@ -2,7 +2,8 @@
 <com.github.tvbox.osc.ui.widget.SwipeActionLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="@dimen/vs_8">
+    android:layout_marginBottom="@dimen/vs_8"
+    android:background="@drawable/bg_history_card">
 
     <!-- 左滑后露出的操作区：玻璃胶囊按钮，随露出进度级联淡入 + 右漂（SwipeActionLayout 驱动） -->
     <LinearLayout
@@ -45,7 +46,7 @@
         android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_history_card"
+        android:background="@android:color/transparent"
         android:clickable="true"
         android:focusable="false"
         android:focusableInTouchMode="false"

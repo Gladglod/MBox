@@ -18,6 +18,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -45,14 +46,13 @@ import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.adapter.SeriesAdapter;
 import com.github.tvbox.osc.ui.adapter.SeriesFlagAdapter;
-import com.github.tvbox.osc.ui.dialog.DescDialog;
-import com.github.tvbox.osc.ui.dialog.QuickSearchDialog;
 import com.github.tvbox.osc.ui.fragment.PlayFragment;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
+import com.github.tvbox.osc.util.MotionCompat;
 import com.github.tvbox.osc.util.SearchHelper;
 import com.github.tvbox.osc.util.SubtitleHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
@@ -111,16 +111,26 @@ public class DetailActivity extends BaseActivity {
     private TextView tvSite;
     private TextView tvArea;
     private TextView tvLang;
-    private TextView tvType;
     private TextView tvActor;
     private TextView tvDirector;
     private TextView tvPlayUrl;
     private TextView tvDes;
+    /** 简介折叠状态与开关行控件（tvDes 是被折叠的那棵 TextView） */
+    private LinearLayout desToggleRow;
+    private TextView tvDesToggle;
+    private TextView desArrowIcon;
+    private boolean desExpanded = false;
+    /** 底部「其他信息」折叠：来源/年份常驻，地区/语言/演员/导演/播放链接收进 infoMoreBlock */
+    private LinearLayout detailInfoBlock;
+    private LinearLayout infoMoreBlock;
+    private LinearLayout infoToggleRow;
+    private TextView tvInfoToggle;
+    private TextView infoArrowIcon;
+    private boolean infoExpanded = false;
 //    private TextView tvSort;
-    private TextView tvDesc;
     private TextView tvSeriesSort;
-    private TextView tvQuickSearch;
     private TextView tvChangeSource;
+    /** 收藏星标：★ = 已收藏，☆ = 未收藏 */
     private TextView tvCollect;
     private RecyclerView mGridViewFlag;
     private RecyclerView mGridViewQuality;
@@ -168,6 +178,121 @@ public class DetailActivity extends BaseActivity {
         return R.layout.activity_detail;
     }
 
+    /* ============================ 简介折叠 ============================ */
+
+    /** 绑定「详情」折叠开关：内容不足 3 行时整行隐藏，展开后箭头旋转 180° */
+    private void setupDesToggle() {
+        updateDesCollapseUi();
+        desToggleRow.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                desExpanded = !desExpanded;
+                tvDes.setMaxLines(desExpanded ? Integer.MAX_VALUE : 3);
+                updateDesCollapseUi();
+            }
+        });
+        // 内容长度随源变化：不足 3 行（没有省略号）时收起「详情」开关，免得多余的一行
+        tvDes.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                try {
+                    if (desToggleRow == null || tvDes == null) return;
+                    if (desExpanded) {
+                        desToggleRow.setVisibility(View.VISIBLE);
+                    } else if (isDesFullyVisibleAtCollapse()) {
+                        desToggleRow.setVisibility(View.GONE);
+                    } else {
+                        desToggleRow.setVisibility(View.VISIBLE);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+    }
+
+    /** 收起态下简介是否本来就没超过 3 行（无省略 = 不需要折叠开关） */
+    private boolean isDesFullyVisibleAtCollapse() {
+        android.text.Layout layout = tvDes.getLayout();
+        if (layout == null) return true;
+        int last = layout.getLineCount() - 1;
+        if (last < 0) return true;
+        return layout.getEllipsisCount(last) <= 0;
+    }
+
+    /** 折叠 UI 状态：文案 + 箭头旋转（尊重系统「移除动画」设置） */
+    private void updateDesCollapseUi() {
+        if (tvDesToggle == null || desArrowIcon == null) return;
+        tvDesToggle.setText(desExpanded ? "收起" : "详情");
+        float rotation = desExpanded ? 180f : 0f;
+        if (MotionCompat.reducedMotion(this)) {
+            desArrowIcon.setRotation(rotation);
+        } else {
+            desArrowIcon.animate().rotation(rotation).setDuration(180)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .start();
+        }
+    }
+
+    /** 收藏星标状态：★ 已收藏（品牌色）/ ☆ 未收藏（弱化灰） */
+    private void updateCollectStar(boolean fav) {
+        if (tvCollect == null) return;
+        tvCollect.setText(fav ? "★" : "☆");
+        tvCollect.setTextColor(getResources().getColor(
+                fav ? R.color.ui_accent : R.color.ui_muted));
+        tvCollect.setContentDescription(fav ? "取消收藏" : "加入收藏");
+    }
+
+    /** 点亮小脉冲：星标放大 1.25 再弹回 */
+    private void popCollectStar() {
+        if (tvCollect == null || MotionCompat.reducedMotion(this)) return;
+        tvCollect.animate().cancel();
+        tvCollect.setScaleX(1f);
+        tvCollect.setScaleY(1f);
+        tvCollect.animate().scaleX(1.25f).scaleY(1.25f).setDuration(90)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        tvCollect.animate().scaleX(1f).scaleY(1f).setDuration(140).start();
+                    }
+                }).start();
+    }
+
+    /** 绑定「其他信息」折叠开关：默认收起，只露出来源/年份，展开后显示全部 */
+    private void setupInfoToggle() {
+        infoExpanded = false;
+        applyInfoCollapse();
+        infoToggleRow.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                infoExpanded = !infoExpanded;
+                applyInfoCollapse();
+                updateInfoCollapseUi();
+            }
+        });
+    }
+
+    /** 应用折叠态：infoMoreBlock（地区/语言/演员/导演/播放链接）整体显隐 */
+    private void applyInfoCollapse() {
+        if (infoMoreBlock == null) return;
+        infoMoreBlock.setVisibility(infoExpanded ? View.VISIBLE : View.GONE);
+    }
+
+    /** 「其他信息」开关行 UI：文案 + 箭头旋转（尊重系统「移除动画」设置） */
+    private void updateInfoCollapseUi() {
+        if (tvInfoToggle == null || infoArrowIcon == null) return;
+        tvInfoToggle.setText(infoExpanded ? "收起" : "详情");
+        float rotation = infoExpanded ? 180f : 0f;
+        if (MotionCompat.reducedMotion(this)) {
+            infoArrowIcon.setRotation(rotation);
+        } else {
+            infoArrowIcon.animate().rotation(rotation).setDuration(180)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .start();
+        }
+    }
+
     @Override
     protected void init() {
         EventBus.getDefault().register(this);
@@ -193,16 +318,23 @@ public class DetailActivity extends BaseActivity {
         tvSite = findViewById(R.id.tvSite);
         tvArea = findViewById(R.id.tvArea);
         tvLang = findViewById(R.id.tvLang);
-        tvType = findViewById(R.id.tvType);
         tvActor = findViewById(R.id.tvActor);
         tvDirector = findViewById(R.id.tvDirector);
         tvPlayUrl = findViewById(R.id.tvPlayUrl);
         tvDes = findViewById(R.id.tvDes);
+        desToggleRow = findViewById(R.id.desToggleRow);
+        tvDesToggle = findViewById(R.id.tvDesToggle);
+        desArrowIcon = findViewById(R.id.desArrowIcon);
+        setupDesToggle();
+        detailInfoBlock = findViewById(R.id.detailInfoBlock);
+        infoMoreBlock = findViewById(R.id.infoMoreBlock);
+        infoToggleRow = findViewById(R.id.infoToggleRow);
+        tvInfoToggle = findViewById(R.id.tvInfoToggle);
+        infoArrowIcon = findViewById(R.id.infoArrowIcon);
+        setupInfoToggle();
 //        tvSort = findViewById(R.id.tvSort);
-        tvDesc = findViewById(R.id.tvDesc);
         tvSeriesSort = findViewById(R.id.mSeriesSortTv);
         tvCollect = findViewById(R.id.tvCollect);
-        tvQuickSearch = findViewById(R.id.tvQuickSearch);
         tvChangeSource = findViewById(R.id.tvChangeSource);
         mEmptyPlayList = findViewById(R.id.mEmptyPlaylist);
         mGridView = findViewById(R.id.mGridView);
@@ -298,37 +430,6 @@ public class DetailActivity extends BaseActivity {
             }
         });
 
-        tvQuickSearch.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startQuickSearch();
-                QuickSearchDialog quickSearchDialog = new QuickSearchDialog(DetailActivity.this);
-                EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_QUICK_SEARCH, quickSearchData));
-                EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_QUICK_SEARCH_WORD, quickSearchWord));
-                quickSearchDialog.show();
-                if (pauseRunnable != null && pauseRunnable.size() > 0) {
-                    searchExecutorService = Executors.newFixedThreadPool(5);
-                    for (Runnable runnable : pauseRunnable) {
-                        searchExecutorService.execute(runnable);
-                    }
-                    pauseRunnable.clear();
-                    pauseRunnable = null;
-                }
-                quickSearchDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @Override
-                    public void onDismiss(DialogInterface dialog) {
-                        try {
-                            if (searchExecutorService != null) {
-                                pauseRunnable = searchExecutorService.shutdownNow();
-                                searchExecutorService = null;
-                            }
-                        } catch (Throwable th) {
-                            th.printStackTrace();
-                        }
-                    }
-                });
-            }
-        });
         tvChangeSource.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -339,16 +440,20 @@ public class DetailActivity extends BaseActivity {
         tvCollect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String text = tvCollect.getText().toString();
-                if ("加入收藏".equals(text)) {
-                    RoomDataManger.insertVodCollect(sourceKey, vodInfo);
-                    Toast.makeText(DetailActivity.this, "已加入收藏夹", Toast.LENGTH_SHORT).show();
-                    tvCollect.setText("取消收藏");
-                } else {
+                FastClickCheckUtil.check(v);
+                if (vodInfo == null) return;
+                boolean fav = RoomDataManger.isVodCollect(sourceKey, vodId);
+                if (fav) {
                     RoomDataManger.deleteVodCollect(sourceKey, vodInfo);
                     Toast.makeText(DetailActivity.this, "已移除收藏夹", Toast.LENGTH_SHORT).show();
-                    tvCollect.setText("加入收藏");
+                    updateCollectStar(false);
+                } else {
+                    RoomDataManger.insertVodCollect(sourceKey, vodInfo);
+                    Toast.makeText(DetailActivity.this, "已加入收藏夹", Toast.LENGTH_SHORT).show();
+                    updateCollectStar(true);
                 }
+                // 星标的「点亮」小脉冲，给收藏操作一个明确反馈
+                popCollectStar();
             }
         });
         tvPlayUrl.setOnClickListener(new View.OnClickListener() {
@@ -387,21 +492,6 @@ public class DetailActivity extends BaseActivity {
                 }
             }
         });
-        tvDesc.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        FastClickCheckUtil.check(v);
-                        DescDialog dialog = new DescDialog(mContext);
-                        dialog.setDescribe(removeHtmlTag(mVideo.des));
-                        dialog.show();
-                    }
-                });
-            }
-        });
-
         seriesFlagAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
@@ -907,14 +997,15 @@ public class DetailActivity extends BaseActivity {
                     setTextShow(tvYear, "年份：", mVideo.year == 0 ? "" : String.valueOf(mVideo.year));
                     setTextShow(tvArea, "地区：", mVideo.area);
                     setTextShow(tvLang, "语言：", mVideo.lang);
-                    if (!firstsourceKey.equals(sourceKey)) {
-                    	setTextShow(tvType, "类型：", "[" + ApiConfig.get().getSource(sourceKey).getName() + "] 解析");
-                    } else {
-                    	setTextShow(tvType, "类型：", mVideo.type);
-                    }
                     setTextShow(tvActor, "演员：", removeHtmlTag(mVideo.actor));
                     setTextShow(tvDirector, "导演：", removeHtmlTag(mVideo.director));
                     setTextShow(tvDes, "内容简介：", removeHtmlTag(mVideo.des));
+                    // 换源 / 重新加载后把简介和其他信息都收回折叠态
+                    desExpanded = false;
+                    tvDes.setMaxLines(3);
+                    updateDesCollapseUi();
+                    infoExpanded = false;
+                    applyInfoCollapse();
                     if (!TextUtils.isEmpty(mVideo.pic)) {
                         // thumbContainer 是 108dp×162dp（约 324×486px），圆角由 clipToOutline 负责。
                         // 原来传 300dp×400dp 的设计稿尺寸，经 AutoSize 放大后是 900×1200，
@@ -1054,11 +1145,7 @@ public class DetailActivity extends BaseActivity {
         }
         sourceViewModel.getDetail(sourceKey, vodId, fallback && detailFallbackActive);
         boolean isVodCollect = RoomDataManger.isVodCollect(sourceKey, vodId);
-        if (isVodCollect) {
-            tvCollect.setText("取消收藏");
-        } else {
-            tvCollect.setText("加入收藏");
-        }
+        updateCollectStar(isVodCollect);
     }
 
     private void handleEmptyDetail(AbsXml data) {

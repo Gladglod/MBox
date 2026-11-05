@@ -242,19 +242,20 @@ public class SearchDanmuDialog extends BaseDialog {
     }
 
     private void loadDanmu(DanmuSearchResult result) {
-        showLoading();
+        // 选择即关窗：加载交给 DanmakuApi 在后台继续，弹幕就绪后由播放器自动挂载，
+        // 不再让搜索窗口在前台一直占着转圈
+        dismiss();
+        Toast.makeText(getContext(), "已选择弹幕，后台加载中", Toast.LENGTH_SHORT).show();
         DanmakuApi.loadSearchResult(result, new DanmakuApi.SearchResultCallback() {
             @Override
             public void onSuccess(String danmu) {
                 if (danmuLoader != null) danmuLoader.loadDanmu(danmu);
-                dismiss();
             }
 
             @Override
             public void onError(String message) {
-                loadingBar.setVisibility(View.GONE);
-                listView.setVisibility(View.VISIBLE);
-                Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+                // 窗口已关，失败只能以轻提示告知
+                Toast.makeText(getContext(), "弹幕加载失败：" + message, Toast.LENGTH_SHORT).show();
             }
         });
     }

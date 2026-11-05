@@ -241,18 +241,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
+                android:background="@drawable/shape_thumb_bottom_name"
                 android:paddingLeft="12dp"
                 android:paddingTop="6dp"
                 android:paddingRight="12dp"
                 android:paddingBottom="8dp">
 
-                <View
-                    android:id="@+id/view_bg"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_alignParentBottom="true"
-                    android:layout_alignParentLeft="true"
-                    android:background="@drawable/shape_thumb_bottom_name" />
+                <!--
+                  底部信息条的半透明底。
+                  注意：不能用 match_parent 高度的子 View 当背景 —— 在整屏播放器上相当于
+                  一条底部渐变，套进 16:9 小播放器后会把整个画面都盖成一层黑（RelativeLayout
+                  的 wrap_content 会被 match_parent 子 View 撑到父容器那么高）。
+                  所以背景直接挂在容器自身上：只盖住「频道名 + 当前节目」这一行。
+                -->
 
                 <!-- 频道图标 + 名称 -->
                 <LinearLayout

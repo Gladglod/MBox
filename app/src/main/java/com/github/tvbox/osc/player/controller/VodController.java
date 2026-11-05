@@ -1429,6 +1429,7 @@ public class VodController extends BaseController {
                 list.addView(tv);
             }
             popup.showAsDropDown(anchor, 0, dp(4));
+            reApplyImmersiveToPopup(popup);
         } catch (Throwable th) {
             th.printStackTrace();
         }
@@ -1458,6 +1459,35 @@ public class VodController extends BaseController {
                             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                             | hidden
                             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        } catch (Throwable ignore) {
+        }
+    }
+
+    /**
+     * 真机上，attach 之前设置的 systemUiVisibility 会被部分 ROM 忽略，导致弹出
+     * 倍速 / 画面比例这类锚点列表时状态栏重新露出。展示之后再往内容 View（以及它的
+     * 父容器 PopupDecorView）补挂一遍，双保险。
+     */
+    private void reApplyImmersiveToPopup(final PopupWindow popup) {
+        try {
+            Activity activity = PlayerUtils.scanForActivity(getContext());
+            if (activity == null || popup == null) return;
+            View decor = activity.getWindow().getDecorView();
+            final int flags = decor.getSystemUiVisibility();
+            int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+            if ((flags & hidden) != hidden) return;
+            popup.getContentView().post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        popup.getContentView().setSystemUiVisibility(flags);
+                        View parent = popup.getContentView().getParent() instanceof View
+                                ? (View) popup.getContentView().getParent() : null;
+                        if (parent != null) parent.setSystemUiVisibility(flags);
+                    } catch (Throwable ignore) {
+                    }
+                }
+            });
         } catch (Throwable ignore) {
         }
     }
@@ -1598,6 +1628,7 @@ public class VodController extends BaseController {
 
             int xoff = (anchor.getWidth() - popupWidth) / 2;
             popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
+            reApplyImmersiveToPopup(popup);
         } catch (Throwable th) {
             th.printStackTrace();
         }
@@ -2164,7 +2195,7 @@ public class VodController extends BaseController {
 
     /** 一级扇形：半径 / 气泡尺寸 / 展开角度（以菜单键为圆心向下扇开） */
     private static final int MENU_FAN_RADIUS_DP = 78;
-    private static final int MENU_FAN_ITEM_DP = 30;
+    private static final int MENU_FAN_ITEM_DP = 38;
     /** 起始角 110°：整条弧相对竖直向下顺时针转过 26°，第一个气泡更靠左下 */
     private static final float MENU_FAN_START_DEG = 100f;
     private static final float MENU_FAN_SWEEP_DEG = 92f;
