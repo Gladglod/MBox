@@ -1562,7 +1562,7 @@ public class VodController extends BaseController {
 
             // 列表放进 ScrollView：词条超过半屏时滚动，面板本身不会顶到画面顶端
             ScrollView scroll = new ScrollView(ctx);
-            scroll.setBackgroundResource(R.drawable.bg_player_drawer);
+            scroll.setBackgroundResource(R.drawable.bg_glass_menu);
             scroll.setPadding(pad, pad, pad, pad);
             scroll.setClipToPadding(false);
             scroll.setVerticalScrollBarEnabled(true);
@@ -1601,7 +1601,7 @@ public class VodController extends BaseController {
                 tv.setEllipsize(TextUtils.TruncateAt.END);
                 tv.setPadding(dp(8), 0, dp(8), 0);
                 tv.setBackgroundResource(i == checkedIndex
-                        ? R.drawable.bg_chip_selected : R.drawable.bg_player_chip);
+                        ? R.drawable.bg_glass_chip_selected : R.drawable.bg_glass_chip);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
                 lp.topMargin = i == 0 ? 0 : dp(3);
@@ -1893,7 +1893,40 @@ public class VodController extends BaseController {
 
     /* ==================== 手机竖屏主控按钮（播放 / 弹幕 / 倍速 / 全屏 + 菜单） ==================== */
 
+    /** 玻璃按钮通用按压动效（与直播页同一套）：按下缩到 0.86，松开平滑缩回 1.0（不过冲，避免视觉上忽大忽小） */
+    private void bindGlassPressEffect(final View view) {
+        if (view == null) return;
+        view.setOnTouchListener(new OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        v.animate().cancel();
+                        v.animate().scaleX(0.86f).scaleY(0.86f).setDuration(90).start();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.animate().cancel();
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(180)
+                                .setInterpolator(new DecelerateInterpolator()).start();
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
     private void bindMainControlButtons() {
+        // 玻璃质感控件统一挂按压动效（按下缩小、松开平滑回弹），点击逻辑不受影响；
+        // 菜单键 mMenuBtn 除外 —— 触摸模式下它有自己的跟手选择手势，动效会覆盖手势
+        bindGlassPressEffect(mPlayPauseBtn);
+        bindGlassPressEffect(mNextBtn);
+        bindGlassPressEffect(mPortraitBtn);
+        bindGlassPressEffect(mFullScreenBtn);
+        bindGlassPressEffect(backBtn);
+        bindGlassPressEffect(mCastBtn);
+        bindGlassPressEffect(mPlayerScaleBtn);
+        bindGlassPressEffect(mPlayerSpeedBtn);
         if (mPlayPauseBtn != null) {
             mPlayPauseBtn.setOnClickListener(new OnClickListener() {
                 @Override
@@ -1916,6 +1949,7 @@ public class VodController extends BaseController {
                     myHandle.postDelayed(myRunnable, myHandleSeconds);
                 }
             });
+            bindGlassPressEffect(mDanmuBtn);
             updateDanmuSwitch(DanmuHelper.isOpen());
         }
         if (mDanmuCfgBtn != null) {
@@ -1926,6 +1960,7 @@ public class VodController extends BaseController {
                     showDanmuSettingPanel(v);
                 }
             });
+            bindGlassPressEffect(mDanmuCfgBtn);
         }
         if (mFullScreenBtn != null) {
             mFullScreenBtn.setOnClickListener(new OnClickListener() {

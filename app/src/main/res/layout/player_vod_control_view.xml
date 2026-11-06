@@ -27,7 +27,7 @@
             android:layout_height="36dp"
             android:layout_marginStart="4dp"
             android:layout_marginLeft="4dp"
-            android:background="@drawable/bg_player_circle"
+            android:background="@drawable/bg_glass_circle"
             android:clickable="true"
             android:focusable="false"
             android:padding="9dp"
@@ -164,28 +164,28 @@
 
         </LinearLayout>
 
-        <!-- 投屏：紧邻菜单键 -->
+        <!-- 投屏：紧邻菜单键（iOS 玻璃圆钮） -->
         <ImageView
             android:id="@+id/play_cast"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_marginStart="8dp"
             android:layout_marginLeft="8dp"
-            android:background="@drawable/bg_player_circle"
+            android:background="@drawable/bg_glass_circle"
             android:clickable="true"
             android:focusable="false"
             android:padding="9dp"
             android:src="@drawable/ic_player_cast"
             tools:ignore="ContentDescription" />
 
-        <!-- 菜单键：向左滑出设置抽屉 -->
+        <!-- 菜单键：向左滑出设置抽屉（iOS 玻璃圆钮） -->
         <ImageView
             android:id="@+id/iv_player_menu"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_marginStart="8dp"
             android:layout_marginLeft="8dp"
-            android:background="@drawable/bg_player_circle"
+            android:background="@drawable/bg_glass_circle"
             android:clickable="true"
             android:focusable="false"
             android:padding="9dp"
@@ -258,7 +258,7 @@
             android:textSize="13sp"
             android:visibility="gone" />
 
-        <!-- 中央只保留暂停/播放图标，不再显示时间 -->
+        <!-- 中央只保留暂停/播放图标，不再显示时间（iOS 玻璃圆底） -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -269,7 +269,7 @@
             <ImageView
                 android:layout_width="52dp"
                 android:layout_height="52dp"
-                android:background="@drawable/bg_player_circle"
+                android:background="@drawable/bg_glass_circle"
                 android:focusable="false"
                 android:focusableInTouchMode="false"
                 android:padding="14dp"
@@ -306,11 +306,13 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <!-- 播放 / 暂停 -->
+            <!-- 播放 / 暂停：iOS 玻璃圆钮（缩小一档，位置不变） -->
             <LinearLayout
                 android:id="@+id/btn_play_pause"
-                android:layout_width="40dp"
-                android:layout_height="match_parent"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center_vertical"
+                android:background="@drawable/bg_glass_circle"
                 android:clickable="true"
                 android:focusable="false"
                 android:gravity="center"
@@ -318,8 +320,8 @@
 
                 <ImageView
                     android:id="@+id/iv_play_pause"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:src="@drawable/ic_player_play"
                     tools:ignore="ContentDescription" />
             </LinearLayout>
@@ -379,15 +381,16 @@
                     tools:ignore="RtlSymmetry" />
             </LinearLayout>
 
-            <!-- 下一集：仅横屏全屏显示 -->
+            <!-- 下一集：仅横屏全屏显示；iOS 玻璃圆钮（缩小一档，位置不变） -->
             <ImageView
                 android:id="@+id/play_next"
-                android:layout_width="40dp"
-                android:layout_height="match_parent"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center_vertical"
+                android:background="@drawable/bg_glass_circle"
                 android:clickable="true"
                 android:focusable="false"
-                android:padding="9dp"
+                android:padding="8dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_player_next"
                 android:visibility="gone"
@@ -412,18 +415,19 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
-            <!-- 弹幕设置：紧挨弹幕开关，点开透明玻璃面板（颜色 / 速度 / 大小 / 行数 / 透明度） -->
+            <!-- 弹幕设置：紧挨弹幕开关，点开透明玻璃面板（颜色 / 速度 / 大小 / 行数 / 透明度）；iOS 玻璃圆钮 -->
             <ImageView
                 android:id="@+id/btn_danmu_cfg"
-                android:layout_width="26dp"
-                android:layout_height="26dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:layout_marginStart="3dp"
                 android:layout_marginLeft="3dp"
+                android:layout_gravity="center_vertical"
                 android:alpha="0.9"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/bg_glass_circle"
                 android:clickable="true"
                 android:focusable="false"
-                android:padding="5dp"
+                android:padding="7dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/icon_setting"
                 android:visibility="gone"
@@ -438,20 +442,22 @@
                 android:layout_weight="1"
                 android:visibility="gone" />
 
-            <!-- 画面比例：仅横屏全屏显示，紧挨在倍速左侧 -->
+            <!-- 画面比例：仅横屏全屏显示，紧挨在倍速左侧；iOS 玻璃胶囊（缩小一档，位置不变） -->
             <TextView
                 android:id="@+id/play_scale"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="34dp"
+                android:layout_gravity="center_vertical"
+                android:background="@drawable/bg_glass_pill"
                 android:clickable="true"
                 android:ellipsize="end"
                 android:focusable="false"
                 android:gravity="center"
-                android:minWidth="48dp"
-                android:paddingStart="4dp"
-                android:paddingLeft="4dp"
-                android:paddingEnd="4dp"
-                android:paddingRight="4dp"
+                android:minWidth="40dp"
+                android:paddingStart="10dp"
+                android:paddingLeft="10dp"
+                android:paddingEnd="10dp"
+                android:paddingRight="10dp"
                 android:singleLine="true"
                 android:text="默认"
                 android:textColor="#F2FFFFFF"
@@ -459,15 +465,17 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
-            <!-- 倍速：仅横屏全屏显示 -->
+            <!-- 倍速：仅横屏全屏显示；iOS 玻璃胶囊（缩小一档，位置不变） -->
             <TextView
                 android:id="@+id/play_speed"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="34dp"
+                android:layout_gravity="center_vertical"
+                android:background="@drawable/bg_glass_pill"
                 android:clickable="true"
                 android:focusable="false"
                 android:gravity="center"
-                android:minWidth="48dp"
+                android:minWidth="40dp"
                 android:singleLine="true"
                 android:text="倍速"
                 android:textColor="#F2FFFFFF"
@@ -475,22 +483,28 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
-            <!-- 竖屏：仅竖屏显示，切到 / 退出竖屏满屏（短剧） -->
+            <!-- 竖屏：仅竖屏显示，切到 / 退出竖屏满屏（短剧）；iOS 玻璃胶囊底（缩小一档，位置不变） -->
             <LinearLayout
                 android:id="@+id/btn_portrait"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="34dp"
+                android:layout_gravity="center_vertical"
                 android:layout_marginStart="2dp"
                 android:layout_marginLeft="2dp"
+                android:background="@drawable/bg_glass_pill"
                 android:clickable="true"
                 android:focusable="false"
                 android:gravity="center"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingLeft="8dp"
+                android:paddingEnd="10dp"
+                android:paddingRight="10dp">
 
                 <ImageView
                     android:id="@+id/iv_portrait"
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
                     android:src="@drawable/ic_player_portrait"
                     tools:ignore="ContentDescription" />
 
@@ -506,22 +520,28 @@
                     android:textSize="11sp" />
             </LinearLayout>
 
-            <!-- 全屏：竖屏与 TV 显示 -->
+            <!-- 全屏：竖屏与 TV 显示；iOS 玻璃胶囊底（缩小一档，位置不变） -->
             <LinearLayout
                 android:id="@+id/btn_fullscreen"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="34dp"
+                android:layout_gravity="center_vertical"
                 android:layout_marginStart="2dp"
                 android:layout_marginLeft="2dp"
+                android:background="@drawable/bg_glass_pill"
                 android:clickable="true"
                 android:focusable="false"
                 android:gravity="center"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingLeft="8dp"
+                android:paddingEnd="10dp"
+                android:paddingRight="10dp">
 
                 <ImageView
                     android:id="@+id/iv_fullscreen"
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
                     android:src="@drawable/ic_player_fullscreen"
                     tools:ignore="ContentDescription" />
 

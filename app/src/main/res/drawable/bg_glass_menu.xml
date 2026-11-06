@@ -1,32 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  右上角「数据源」下拉菜单的面板材质，和底部导航同一套玻璃语言，
-  只是圆角小一档（16dp）—— 胶囊是导航的专属形态，菜单用常规大圆角才不会喧宾夺主。
+  iOS 玻璃质感菜单面板底（倍速 / 画面比例弹出列表等）：
+  与 bg_glass_sheet 同一套玻璃画法（半透明深底 + 白描边 + 顶部高光），四角均为 14dp 圆角。
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="16dp" />
-            <solid android:color="@color/glass_menu_bg" />
+            <corners android:radius="14dp" />
+            <solid android:color="#D9111418" />
             <stroke
                 android:width="1dp"
-                android:color="@color/glass_menu_stroke" />
+                android:color="#1FFFFFFF" />
         </shape>
     </item>
-
-    <item
-        android:bottom="1dp"
-        android:left="1dp"
-        android:right="1dp"
-        android:top="1dp">
+    <item>
         <shape android:shape="rectangle">
-            <corners android:radius="15dp" />
+            <corners android:radius="14dp" />
             <gradient
                 android:angle="270"
-                android:endColor="#00FFFFFF"
-                android:startColor="@color/glass_bar_highlight"
-                android:type="linear" />
+                android:startColor="#1FFFFFFF"
+                android:endColor="#00FFFFFF" />
         </shape>
     </item>
 </layer-list>

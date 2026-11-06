@@ -21,9 +21,13 @@ import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -316,8 +320,25 @@ public class LivePlayActivity extends BaseActivity {
     /* ------------------------- 单击控制层 / 横屏全屏 ------------------------- */
     /** 单击屏幕唤出的那条控制栏（返回 / 频道信息） */
     private View liveControlBar;
-    /** 全屏时贴在右下角的两个操作按钮（节目单 / 退出全屏） */
+    /** 全屏时贴在右下角的几个操作按钮（暂停 / 节目单 / 退出全屏），iOS 玻璃质感 */
     private View liveActionBar;
+    /** 竖屏播放器上的玻璃悬浮钮：暂停（左下）/ 全屏（右下） */
+    private ImageView ivFloatPlayPause;
+    private ImageView ivFloatFullscreen;
+    /** 暂停状态提示（玻璃胶囊，点按恢复） */
+    private View livePauseChip;
+    /** 横屏控制条里的玻璃暂停钮 */
+    private ImageView ivLiveBarPause;
+    /** 全屏（横屏）节目单玻璃抽屉 */
+    private View liveFullscreenEpgOverlay;
+    private RecyclerView mFullscreenEpgDateGridView;
+    private RecyclerView mFullscreenEpgListView;
+    private TextView tvFullscreenEpgChannel;
+    private View ivFullscreenEpgClose;
+    /** 直播画面当前处于暂停态 */
+    private boolean livePaused = false;
+    /** 全屏节目单抽屉是否正在显示 */
+    private boolean fullscreenEpgShown = false;
     private ImageView ivLiveFullscreen;
     private TextView tvLiveBarName;
     private TextView tvLiveBarProgram;
@@ -335,8 +356,7 @@ public class LivePlayActivity extends BaseActivity {
     private View livePlayerBox;
     private View liveBottomBar;
     private View livePanelHeader;
-    private ImageView ivLivePanelBack;
-    private TextView tvLivePanelName;
+    private ImageView ivLivePanelBack;    private TextView tvLivePanelName;
     private TextView tvLivePanelProgram;
     private View ivLiveBottomSetting;
     private View ivLiveBottomFullscreen;
@@ -348,8 +368,6 @@ public class LivePlayActivity extends BaseActivity {
     private static final ExecutorService channelProgramExecutor = Executors.newSingleThreadExecutor();
     /** 频道名|日期 → 节目文案；一天内同一台不重复请求 */
     private static final Hashtable<String, String> channelProgramCache = new Hashtable<>();
-    /** 全屏时点了「节目单」，退出全屏后要把节目单打开 */
-    private boolean pendingOpenEpgAfterExitFullscreen = false;
 
 
     @Override
@@ -554,6 +572,8 @@ public class LivePlayActivity extends BaseActivity {
                 epgListAdapter.CanBack(currentLiveChannelItem.getinclude_back());
                 epgListAdapter.setNewData(epgdata);
                 updateCurrentEpgSelectedIndex();
+                // 全屏节目单抽屉开着时（宿主换过去了），同步抽屉里的频道名
+                if (fullscreenEpgShown) updateFullscreenEpgHeader();
             }
         }
     }
@@ -1502,6 +1522,9 @@ public class LivePlayActivity extends BaseActivity {
         if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
             mHandler.removeCallbacks(mHideSettingLayoutRun);
             mHandler.post(mHideSettingLayoutRun);
+        } else if (fullscreenEpgShown) {
+            // 全屏节目单抽屉开着，先收抽屉，不退出全屏
+            hideFullscreenEpg(true);
         } else if (divEpg.getVisibility() == View.VISIBLE) {
             // 正在看节目单，先退回频道列表
             divLoadEpgLeft(null);
@@ -1750,7 +1773,171 @@ public class LivePlayActivity extends BaseActivity {
                 }
             });
         }
+        bindPlayerFloatControls();
         applyOrientationUi(false);
+    }
+
+    /**
+     * iOS 玻璃悬浮控制：竖屏播放器上的「暂停 / 全屏」悬浮钮、横屏控制条的暂停钮、
+     * 暂停状态胶囊，以及统一的按压动效。
+     */
+    private void bindPlayerFloatControls() {
+        ivFloatPlayPause = findViewById(R.id.ivFloatPlayPause);
+        ivFloatFullscreen = findViewById(R.id.ivFloatFullscreen);
+        livePauseChip = findViewById(R.id.livePauseChip);
+        ivLiveBarPause = findViewById(R.id.ivLiveBarPause);
+
+        if (ivFloatPlayPause != null) {
+            ivFloatPlayPause.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    toggleLivePause();
+                }
+            });
+            bindGlassPressEffect(ivFloatPlayPause);
+        }
+        if (ivFloatFullscreen != null) {
+            ivFloatFullscreen.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    toggleFullscreen();
+                }
+            });
+            bindGlassPressEffect(ivFloatFullscreen);
+        }
+        if (livePauseChip != null) {
+            livePauseChip.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    toggleLivePause();
+                }
+            });
+        }
+        if (ivLiveBarPause != null) {
+            ivLiveBarPause.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    toggleLivePause();
+                }
+            });
+            bindGlassPressEffect(ivLiveBarPause);
+        }
+        // 全屏节目单抽屉也在这里绑（竖屏不显示，横屏点「节目单」弹出）
+        liveFullscreenEpgOverlay = findViewById(R.id.liveFullscreenEpgOverlay);
+        mFullscreenEpgDateGridView = findViewById(R.id.mFullscreenEpgDateGridView);
+        mFullscreenEpgListView = findViewById(R.id.mFullscreenEpgListView);
+        tvFullscreenEpgChannel = findViewById(R.id.tvFullscreenEpgChannel);
+        ivFullscreenEpgClose = findViewById(R.id.ivFullscreenEpgClose);
+        if (mFullscreenEpgDateGridView != null) {
+            mFullscreenEpgDateGridView.setLayoutManager(new LinearLayoutManager(this.mContext));
+        }
+        if (mFullscreenEpgListView != null) {
+            mFullscreenEpgListView.setLayoutManager(new LinearLayoutManager(this.mContext));
+        }
+        if (ivFullscreenEpgClose != null) {
+            ivFullscreenEpgClose.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    hideFullscreenEpg(true);
+                }
+            });
+            bindGlassPressEffect(ivFullscreenEpgClose);
+        }
+        applyPauseUi(false);
+    }
+
+    /** 玻璃按钮通用按压动效：按下缩到 0.86，松开平滑缩回 1.0（不过冲，避免视觉上忽大忽小）；onClick 不受影响 */
+    private void bindGlassPressEffect(final View view) {
+        if (view == null) return;
+        view.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        v.animate().cancel();
+                        v.animate().scaleX(0.86f).scaleY(0.86f).setDuration(90).start();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.animate().cancel();
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(180)
+                                .setInterpolator(new DecelerateInterpolator()).start();
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
+    /** 暂停 / 继续直播画面；只有播放器处于可暂停状态时才动作 */
+    private void toggleLivePause() {
+        if (mVideoView == null) return;
+        int playState = mVideoView.getCurrentPlayState();
+        if (playState != VideoView.STATE_PREPARED && playState != VideoView.STATE_PLAYING
+                && playState != VideoView.STATE_PAUSED && playState != VideoView.STATE_BUFFERED) {
+            return;
+        }
+        setLivePausedUi(!livePaused);
+        if (livePaused) {
+            mVideoView.pause();
+        } else {
+            mVideoView.resume();
+        }
+    }
+
+    /** 由播放器 playStateChanged 或用户点击驱动：同步玻璃按钮图标与状态胶囊（带动效） */
+    private void setLivePausedUi(boolean paused) {
+        if (livePaused == paused) return;
+        livePaused = paused;
+        applyPauseUi(true);
+    }
+
+    /** 刷新暂停按钮图标与「已暂停」胶囊展示 */
+    private void applyPauseUi(boolean animate) {
+        int iconRes = livePaused ? R.drawable.ic_player_play : R.drawable.ic_player_pause;
+        if (ivFloatPlayPause != null) {
+            ivFloatPlayPause.setImageResource(iconRes);
+            if (animate) bounceGlassIcon(ivFloatPlayPause);
+        }
+        if (ivLiveBarPause != null) {
+            ivLiveBarPause.setImageResource(iconRes);
+            if (animate) bounceGlassIcon(ivLiveBarPause);
+        }
+        if (livePauseChip == null) return;
+        if (livePaused) {
+            if (livePauseChip.getVisibility() != View.VISIBLE) {
+                livePauseChip.setVisibility(View.VISIBLE);
+                livePauseChip.setAlpha(0f);
+                livePauseChip.setScaleX(0.7f);
+                livePauseChip.setScaleY(0.7f);
+                livePauseChip.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                        .setDuration(200).setInterpolator(new OvershootInterpolator(1.8f)).start();
+            }
+        } else if (livePauseChip.getVisibility() != View.GONE) {
+            livePauseChip.animate().alpha(0f).scaleX(0.85f).scaleY(0.85f).setDuration(150)
+                    .setInterpolator(new AccelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (livePauseChip != null) livePauseChip.setVisibility(View.GONE);
+                        }
+                    }).start();
+        }
+    }
+
+    /** 图标切换的小弹跳：缩到 0.55 再带过冲弹回 */
+    private void bounceGlassIcon(final View view) {
+        if (view == null) return;
+        view.animate().cancel();
+        view.setScaleX(0.55f);
+        view.setScaleY(0.55f);
+        view.animate().scaleX(1f).scaleY(1f).setDuration(240)
+                .setInterpolator(new OvershootInterpolator(2.2f)).start();
     }
 
     /** 下方常驻面板：返回、频道信息、底部操作栏；头部行已在播放器顶部 */
@@ -1848,6 +2035,12 @@ public class LivePlayActivity extends BaseActivity {
             liveActionBar.setAlpha(0f);
             liveActionBar.animate().alpha(1f).setDuration(150).start();
         }
+        // 横屏：左下角玻璃暂停钮跟着操作层一起出现（竖屏由 ivFloatPlayPause 承担）
+        if (ivLiveBarPause != null && isLandscapeNow()) {
+            ivLiveBarPause.setVisibility(View.VISIBLE);
+            ivLiveBarPause.setAlpha(0f);
+            ivLiveBarPause.animate().alpha(1f).setDuration(150).start();
+        }
         // 全屏下底部那条半透明信息条会压住画面，一律不显示；信息在顶部控制条里
         if (countDownTimer != null) countDownTimer.cancel();
         setBottomEpgBarVisible(false);
@@ -1866,6 +2059,11 @@ public class LivePlayActivity extends BaseActivity {
         if (liveActionBar != null) {
             liveActionBar.animate().cancel();
             liveActionBar.setVisibility(View.GONE);
+        }
+        // 左下角玻璃暂停钮随操作层一起收起（竖屏本来也不显示）
+        if (ivLiveBarPause != null) {
+            ivLiveBarPause.animate().cancel();
+            ivLiveBarPause.setVisibility(View.GONE);
         }
         updateTopStatusVisibility();
     }
@@ -1968,6 +2166,17 @@ public class LivePlayActivity extends BaseActivity {
         if (livePanelHeader != null) {
             livePanelHeader.setVisibility(landscape ? View.GONE : View.VISIBLE);
         }
+        // 玻璃悬浮钮（暂停在左下/全屏在右下）：竖屏挂在播放器上，横屏交给 liveActionBar
+        if (ivFloatPlayPause != null) {
+            ivFloatPlayPause.setVisibility(landscape ? View.GONE : View.VISIBLE);
+        }
+        if (ivFloatFullscreen != null) {
+            ivFloatFullscreen.setVisibility(landscape ? View.GONE : View.VISIBLE);
+        }
+        // 暂停状态胶囊：暂停时始终显示（横屏也用）
+        if (livePauseChip != null) {
+            livePauseChip.setVisibility(livePaused ? View.VISIBLE : View.GONE);
+        }
         if (liveBottomBar != null) {
             liveBottomBar.setVisibility(landscape ? View.GONE : View.VISIBLE);
         }
@@ -1980,15 +2189,9 @@ public class LivePlayActivity extends BaseActivity {
         } else {
             restoreSystemBars();
             hideLiveControls();
-            if (pendingOpenEpgAfterExitFullscreen) {
-                pendingOpenEpgAfterExitFullscreen = false;
-                // 等面板量好尺寸再开节目单，否则 focusCurrentEpgInMenu 会算错位置
-                mHandler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!isLandscapeNow()) showChannelList();
-                    }
-                }, 200);
+            // 退出全屏时若 EPG 玻璃抽屉还开着：收起并把 EPG 视图宿主还给竖屏面板
+            if (fullscreenEpgShown) {
+                hideFullscreenEpg(true);
             }
         }
     }
@@ -2072,9 +2275,8 @@ public class LivePlayActivity extends BaseActivity {
      */
     private void showChannelList() {
         if (isLandscapeNow()) {
-            // 横屏是全屏，面板收起来了；退回竖屏后自动把节目单打开，一次点击到位
-            pendingOpenEpgAfterExitFullscreen = true;
-            exitFullscreen();
+            // 全屏里点「节目单」：弹出玻璃抽屉直接看，不再退出全屏
+            showFullscreenEpg();
             return;
         }
         if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
@@ -2100,6 +2302,91 @@ public class LivePlayActivity extends BaseActivity {
             });
         }
         divLoadEpgRight(null);
+    }
+
+    /**
+     * 全屏（横屏）节目单玻璃抽屉：把竖屏面板的 EPG 两块视图（日期行 / 节目列表）换宿主到这里，
+     * 数据、点击（回看）与竖屏共用同一套 adapter。
+     */
+    private void showFullscreenEpg() {
+        if (liveFullscreenEpgOverlay == null || epgListAdapter == null
+                || epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
+            Toast.makeText(App.getInstance(), "当前频道暂无节目信息", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
+            mHandler.removeCallbacks(mHideSettingLayoutRun);
+            mHandler.post(mHideSettingLayoutRun);
+        }
+        hideLiveControls();
+        // EPG 视图换宿主：竖屏面板此刻 GONE，同一时刻只有一个宿主，安全
+        if (mFullscreenEpgDateGridView != null) mFullscreenEpgDateGridView.setAdapter(liveEpgDateAdapter);
+        if (mFullscreenEpgListView != null) mFullscreenEpgListView.setAdapter(epgListAdapter);
+        updateFullscreenEpgHeader();
+        ViewGroup.LayoutParams lp = liveFullscreenEpgOverlay.getLayoutParams();
+        if (lp != null) {
+            lp.height = Math.round(getResources().getDisplayMetrics().heightPixels * 0.62f);
+            liveFullscreenEpgOverlay.setLayoutParams(lp);
+        }
+        fullscreenEpgShown = true;
+        liveFullscreenEpgOverlay.setVisibility(View.VISIBLE);
+        liveFullscreenEpgOverlay.setAlpha(0f);
+        liveFullscreenEpgOverlay.setTranslationY(dp2px(48));
+        liveFullscreenEpgOverlay.animate().alpha(1f).translationY(0).setDuration(240)
+                .setInterpolator(new DecelerateInterpolator(1.5f)).start();
+        // 当前正在播的节目滚进可视区
+        if (mFullscreenEpgListView != null) {
+            mFullscreenEpgListView.scrollToPosition(getCurrentEpgIndexOrSelected());
+        }
+    }
+
+    /**
+     * 收起全屏节目单。
+     *
+     * @param restoreHosts 是否同时把 EPG 视图宿主还给竖屏面板（关抽屉时是，重复调用时否）
+     */
+    private void hideFullscreenEpg(final boolean restoreHosts) {
+        if (liveFullscreenEpgOverlay == null) return;
+        if (liveFullscreenEpgOverlay.getVisibility() != View.VISIBLE) {
+            if (restoreHosts) restoreFullscreenEpgHosts();
+            return;
+        }
+        fullscreenEpgShown = false;
+        liveFullscreenEpgOverlay.animate().alpha(0f).translationY(dp2px(40)).setDuration(200)
+                .setInterpolator(new AccelerateInterpolator())
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (liveFullscreenEpgOverlay == null) return;
+                        liveFullscreenEpgOverlay.setVisibility(View.GONE);
+                        liveFullscreenEpgOverlay.setAlpha(1f);
+                        liveFullsScreenEpgResetTranslation();
+                        if (restoreHosts) restoreFullscreenEpgHosts();
+                    }
+                }).start();
+    }
+
+    private void liveFullsScreenEpgResetTranslation() {
+        if (liveFullscreenEpgOverlay != null) liveFullscreenEpgOverlay.setTranslationY(0f);
+    }
+
+    /** 把 EPG 视图宿主还给竖屏面板（卡在换过宿主的状态会导致竖屏节目单空白） */
+    private void restoreFullscreenEpgHosts() {
+        fullscreenEpgShown = false;
+        if (mEpgDateGridView != null && liveEpgDateAdapter != null
+                && mEpgDateGridView.getAdapter() != liveEpgDateAdapter) {
+            mEpgDateGridView.setAdapter(liveEpgDateAdapter);
+        }
+        if (mRightEpgList != null && epgListAdapter != null
+                && mRightEpgList.getAdapter() != epgListAdapter) {
+            mRightEpgList.setAdapter(epgListAdapter);
+        }
+    }
+
+    private void updateFullscreenEpgHeader() {
+        if (tvFullscreenEpgChannel != null && channel_Name != null) {
+            tvFullscreenEpgChannel.setText(channel_Name.getChannelName());
+        }
     }
 
     private int mLastChannelGroupIndex = -1;
@@ -2721,6 +3008,8 @@ public class LivePlayActivity extends BaseActivity {
                 if (now.after(selectedData.enddateTime) && !canCurrentChannelCatchup()) return;
                 currentLiveLookBackIndex=position;
                 epgListAdapter.setSelectedEpgIndex(position);
+                // 从全屏节目单玻璃抽屉里点的：开始播就收抽屉，回到画面
+                if (fullscreenEpgShown) hideFullscreenEpg(true);
                 if (now.compareTo(selectedData.startdateTime) >= 0 && now.compareTo(selectedData.enddateTime) <= 0) {
                     mVideoView.release();
                     isSHIYI = false;
@@ -2883,12 +3172,8 @@ public class LivePlayActivity extends BaseActivity {
 
             @Override
             public void doubleTap() {
-                // 竖屏双击画面进全屏，全屏双击退回来
-                if (isLandscapeNow()) {
-                    exitFullscreen();
-                } else {
-                    enterFullscreen();
-                }
+                // 双击画面 = 播放 / 暂停（原双击进/退全屏已取消，全屏走玻璃钮）
+                toggleLivePause();
             }
 
             @Override
@@ -2897,8 +3182,10 @@ public class LivePlayActivity extends BaseActivity {
                 switch (playState) {
                     case VideoView.STATE_IDLE:
                         // 空闲状态：播放器处于空闲，尚未开始播放。一般不需要自动换源。
+                        break;
                     case VideoView.STATE_PAUSED:
-                        // 暂停状态：播放被暂停，通常是用户操作，不触发自动换源
+                        // 暂停状态：播放被暂停（用户点暂停 / 切后台），同步玻璃暂停钮与状态胶囊
+                        setLivePausedUi(true);
                         break;
                     case VideoView.STATE_PREPARED:
                         // 准备就绪：播放器已经加载好媒体数据，但尚未开始播放。
@@ -2913,6 +3200,8 @@ public class LivePlayActivity extends BaseActivity {
                         }
                         currentLiveChangeSourceTimes = 0;
                         allowLiveSwitchPlayer = true;
+                        // 新一帧正常播出（切台/换源后也一样）：复位暂停态
+                        setLivePausedUi(false);
                         break;
                     case VideoView.STATE_ERROR:
                     case VideoView.STATE_PLAYBACK_COMPLETED:

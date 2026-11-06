@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 玻璃质感胶囊底：
+  与 bg_glass_circle 同一套玻璃画法（半透明深底 + 白色细描边 + 顶部高光），
+  用于居中的「已暂停」状态提示条等胶囊形元素。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="99dp" />
+            <solid android:color="#59101418" />
+            <stroke
+                android:width="1dp"
+                android:color="#29FFFFFF" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="99dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#26FFFFFF"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

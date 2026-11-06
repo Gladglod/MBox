@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 玻璃质感抽屉面板底（横屏全屏节目单覆盖层）：
+  顶部圆角的半透明深色面板，叠白描边与自上而下高光，压在全屏画面上仍有玻璃层次感。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners
+                android:topLeftRadius="22dp"
+                android:topRightRadius="22dp" />
+            <solid android:color="#D9111418" />
+            <stroke
+                android:width="1dp"
+                android:color="#1FFFFFFF" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners
+                android:topLeftRadius="22dp"
+                android:topRightRadius="22dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#1FFFFFFF"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

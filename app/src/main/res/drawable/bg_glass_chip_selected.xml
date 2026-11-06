@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 玻璃质感行条底：选中态（深玻璃底 + 青色描边 + 青色微高光）。
+  用于倍速 / 画面比例菜单里当前项、投屏列表选中项。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="10dp" />
+            <solid android:color="#4D10141A" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/color_02F8E1" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="10dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#1A02F8E1"
+                android:endColor="#0002F8E1" />
+        </shape>
+    </item>
+</layer-list>
