@@ -63,6 +63,7 @@ import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HomeTabConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
+import com.github.tvbox.osc.util.UpdateChecker;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.google.android.material.tabs.TabLayout;
 import com.orhanobut.hawk.Hawk;
@@ -149,6 +150,8 @@ public class HomeActivity extends BaseActivity {
             useCacheConfig = bundle.getBoolean("useCache", false);
         }
         initData();
+        // 启动后静默检查一次新版本（24 小时内只查一次，发现新版才弹窗，可在「我的 → 关于」里关掉）
+        UpdateChecker.autoCheckOnLaunch(this);
     }
 
     private void initView() {

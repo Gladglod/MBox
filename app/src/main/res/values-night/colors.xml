@@ -18,6 +18,9 @@
     <color name="ui_icon">#FFFFFFFF</color>
     <color name="ui_chip_bg">#1FFFFFFF</color>
     <color name="ui_accent">#FF02F8E1</color>
+    <color name="ui_accent_pressed">#FF00D2C0</color>
+    <color name="ui_accent_disabled">#6602F8E1</color>
+    <color name="ui_on_accent">#FF07110F</color>
     <color name="ui_link">#FF6EA8FF</color>
     <color name="ui_muted">#FF7A7A7A</color>
     <color name="ui_danger">#FFFF6B6B</color>

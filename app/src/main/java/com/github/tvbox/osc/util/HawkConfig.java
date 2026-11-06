@@ -117,5 +117,13 @@ public class HawkConfig {
     /** 竖屏上下滑动切换上一集 / 下一集 */
     public static final String GESTURE_PORTRAIT_SWIPE = "gesture_portrait_swipe";
 
+    /* ===== 版本更新（GitHub Releases） ===== */
+    /** 启动时自动检查更新，默认开启（每天最多一次） */
+    public static final String UPDATE_AUTO_CHECK = "update_auto_check";
+    /** 上次检查更新的时间戳（毫秒），用于「每天最多一次」的节流 */
+    public static final String UPDATE_LAST_CHECK = "update_last_check";
+    /** 被用户「忽略此版本」的 tag，自动检查时跳过 */
+    public static final String UPDATE_IGNORE_TAG = "update_ignore_tag";
+
     public static boolean hotVodDelete;
 }

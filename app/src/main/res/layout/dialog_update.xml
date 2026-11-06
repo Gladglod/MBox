@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  检查更新弹窗：标题 + 版本对比 + 更新说明（超出可滚动）+ 下载进度 + 底部操作。
+  面板宽度 vs_720（≈288dp），和其它弹窗同一套 dialog_panel_bg 材质。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="@dimen/vs_720"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/shape_danmu_setting_bg"
+        android:orientation="vertical"
+        android:padding="@dimen/vs_30">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="发现新版本"
+            android:textColor="@color/dialog_text_primary"
+            android:textSize="@dimen/ts_30"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/vs_8"
+            android:textColor="@color/dialog_text_hint"
+            android:textSize="@dimen/ts_18"
+            tools:text="当前 2.1.0 → 新版本 2.0.2 · 34.6 MB" />
+
+        <TextView
+            android:id="@+id/tvNotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/vs_20"
+            android:lineSpacingMultiplier="1.25"
+            android:maxLines="10"
+            android:scrollbars="vertical"
+            android:textColor="@color/dialog_text_primary"
+            android:textSize="@dimen/ts_18"
+            tools:text="更新了一些 UI 和弹幕的剧集过滤" />
+
+        <LinearLayout
+            android:id="@+id/progressBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/vs_20"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/vs_4"
+                android:max="100"
+                android:progress="0"
+                android:progressBackgroundTint="@color/ui_divider"
+                android:progressTint="@color/ui_accent" />
+
+            <TextView
+                android:id="@+id/tvProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_8"
+                android:textColor="@color/dialog_text_hint"
+                android:textSize="@dimen/ts_16"
+                tools:text="下载中 12.3 MB / 34.6 MB（36%）" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/vs_30"
+            android:gravity="end"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnLater"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/button_danmu_setting"
+                android:gravity="center"
+                android:minWidth="@dimen/vs_140"
+                android:paddingLeft="@dimen/vs_20"
+                android:paddingTop="@dimen/vs_10"
+                android:paddingRight="@dimen/vs_20"
+                android:paddingBottom="@dimen/vs_10"
+                android:text="稍后"
+                android:textColor="@color/dialog_text_primary"
+                android:textSize="@dimen/ts_22" />
+
+            <TextView
+                android:id="@+id/btnUpdate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/vs_10"
+                android:background="@drawable/bg_update_btn_primary"
+                android:gravity="center"
+                android:minWidth="@dimen/vs_140"
+                android:paddingLeft="@dimen/vs_20"
+                android:paddingTop="@dimen/vs_10"
+                android:paddingRight="@dimen/vs_20"
+                android:paddingBottom="@dimen/vs_10"
+                android:text="立即更新"
+                android:textColor="@color/ui_on_accent"
+                android:textSize="@dimen/ts_22" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnIgnore"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/vs_16"
+            android:gravity="center"
+            android:padding="@dimen/vs_6"
+            android:text="忽略此版本"
+            android:textColor="@color/ui_text_tertiary"
+            android:textSize="@dimen/ts_16" />
+    </LinearLayout>
+</FrameLayout>

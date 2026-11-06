@@ -98,6 +98,10 @@
       和非文字控件 3:1（页签指示条）。
     -->
     <color name="ui_accent">#FF007A70</color>
+    <!-- 强调色按钮的按下态 / 禁用态，以及压在强调色上的文字色（夜间强调色很亮，字必须是深色） -->
+    <color name="ui_accent_pressed">#FF00655D</color>
+    <color name="ui_accent_disabled">#66007A70</color>
+    <color name="ui_on_accent">#FFFFFFFF</color>
     <!-- 链接 / 可点击文字 -->
     <color name="ui_link">#FF2A6BE0</color>
     <!-- 弱化文字（灰色说明） -->

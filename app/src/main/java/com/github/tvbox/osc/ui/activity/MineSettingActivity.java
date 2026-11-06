@@ -38,11 +38,14 @@ import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.api.DanmakuApi;
 import com.github.tvbox.osc.base.BaseActivity;
 import com.github.tvbox.osc.bean.DanmuSearchResult;
+import com.github.tvbox.osc.bean.GithubRelease;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.dialog.DanmuApiDialog;
 import com.github.tvbox.osc.ui.dialog.NumberInputDialog;
+import com.github.tvbox.osc.ui.dialog.TipDialog;
+import com.github.tvbox.osc.ui.dialog.UpdateDialog;
 import com.github.tvbox.osc.ui.dialog.XWalkInitDialog;
 import com.github.tvbox.osc.ui.widget.GlassGroupView;
 import com.github.tvbox.osc.ui.widget.SpringSwitch;
@@ -54,6 +57,7 @@ import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.MotionCompat;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.ThemeUtil;
+import com.github.tvbox.osc.util.UpdateChecker;
 import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.FileCallback;
 import com.lzy.okgo.model.Progress;
@@ -102,6 +106,11 @@ public class MineSettingActivity extends BaseActivity {
     private LinearLayout contentContainer;
     private LinearLayout currentCard;
     private final List<Runnable> refreshers = new ArrayList<>();
+
+    /** 「关于 → 检查更新」那一行右侧的状态文字：空表示还没查过 */
+    private String updateStatus = "";
+    private boolean checkingUpdate;
+    private TipDialog updateErrorTip;
 
     private interface Action {
         void run();
@@ -1269,6 +1278,22 @@ public class MineSettingActivity extends BaseActivity {
             }
         });
 
+        header("版本更新");
+        card();
+        addValueRow("检查更新", "从 GitHub Releases 获取最新版本", new TextProvider() {
+            @Override
+            public String get() {
+                return TextUtils.isEmpty(updateStatus) ? BuildConfig.VERSION_NAME : updateStatus;
+            }
+        }, new Action() {
+            @Override
+            public void run() {
+                checkUpdateManually();
+            }
+        });
+        addSwitchRow("启动时自动检查", "每天最多一次，只有发现新版本才会提示",
+                HawkConfig.UPDATE_AUTO_CHECK, true, null);
+
         header("数据来源");
         card();
         addInfoRow("首页数据源", new TextProvider() {
@@ -1324,8 +1349,81 @@ public class MineSettingActivity extends BaseActivity {
         });
     }
 
-    /* ============================ 通用 UI 构建 ============================ */
+    /* ------------------------- 检查更新 ------------------------- */
 
+    /**
+     * 手动检查：行右侧先显示「检查中…」，结果回填到同一行；
+     * 有新版本直接弹更新弹窗，没有就 Toast 一句，失败给「浏览器打开」的兜底。
+     */
+    private void checkUpdateManually() {
+        if (checkingUpdate) {
+            Toast.makeText(this, "正在检查，请稍候", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        checkingUpdate = true;
+        updateStatus = "检查中…";
+        refreshRows();
+        UpdateChecker.check(true, new UpdateChecker.CheckCallback() {
+            @Override
+            public void onNewVersion(GithubRelease release, boolean manual) {
+                checkingUpdate = false;
+                updateStatus = "发现 " + release.tagName;
+                refreshRows();
+                if (isFinishing()) return;
+                new UpdateDialog(MineSettingActivity.this, release, true).show();
+            }
+
+            @Override
+            public void onLatest(boolean manual) {
+                checkingUpdate = false;
+                updateStatus = "已是最新";
+                refreshRows();
+                Toast.makeText(MineSettingActivity.this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onError(String msg, boolean manual) {
+                checkingUpdate = false;
+                updateStatus = "检查失败";
+                refreshRows();
+                if (isFinishing()) return;
+                showUpdateErrorTip(msg);
+            }
+        });
+    }
+
+    private void showUpdateErrorTip(String msg) {
+        // 弹窗要在自己的按钮回调里关掉自己，所以先挂到字段上（回调里引用不到局部变量）
+        updateErrorTip = new TipDialog(this,
+                msg + "\n也可以直接在浏览器里打开 Releases 页面手动查看。",
+                "浏览器打开", "知道了", new TipDialog.OnListener() {
+            @Override
+            public void left() {
+                dismissQuietly(updateErrorTip);
+                UpdateChecker.openReleasePage(MineSettingActivity.this, null);
+            }
+
+            @Override
+            public void right() {
+                dismissQuietly(updateErrorTip);
+            }
+
+            @Override
+            public void cancel() {
+            }
+        });
+        updateErrorTip.show();
+    }
+
+    private void dismissQuietly(android.app.Dialog dialog) {
+        if (dialog == null) return;
+        try {
+            if (dialog.isShowing()) dialog.dismiss();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /* ============================ 通用 UI 构建 ============================ */
     private void header(String title) {
         TextView tv = new TextView(this);
         tv.setText(title);
