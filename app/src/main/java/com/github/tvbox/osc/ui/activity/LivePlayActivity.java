@@ -60,6 +60,7 @@ import com.github.tvbox.osc.ui.adapter.LiveSettingGroupAdapter;
 import com.github.tvbox.osc.ui.adapter.LiveSettingItemAdapter;
 import com.github.tvbox.osc.ui.adapter.MyEpgAdapter;
 import com.github.tvbox.osc.ui.dialog.LivePasswordDialog;
+import com.github.tvbox.osc.ui.dialog.LiveEpgDialog;
 import com.github.tvbox.osc.ui.tv.widget.ViewObj;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.EpgUtil;
@@ -157,11 +158,10 @@ public class LivePlayActivity extends BaseActivity {
     private static final long RESOLUTION_INFO_RETRY_DELAY = 300L;
     private static final long RESOLUTION_INFO_HIDE_DELAY = 3000L;
     /**
-     * EPG 默认源（diyp JSON 格式）。
-     * 原 epg.51zmt.top:8000 已长时间 503 不可用（2025 庀测），换成社区维护的 epg.112114.xyz，
-     * 返回结构与解析器字段一致（epg_data[].start/end/title）。用户可在设置里用 HawkConfig.EPG_URL 覆盖。
+     * EPG 默认源（diyp JSON 格式）。用户可在设置里用 HawkConfig.EPG_URL 覆盖，
+     * 或在配置里带 epg 字段指定。
      */
-    private static final String DEFAULT_EPG_ADDRESS = "https://epg.112114.xyz/?ch={name}&date={date}";
+    private static final String DEFAULT_EPG_ADDRESS = "http://epg.51zmt.top:8000/api/diyp/?ch={name}&date={date}";
     private static final Pattern CATCHUP_TOKEN_PATTERN = Pattern.compile("(\\$?\\{[^}]*\\})");
     private static final Pattern CATCHUP_TAG_PATTERN = Pattern.compile("\\{([^}]*)\\}");
     private final Runnable mLoadEpgRun = new Runnable() {
@@ -191,6 +191,60 @@ public class LivePlayActivity extends BaseActivity {
 //EPG   by 龍
     private static LiveChannelItem  channel_Name = null;
     private static Hashtable<String, ArrayList<Epginfo>> hsEpg = new Hashtable<>();
+
+    /**
+     * EPG 响应体解析线程。
+     * 全量 XMLTV 源（如 pp.xml）可能有几 MB，DOM 解析要秒级，主线程解析会把画面卡死；
+     * 统一丢这里解析完再回主线程展示。单线程保证重试链的解析结果按请求顺序回传。
+     */
+    private static final ExecutorService EPG_PARSE_EXECUTOR = Executors.newSingleThreadExecutor();
+
+    /**
+     * 全量 XMLTV 源（如 pp.xml）的内存缓存：同一地址的整份节目单只下载/解析一次 DOM，
+     * 当前台节目单、频道行预取共用；换地址或退出页面自动失效。
+     * DOM 本身构建后只读，可被预取与解析两条后台线程共用。
+     */
+    private static final Object XML_EPG_CACHE_LOCK = new Object();
+    private static String xmlEpgCacheAddress = "";
+    private static String xmlEpgBodyCache = "";
+    private static Document xmlEpgDocumentCache = null;
+
+    /** 记下刚拉到的全量节目单；地址变了或内容变了就作废旧 DOM */
+    private void cacheXmlEpgBody(String body) {
+        if (TextUtils.isEmpty(body)) return;
+        String address = epgStringAddress == null ? "" : epgStringAddress;
+        synchronized (XML_EPG_CACHE_LOCK) {
+            if (!address.equals(xmlEpgCacheAddress) || !body.equals(xmlEpgBodyCache)) {
+                xmlEpgCacheAddress = address;
+                xmlEpgBodyCache = body;
+                xmlEpgDocumentCache = null;
+            }
+        }
+    }
+
+    /** 从缓存取（懒构建的）DOM；没有有效缓存或构建失败返回 null */
+    private Document getXmlEpgDocument() {
+        String address = epgStringAddress == null ? "" : epgStringAddress;
+        synchronized (XML_EPG_CACHE_LOCK) {
+            if (!address.equals(xmlEpgCacheAddress)
+                    || xmlEpgBodyCache == null || xmlEpgBodyCache.isEmpty()) {
+                return null;
+            }
+            if (xmlEpgDocumentCache == null) {
+                xmlEpgDocumentCache = buildXmlEpgDocumentQuietly(xmlEpgBodyCache);
+            }
+            return xmlEpgDocumentCache;
+        }
+    }
+
+    /** 换源 / 退出页面时清掉 DOM 缓存（DOM 较占内存，不常驻） */
+    private void clearXmlEpgCache() {
+        synchronized (XML_EPG_CACHE_LOCK) {
+            xmlEpgCacheAddress = "";
+            xmlEpgBodyCache = "";
+            xmlEpgDocumentCache = null;
+        }
+    }
     private CountDownTimer countDownTimer;
 //    private CountDownTimer countDownTimerRightTop;
     private View ll_right_top_loading;
@@ -280,6 +334,7 @@ public class LivePlayActivity extends BaseActivity {
     /** 竖屏时播放器所在的那块 16:9 区域，高度由代码按屏宽算 */
     private View livePlayerBox;
     private View liveBottomBar;
+    private View livePanelHeader;
     private ImageView ivLivePanelBack;
     private TextView tvLivePanelName;
     private TextView tvLivePanelProgram;
@@ -680,11 +735,7 @@ public class LivePlayActivity extends BaseActivity {
     private String getConfiguredEpgAddress() {
         String userEpgAddress = Hawk.get(HawkConfig.EPG_URL, "");
         if (userEpgAddress != null && userEpgAddress.trim().length() >= 5) {
-            // epg.51zmt.top 长时间 503 已不可用；直播配置「epg」字段残留的旧默认地址直接忽略，
-            // 落到新的默认源，否则用户一改配置就又拿不到节目单
-            if (!userEpgAddress.contains("epg.51zmt.top")) {
-                return userEpgAddress.trim();
-            }
+            return userEpgAddress.trim();
         }
         return DEFAULT_EPG_ADDRESS;
     }
@@ -726,10 +777,17 @@ public class LivePlayActivity extends BaseActivity {
                 } finally {
                     response.close();
                 }
-                mHandler.post(new Runnable() {
+                // 解析放后台线程（见 EPG_PARSE_EXECUTOR 注释），结果再回主线程展示
+                EPG_PARSE_EXECUTOR.execute(new Runnable() {
                     @Override
                     public void run() {
-                        onEpgRequestResponse(body, date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex);
+                        final ArrayList<Epginfo> parsedEpg = parseEpgBody(body, date, finalEpgTagName);
+                        mHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                onEpgRequestResponse(parsedEpg, date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex);
+                            }
+                        });
                     }
                 });
             }
@@ -750,32 +808,44 @@ public class LivePlayActivity extends BaseActivity {
 //        showBottomEpg();
     }
 
-    private void onEpgRequestResponse(String paramString, Date date, String channelNameReal, String finalEpgTagName,
+    private void onEpgRequestResponse(ArrayList<Epginfo> arrayList, Date date, String channelNameReal, String finalEpgTagName,
                                       String savedEpgKey, ArrayList<String> epgQueryNames, SimpleDateFormat timeFormat, int queryIndex) {
         if (!isCurrentEpgRequest(savedEpgKey)) return;
-        if (paramString == null || paramString.trim().isEmpty()) {
-            updateEpgPanelState(false);
-            return;
-        }
         LOG.i("echo-epgTagName:" + channelNameReal);
-        ArrayList<Epginfo> arrayList = new ArrayList<Epginfo>();
-        try {
-            if (isXmlEpgResponse(paramString)) {
-                arrayList = parseXmlEpg(paramString, finalEpgTagName, date);
-            } else if (paramString.contains("epg_data") || paramString.trim().startsWith("{")) {
-                arrayList = parseJsonEpg(paramString, date);
+        if (arrayList.isEmpty()) {
+            if (requestNextEpgQueryName(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
+                return;
             }
-
-        } catch (JSONException jSONException) {
-            jSONException.printStackTrace();
-        }
-        if (arrayList.isEmpty() && requestNextEpgQueryName(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
-            return;
+            // 非默认源解析出来是空的（比如全量 XMLTV 源里没有该频道名）→ 落回默认 JSON 源补查一次
+            if (requestDefaultEpgOnFailure(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
+                return;
+            }
         }
         hsEpg.put(savedEpgKey, arrayList);
         if (!isCurrentEpgRequest(savedEpgKey)) return;
         showEpg(date, arrayList);
         showBottomEpg();
+    }
+
+    /** 按响应体自动分派解析（XMLTV / diyp JSON）；在 EPG_PARSE_EXECUTOR 后台线程调用 */
+    private ArrayList<Epginfo> parseEpgBody(String body, Date date, String channelNameToMatch) {
+        ArrayList<Epginfo> arrayList = new ArrayList<>();
+        if (body == null || body.trim().isEmpty()) return arrayList;
+        try {
+            if (isXmlEpgResponse(body)) {
+                // 全量节目单进缓存：下次切台 / 频道行预取直接复用 DOM，不再重复下载解析
+                cacheXmlEpgBody(body);
+                Document document = getXmlEpgDocument();
+                if (document != null) {
+                    arrayList = parseXmlEpg(document, channelNameToMatch, date);
+                }
+            } else if (body.contains("epg_data") || body.trim().startsWith("{")) {
+                arrayList = parseJsonEpg(body, date);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return arrayList;
     }
 
     private boolean requestDefaultEpgOnFailure(Date date, String channelNameReal, String finalEpgTagName, String savedEpgKey,
@@ -943,21 +1013,44 @@ public class LivePlayActivity extends BaseActivity {
 
     private ArrayList<Epginfo> parseXmlEpg(String xml, String channelName, Date date) {
         ArrayList<Epginfo> epgList = new ArrayList<>();
-        try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setIgnoringComments(true);
-            factory.setCoalescing(true);
-            try {
-                factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            } catch (Exception ignored) {
-            }
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            builder.setEntityResolver((publicId, systemId) -> new InputSource(new StringReader("")));
-            Document document = builder.parse(new InputSource(new StringReader(xml)));
-            document.getDocumentElement().normalize();
+        if (TextUtils.isEmpty(xml)) return epgList;
+        Document document = buildXmlEpgDocumentQuietly(xml);
+        return document == null ? epgList : parseXmlEpg(document, channelName, date);
+    }
 
+    private Document buildXmlEpgDocumentQuietly(String xml) {
+        try {
+            return buildXmlEpgDocument(xml);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * 构建全量 XMLTV 的 DOM。几 MB 的构建要秒级，只应通过 getXmlEpgDocument() 缓存调用，
+     * 同一份节目单构建出来的 Document 供多个频道复用。
+     */
+    private Document buildXmlEpgDocument(String xml) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setIgnoringComments(true);
+        factory.setCoalescing(true);
+        try {
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        } catch (Exception ignored) {
+        }
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        builder.setEntityResolver((publicId, systemId) -> new InputSource(new StringReader("")));
+        Document document = builder.parse(new InputSource(new StringReader(xml)));
+        document.getDocumentElement().normalize();
+        return document;
+    }
+
+    private ArrayList<Epginfo> parseXmlEpg(Document document, String channelName, Date date) {
+        ArrayList<Epginfo> epgList = new ArrayList<>();
+        try {
             String targetName = normalizeEpgChannelName(channelName);
             ArrayList<String> channelIds = new ArrayList<>();
             NodeList channelNodes = document.getElementsByTagName("channel");
@@ -1294,8 +1387,11 @@ public class LivePlayActivity extends BaseActivity {
         }
         List<Epginfo> epgList = new ArrayList<>();
         if (xmlBody != null) {
-            // 整份 XMLTV 已经在批次开头拉好了，这里只解析出属于这个频道的节目
-            epgList = TextUtils.isEmpty(xmlBody) ? epgList : parseXmlEpg(xmlBody, channelName, date);
+            // 整份 XMLTV 已经在批次开头拉好了：进缓存并复用同一份 DOM，
+            // 避免每个频道各解析一遍整份节目单（几 MB 的 DOM 解析是秒级的）
+            if (!TextUtils.isEmpty(xmlBody)) cacheXmlEpgBody(xmlBody);
+            Document document = getXmlEpgDocument();
+            epgList = document == null ? epgList : parseXmlEpg(document, channelName, date);
         } else {
             SimpleDateFormat timeFormat = newGmt8DateFormatter();
             ArrayList<String> queryNames = buildEpgQueryNames(channelName, channelNameReal, epgTagName);
@@ -1599,6 +1695,8 @@ public class LivePlayActivity extends BaseActivity {
         mHandler.removeCallbacks(mHideControlsRun);
         // 让排队中的「正在直播」预取批次全部作废
         channelProgramGeneration++;
+        // 释放全量 EPG 的 DOM 缓存（较占内存，退出直播页不常驻）
+        clearXmlEpgCache();
         // 清掉静态的频道引用，避免下次进入直播页时用到上一次的残留状态（空指针闪退）
         channel_Name = null;
         currentLiveChannelItem = null;
@@ -1655,10 +1753,11 @@ public class LivePlayActivity extends BaseActivity {
         applyOrientationUi(false);
     }
 
-    /** 下方常驻面板：返回、频道信息、底部操作栏 */
+    /** 下方常驻面板：返回、频道信息、底部操作栏；头部行已在播放器顶部 */
     private void bindLiveChannelPanel() {
         livePlayerBox = findViewById(R.id.livePlayerBox);
         liveBottomBar = findViewById(R.id.liveBottomBar);
+        livePanelHeader = findViewById(R.id.livePanelHeader);
         ivLivePanelBack = findViewById(R.id.ivLivePanelBack);
         tvLivePanelName = findViewById(R.id.tvLivePanelName);
         tvLivePanelProgram = findViewById(R.id.tvLivePanelProgram);
@@ -1864,6 +1963,10 @@ public class LivePlayActivity extends BaseActivity {
         applyPlayerBoxSize(landscape);
         if (tvLeftChannelListLayout != null) {
             tvLeftChannelListLayout.setVisibility(landscape ? View.GONE : View.VISIBLE);
+        }
+        // 播放器顶部的「返回+频道名」层：横屏时 liveControlBar 接管顶部，这层让位
+        if (livePanelHeader != null) {
+            livePanelHeader.setVisibility(landscape ? View.GONE : View.VISIBLE);
         }
         if (liveBottomBar != null) {
             liveBottomBar.setVisibility(landscape ? View.GONE : View.VISIBLE);
@@ -3206,6 +3309,17 @@ public class LivePlayActivity extends BaseActivity {
                 });
                 break;
             }
+            case 7: {//EPG 源：不需要当前频道有效，选中态自理
+                if (position == 0) {//默认源 → 清掉自定义地址走内置默认
+                    Hawk.put(HawkConfig.EPG_URL, "");
+                    liveSettingItemAdapter.selectItem(position, true, true);
+                    applyEpgSettingSelection();
+                    refreshLiveEpgOnSourceChanged();
+                } else if (position == 1) {//自定义地址 → 弹输入框
+                    showEpgUrlInput();
+                }
+                break;
+            }
         }
         mHandler.removeCallbacks(mHideSettingLayoutRun);
         mHandler.postDelayed(mHideSettingLayoutRun, postTimeout);
@@ -3553,7 +3667,7 @@ public class LivePlayActivity extends BaseActivity {
 
     private void initLiveSettingGroupList() {
         liveSettingGroupList=ApiConfig.get().getLiveSettingGroupList();
-        if (liveSettingGroupList.size() < 7) return;
+        if (liveSettingGroupList.size() < 8) return;
         liveSettingGroupList.get(3).getLiveSettingItems().get(Hawk.get(HawkConfig.LIVE_CONNECT_TIMEOUT, 1)).setItemSelected(true);
         liveSettingGroupList.get(4).getLiveSettingItems().get(0).setItemSelected(Hawk.get(HawkConfig.LIVE_SHOW_TIME, false));
         liveSettingGroupList.get(4).getLiveSettingItems().get(1).setItemSelected(Hawk.get(HawkConfig.LIVE_SHOW_NET_SPEED, false));
@@ -3562,6 +3676,61 @@ public class LivePlayActivity extends BaseActivity {
         int liveGroupIndex = ApiConfig.getLiveGroupIndex();
         if (liveGroupIndex >= 0 && liveGroupIndex < liveSettingGroupList.get(5).getLiveSettingItems().size()) {
             liveSettingGroupList.get(5).getLiveSettingItems().get(liveGroupIndex).setItemSelected(true);
+        }
+        applyEpgSettingSelection();
+    }
+
+    /** 「EPG源」组选中态：有自定义地址选「自定义地址」，否则选「默认源」 */
+    private void applyEpgSettingSelection() {
+        if (liveSettingGroupList == null || liveSettingGroupList.size() < 8) return;
+        boolean customEpg = hasCustomEpgAddress();
+        liveSettingGroupList.get(7).getLiveSettingItems().get(0).setItemSelected(!customEpg);
+        ArrayList<LiveSettingItem> epgItems = liveSettingGroupList.get(7).getLiveSettingItems();
+        if (epgItems.size() > 1) {
+            epgItems.get(1).setItemSelected(customEpg);
+        }
+    }
+
+    private boolean hasCustomEpgAddress() {
+        String epgUrl = Hawk.get(HawkConfig.EPG_URL, "");
+        return epgUrl != null && epgUrl.trim().length() >= 5;
+    }
+
+    /** 「自定义地址」输入弹窗：确认后保存、切选中态并重拉 EPG */
+    private void showEpgUrlInput() {
+        final LiveEpgDialog dialog = new LiveEpgDialog(this);
+        dialog.setOnListener(new LiveEpgDialog.OnListener() {
+            @Override
+            public void onChange(String address) {
+                if (TextUtils.isEmpty(address)) return;
+                Hawk.put(HawkConfig.EPG_URL, address.trim());
+                if (liveSettingGroupList != null && liveSettingGroupList.size() >= 8) {
+                    liveSettingItemAdapter.selectItem(1, true, true);
+                    applyEpgSettingSelection();
+                }
+                refreshLiveEpgOnSourceChanged();
+            }
+
+            @Override
+            public void onCancel() {
+            }
+        });
+        dialog.show();
+    }
+
+    /** EPG 源地址变化后的刷新：清两处缓存、作废在途预取、重拉当前台节目单并重触发频道行预取 */
+    private void refreshLiveEpgOnSourceChanged() {
+        String address = getConfiguredEpgAddress();
+        if (address.equals(epgStringAddress)) return;
+        epgStringAddress = address;
+        hsEpg.clear();
+        channelProgramCache.clear();
+        clearXmlEpgCache();
+        channelProgramGeneration++;
+        getEpg(new Date());
+        if (liveChannelItemAdapter != null
+                && currentChannelGroupIndex >= 0 && currentChannelGroupIndex < liveChannelGroupList.size()) {
+            liveChannelItemAdapter.setNewData(getLiveChannels(currentChannelGroupIndex));
         }
     }
 

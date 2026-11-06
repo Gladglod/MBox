@@ -570,6 +570,70 @@
             </RelativeLayout>
 
             <!--
+              频道名 + 当前节目这一行，从下方常驻面板挪到播放画面顶部，
+              叠层显示更省面板空间；配色沿用 liveControlBar 的白色系。
+              手势/单击控制条那套逻辑不影响它 —— 面板打开时它就常驻在这里。
+              横屏全屏时由 applyOrientationUi 隐藏（liveControlBar 会接管顶部）。
+            -->
+            <LinearLayout
+                android:id="@+id/livePanelHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top"
+                android:background="@drawable/bg_player_top_gradient"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="4dp"
+                android:paddingLeft="4dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="10dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="2dp">
+
+                <ImageView
+                    android:id="@+id/ivLivePanelBack"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="返回"
+                    android:padding="9dp"
+                    android:src="@drawable/icon_back"
+                    android:tint="@android:color/white"
+                    tools:ignore="ContentDescription" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginLeft="2dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvLivePanelName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:textColor="@android:color/white"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        tools:text="CCTV-1 综合" />
+
+                    <TextView
+                        android:id="@+id/tvLivePanelProgram"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:textColor="#CCFFFFFF"
+                        android:textSize="11sp"
+                        tools:text="20:00-21:00  新闻联播" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!--
               全屏时的控制条，落在屏幕最上方。
               竖屏不显示它 —— 竖屏的按钮都在下面常驻的操作栏里，够得着。
             -->
@@ -685,62 +749,7 @@
             android:background="@color/ui_surface"
             android:orientation="vertical">
 
-            <!-- 头部：返回 + 频道名 + 当前节目 -->
-            <LinearLayout
-                android:id="@+id/livePanelHeader"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="4dp"
-                android:paddingLeft="4dp"
-                android:paddingTop="6dp"
-                android:paddingEnd="10dp"
-                android:paddingRight="10dp"
-                android:paddingBottom="2dp">
-
-                <ImageView
-                    android:id="@+id/ivLivePanelBack"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="返回"
-                    android:padding="9dp"
-                    android:src="@drawable/icon_back"
-                    android:tint="@color/ui_text_primary"
-                    tools:ignore="ContentDescription" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="2dp"
-                    android:layout_marginLeft="2dp"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvLivePanelName"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_primary"
-                        android:textSize="15sp"
-                        android:textStyle="bold"
-                        tools:text="CCTV-1 综合" />
-
-                    <TextView
-                        android:id="@+id/tvLivePanelProgram"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="1dp"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:textColor="@color/ui_text_secondary"
-                        android:textSize="11sp"
-                        tools:text="20:00-21:00  新闻联播" />
-                </LinearLayout>
-            </LinearLayout>
+            <!-- 头部：返回 + 频道名 + 当前节目（已上移到播放器顶部，见 livePlayerBox 里的 livePanelHeader） -->
 
             <!-- 分类：横向 chip -->
             <androidx.recyclerview.widget.RecyclerView

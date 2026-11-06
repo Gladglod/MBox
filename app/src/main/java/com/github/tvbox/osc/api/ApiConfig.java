@@ -1126,7 +1126,7 @@ public class ApiConfig {
 
     private final List<LiveSettingGroup> liveSettingGroupList = new ArrayList<>();
     private void initLiveSettings() {
-        ArrayList<String> groupNames = new ArrayList<>(Arrays.asList("线路选择", "画面比例", "播放解码", "超时换源", "偏好设置", "多源切换", "配置切换"));
+        ArrayList<String> groupNames = new ArrayList<>(Arrays.asList("线路选择", "画面比例", "播放解码", "超时换源", "偏好设置", "多源切换", "配置切换", "EPG源"));
         ArrayList<ArrayList<String>> itemsArrayList = new ArrayList<>();
         ArrayList<String> sourceItems = new ArrayList<>();
         ArrayList<String> scaleItems = new ArrayList<>(Arrays.asList("默认", "16:9", "4:3", "填充", "原始", "裁剪"));
@@ -1135,6 +1135,8 @@ public class ApiConfig {
         ArrayList<String> personalSettingItems = new ArrayList<>(Arrays.asList("显示时间", "显示网速", "换台反转", "跨选分类"));
         ArrayList<String> yumItems = new ArrayList<>();
         ArrayList<String> liveApiHistoryItems = new ArrayList<>();
+        // EPG 源：默认 = 内置默认地址；自定义 = 输入任意 diyp/XMLTV 地址
+        ArrayList<String> epgItems = new ArrayList<>(Arrays.asList("默认源", "自定义地址"));
 
         itemsArrayList.add(sourceItems);
         itemsArrayList.add(scaleItems);
@@ -1143,6 +1145,7 @@ public class ApiConfig {
         itemsArrayList.add(personalSettingItems);
         itemsArrayList.add(yumItems);
         itemsArrayList.add(liveApiHistoryItems);
+        itemsArrayList.add(epgItems);
 
         liveSettingGroupList.clear();
         for (int i = 0; i < groupNames.size(); i++) {
@@ -1386,12 +1389,15 @@ public class ApiConfig {
                     return;
                 }
             }
-            //设置epg
-            if(livesOBJ.has("epg")){
-                String epg =livesOBJ.get("epg").getAsString();
-                Hawk.put(HawkConfig.EPG_URL,epg);
-            }else {
-                Hawk.put(HawkConfig.EPG_URL,"");
+            //设置epg：用户在「EPG源 → 自定义地址」里填的地址优先，不被每次加载配置的 epg 字段覆写；
+            //只有当前为空（选了「默认源」）或残留的失效旧源时，才让配置的 epg 字段生效
+            String userEpgUrl = Hawk.get(HawkConfig.EPG_URL, "");
+            boolean keepUserEpg = userEpgUrl != null && userEpgUrl.trim().length() >= 5;
+            if (livesOBJ.has("epg")) {
+                String epg = livesOBJ.get("epg").getAsString();
+                if (!keepUserEpg) Hawk.put(HawkConfig.EPG_URL, epg);
+            } else {
+                if (!keepUserEpg) Hawk.put(HawkConfig.EPG_URL, "");
             }
             //直播播放器类型
             if(livesOBJ.has("playerType")){
