@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dialog_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="end|center_vertical"
@@ -10,12 +11,15 @@
     android:paddingTop="16dp"
     android:paddingBottom="16dp">
 
-    <!-- 卡片宽高在代码里按屏幕尺寸动态计算，这里只做 wrap_content 占位 -->
+    <!-- 卡片宽高在代码里按屏幕尺寸动态计算，这里只做 wrap_content 占位；
+         卡片本身 clickable，保证卡片内空白按住不冒泡到根布局的「点空白关窗」 -->
     <LinearLayout
         android:id="@+id/dialog_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_episode_glass"
+        android:clickable="true"
+        android:focusable="false"
         android:orientation="vertical"
         android:paddingLeft="14dp"
         android:paddingTop="12dp"
@@ -65,6 +69,55 @@
                 android:focusable="false"
                 android:padding="6dp"
                 android:src="@drawable/ic_player_close" />
+        </LinearLayout>
+
+        <!-- 状态条：显示当前已挂载的弹幕（可卸载）；搜索中/加载中时同一个条切换为进度状态 -->
+        <LinearLayout
+            android:id="@+id/statusBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_player_chip"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="12dp"
+            android:paddingTop="8dp"
+            android:paddingRight="6dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:indeterminateBehavior="repeat"
+                android:indeterminateDrawable="@drawable/anim_loading"
+                android:indeterminateOnly="true" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="10dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="#CCFFFFFF"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/statusCancel"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:background="@drawable/bg_player_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp"
+                android:text="卸载"
+                android:textColor="#FF02F8E1"
+                android:textSize="13sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <!-- 搜索行 -->
@@ -121,16 +174,6 @@
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
                 android:scrollbars="none" />
-
-            <ProgressBar
-                android:id="@+id/loadingBar"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
-                android:layout_gravity="center"
-                android:indeterminateBehavior="repeat"
-                android:indeterminateDrawable="@drawable/anim_loading"
-                android:indeterminateOnly="true"
-                android:visibility="gone" />
         </FrameLayout>
     </LinearLayout>
 </LinearLayout>

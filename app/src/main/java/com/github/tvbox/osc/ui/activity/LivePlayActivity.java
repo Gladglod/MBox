@@ -196,59 +196,6 @@ public class LivePlayActivity extends BaseActivity {
     private static LiveChannelItem  channel_Name = null;
     private static Hashtable<String, ArrayList<Epginfo>> hsEpg = new Hashtable<>();
 
-    /**
-     * EPG 响应体解析线程。
-     * 全量 XMLTV 源（如 pp.xml）可能有几 MB，DOM 解析要秒级，主线程解析会把画面卡死；
-     * 统一丢这里解析完再回主线程展示。单线程保证重试链的解析结果按请求顺序回传。
-     */
-    private static final ExecutorService EPG_PARSE_EXECUTOR = Executors.newSingleThreadExecutor();
-
-    /**
-     * 全量 XMLTV 源（如 pp.xml）的内存缓存：同一地址的整份节目单只下载/解析一次 DOM，
-     * 当前台节目单、频道行预取共用；换地址或退出页面自动失效。
-     * DOM 本身构建后只读，可被预取与解析两条后台线程共用。
-     */
-    private static final Object XML_EPG_CACHE_LOCK = new Object();
-    private static String xmlEpgCacheAddress = "";
-    private static String xmlEpgBodyCache = "";
-    private static Document xmlEpgDocumentCache = null;
-
-    /** 记下刚拉到的全量节目单；地址变了或内容变了就作废旧 DOM */
-    private void cacheXmlEpgBody(String body) {
-        if (TextUtils.isEmpty(body)) return;
-        String address = epgStringAddress == null ? "" : epgStringAddress;
-        synchronized (XML_EPG_CACHE_LOCK) {
-            if (!address.equals(xmlEpgCacheAddress) || !body.equals(xmlEpgBodyCache)) {
-                xmlEpgCacheAddress = address;
-                xmlEpgBodyCache = body;
-                xmlEpgDocumentCache = null;
-            }
-        }
-    }
-
-    /** 从缓存取（懒构建的）DOM；没有有效缓存或构建失败返回 null */
-    private Document getXmlEpgDocument() {
-        String address = epgStringAddress == null ? "" : epgStringAddress;
-        synchronized (XML_EPG_CACHE_LOCK) {
-            if (!address.equals(xmlEpgCacheAddress)
-                    || xmlEpgBodyCache == null || xmlEpgBodyCache.isEmpty()) {
-                return null;
-            }
-            if (xmlEpgDocumentCache == null) {
-                xmlEpgDocumentCache = buildXmlEpgDocumentQuietly(xmlEpgBodyCache);
-            }
-            return xmlEpgDocumentCache;
-        }
-    }
-
-    /** 换源 / 退出页面时清掉 DOM 缓存（DOM 较占内存，不常驻） */
-    private void clearXmlEpgCache() {
-        synchronized (XML_EPG_CACHE_LOCK) {
-            xmlEpgCacheAddress = "";
-            xmlEpgBodyCache = "";
-            xmlEpgDocumentCache = null;
-        }
-    }
     private CountDownTimer countDownTimer;
 //    private CountDownTimer countDownTimerRightTop;
     private View ll_right_top_loading;
@@ -797,17 +744,10 @@ public class LivePlayActivity extends BaseActivity {
                 } finally {
                     response.close();
                 }
-                // 解析放后台线程（见 EPG_PARSE_EXECUTOR 注释），结果再回主线程展示
-                EPG_PARSE_EXECUTOR.execute(new Runnable() {
+                mHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        final ArrayList<Epginfo> parsedEpg = parseEpgBody(body, date, finalEpgTagName);
-                        mHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                onEpgRequestResponse(parsedEpg, date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex);
-                            }
-                        });
+                        onEpgRequestResponse(body, date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex);
                     }
                 });
             }
@@ -828,44 +768,32 @@ public class LivePlayActivity extends BaseActivity {
 //        showBottomEpg();
     }
 
-    private void onEpgRequestResponse(ArrayList<Epginfo> arrayList, Date date, String channelNameReal, String finalEpgTagName,
+    private void onEpgRequestResponse(String paramString, Date date, String channelNameReal, String finalEpgTagName,
                                       String savedEpgKey, ArrayList<String> epgQueryNames, SimpleDateFormat timeFormat, int queryIndex) {
         if (!isCurrentEpgRequest(savedEpgKey)) return;
+        if (paramString == null || paramString.trim().isEmpty()) {
+            updateEpgPanelState(false);
+            return;
+        }
         LOG.i("echo-epgTagName:" + channelNameReal);
-        if (arrayList.isEmpty()) {
-            if (requestNextEpgQueryName(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
-                return;
+        ArrayList<Epginfo> arrayList = new ArrayList<Epginfo>();
+        try {
+            if (isXmlEpgResponse(paramString)) {
+                arrayList = parseXmlEpg(paramString, finalEpgTagName, date);
+            } else if (paramString.contains("epg_data") || paramString.trim().startsWith("{")) {
+                arrayList = parseJsonEpg(paramString, date);
             }
-            // 非默认源解析出来是空的（比如全量 XMLTV 源里没有该频道名）→ 落回默认 JSON 源补查一次
-            if (requestDefaultEpgOnFailure(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
-                return;
-            }
+
+        } catch (JSONException jSONException) {
+            jSONException.printStackTrace();
+        }
+        if (arrayList.isEmpty() && requestNextEpgQueryName(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
+            return;
         }
         hsEpg.put(savedEpgKey, arrayList);
         if (!isCurrentEpgRequest(savedEpgKey)) return;
         showEpg(date, arrayList);
         showBottomEpg();
-    }
-
-    /** 按响应体自动分派解析（XMLTV / diyp JSON）；在 EPG_PARSE_EXECUTOR 后台线程调用 */
-    private ArrayList<Epginfo> parseEpgBody(String body, Date date, String channelNameToMatch) {
-        ArrayList<Epginfo> arrayList = new ArrayList<>();
-        if (body == null || body.trim().isEmpty()) return arrayList;
-        try {
-            if (isXmlEpgResponse(body)) {
-                // 全量节目单进缓存：下次切台 / 频道行预取直接复用 DOM，不再重复下载解析
-                cacheXmlEpgBody(body);
-                Document document = getXmlEpgDocument();
-                if (document != null) {
-                    arrayList = parseXmlEpg(document, channelNameToMatch, date);
-                }
-            } else if (body.contains("epg_data") || body.trim().startsWith("{")) {
-                arrayList = parseJsonEpg(body, date);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return arrayList;
     }
 
     private boolean requestDefaultEpgOnFailure(Date date, String channelNameReal, String finalEpgTagName, String savedEpgKey,
@@ -1033,44 +961,21 @@ public class LivePlayActivity extends BaseActivity {
 
     private ArrayList<Epginfo> parseXmlEpg(String xml, String channelName, Date date) {
         ArrayList<Epginfo> epgList = new ArrayList<>();
-        if (TextUtils.isEmpty(xml)) return epgList;
-        Document document = buildXmlEpgDocumentQuietly(xml);
-        return document == null ? epgList : parseXmlEpg(document, channelName, date);
-    }
-
-    private Document buildXmlEpgDocumentQuietly(String xml) {
         try {
-            return buildXmlEpgDocument(xml);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setIgnoringComments(true);
+            factory.setCoalescing(true);
+            try {
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            } catch (Exception ignored) {
+            }
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            builder.setEntityResolver((publicId, systemId) -> new InputSource(new StringReader("")));
+            Document document = builder.parse(new InputSource(new StringReader(xml)));
+            document.getDocumentElement().normalize();
 
-    /**
-     * 构建全量 XMLTV 的 DOM。几 MB 的构建要秒级，只应通过 getXmlEpgDocument() 缓存调用，
-     * 同一份节目单构建出来的 Document 供多个频道复用。
-     */
-    private Document buildXmlEpgDocument(String xml) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setIgnoringComments(true);
-        factory.setCoalescing(true);
-        try {
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        } catch (Exception ignored) {
-        }
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        builder.setEntityResolver((publicId, systemId) -> new InputSource(new StringReader("")));
-        Document document = builder.parse(new InputSource(new StringReader(xml)));
-        document.getDocumentElement().normalize();
-        return document;
-    }
-
-    private ArrayList<Epginfo> parseXmlEpg(Document document, String channelName, Date date) {
-        ArrayList<Epginfo> epgList = new ArrayList<>();
-        try {
             String targetName = normalizeEpgChannelName(channelName);
             ArrayList<String> channelIds = new ArrayList<>();
             NodeList channelNodes = document.getElementsByTagName("channel");
@@ -1407,11 +1312,8 @@ public class LivePlayActivity extends BaseActivity {
         }
         List<Epginfo> epgList = new ArrayList<>();
         if (xmlBody != null) {
-            // 整份 XMLTV 已经在批次开头拉好了：进缓存并复用同一份 DOM，
-            // 避免每个频道各解析一遍整份节目单（几 MB 的 DOM 解析是秒级的）
-            if (!TextUtils.isEmpty(xmlBody)) cacheXmlEpgBody(xmlBody);
-            Document document = getXmlEpgDocument();
-            epgList = document == null ? epgList : parseXmlEpg(document, channelName, date);
+            // 整份 XMLTV 已经在批次开头拉好了，这里只解析出属于这个频道的节目
+            epgList = TextUtils.isEmpty(xmlBody) ? epgList : parseXmlEpg(xmlBody, channelName, date);
         } else {
             SimpleDateFormat timeFormat = newGmt8DateFormatter();
             ArrayList<String> queryNames = buildEpgQueryNames(channelName, channelNameReal, epgTagName);
@@ -1718,8 +1620,6 @@ public class LivePlayActivity extends BaseActivity {
         mHandler.removeCallbacks(mHideControlsRun);
         // 让排队中的「正在直播」预取批次全部作废
         channelProgramGeneration++;
-        // 释放全量 EPG 的 DOM 缓存（较占内存，退出直播页不常驻）
-        clearXmlEpgCache();
         // 清掉静态的频道引用，避免下次进入直播页时用到上一次的残留状态（空指针闪退）
         channel_Name = null;
         currentLiveChannelItem = null;
@@ -4014,7 +3914,6 @@ public class LivePlayActivity extends BaseActivity {
         epgStringAddress = address;
         hsEpg.clear();
         channelProgramCache.clear();
-        clearXmlEpgCache();
         channelProgramGeneration++;
         getEpg(new Date());
         if (liveChannelItemAdapter != null

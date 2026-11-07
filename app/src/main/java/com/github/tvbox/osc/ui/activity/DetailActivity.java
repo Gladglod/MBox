@@ -55,6 +55,7 @@ import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.MotionCompat;
 import com.github.tvbox.osc.util.SearchHelper;
 import com.github.tvbox.osc.util.SubtitleHelper;
+import com.github.tvbox.osc.util.ThemeUtil;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.lzy.okgo.OkGo;
 import com.orhanobut.hawk.Hawk;
@@ -2226,6 +2227,10 @@ public class DetailActivity extends BaseActivity {
                             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         } else {
             decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            // 退出沉浸式时整组标志是重设的，主题给的「浅色底 = 深色图标」
+            // （SYSTEM_UI_FLAG_LIGHT_STATUS_BAR/NAVIGATION_BAR）也被一并清掉了，
+            // 状态栏文字会变白。这里按当前主题重新上一次系统栏样式。
+            ThemeUtil.applySystemBars(this);
         }
     }
 

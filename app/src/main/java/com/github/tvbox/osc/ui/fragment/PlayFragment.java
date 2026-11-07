@@ -208,18 +208,38 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     private void checkDanmu(String danmu) {
-        checkDanmu(danmu, null);
+        checkDanmu(danmu, (DanmuLoadController.LoadCallback) null);
+    }
+
+    /** 带展示名的版本：搜索框里选中的那条弹幕名，供「当前弹幕：xxx」显示用 */
+    private void checkDanmu(String danmu, String displayName) {
+        if (danmuLoadController != null) {
+            VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);
+            danmuLoadController.check(danmu, mVodInfo == null ? "" : mVodInfo.name, series == null ? "" : series.name, displayName, null);
+        }
     }
 
     /** 打开「在线弹幕」搜索对话框（播放器设置抽屉里的「更换」） */
     private void openDanmuSearch() {
         if (!isAdded()) return;
         SearchDanmuDialog searchDanmuDialog = new SearchDanmuDialog(requireContext());
+        // 输入框上方的「当前弹幕」状态条：显示实际挂载的弹幕，并可一键卸载
+        searchDanmuDialog.setDanmuProvider(new SearchDanmuDialog.DanmuProvider() {
+            @Override
+            public String getLoadedDanmuName() {
+                return danmuLoadController == null ? "" : danmuLoadController.getDanmuDisplayName();
+            }
+
+            @Override
+            public void unloadDanmu() {
+                if (danmuLoadController != null) danmuLoadController.reset();
+            }
+        });
         searchDanmuDialog.setDanmuLoader(new SearchDanmuDialog.DanmuLoader() {
             @Override
-            public void loadDanmu(String danmu) {
+            public void loadDanmu(String danmu, String name) {
                 if (!isAdded()) return;
-                checkDanmu(danmu);
+                checkDanmu(danmu, name);
             }
         });
         VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);

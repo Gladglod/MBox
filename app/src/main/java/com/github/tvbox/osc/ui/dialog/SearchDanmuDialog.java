@@ -9,7 +9,6 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -33,16 +32,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 搜索弹幕：结果分两层。
- * 第一层是「剧集名 + 来源 + 共几集」，第二层才是每一集；
- * 与当前播放集数一致的那一集会标「疑似此集」，搜索完成后自动滚到它。
+ * 搜索弹幕：结果最多分三层。
+ * 第一层是合并后的剧名（去掉 from 站点后缀），点击后：
+ * 如果同剧有多个站点/多部的，先进第二层看各部完整剧名，再点进第三层看每一集；
+ * 只有一部的直接进每集列表。与当前播放集数一致的那一条会标「疑似此集」，自动滚到它。
+ * 选中某一集后留在窗内显示「正在加载弹幕：xxx」，可取消；成功后自动关窗并挂载。
  */
 public class SearchDanmuDialog extends BaseDialog {
+    /** 层级：0 一级剧名分组 / 1 二级同名各部 / 2 每集列表 */
+    private static final int LEVEL_GROUP = 0;
+    private static final int LEVEL_CHILDREN = 1;
+    private static final int LEVEL_EPISODES = 2;
+
+    /** 状态条右侧按钮的动作：无 / 取消正在加载的弹幕请求 / 卸载已挂载的弹幕 */
+    private static final int ACTION_NONE = 0;
+    private static final int ACTION_CANCEL_LOAD = 1;
+    private static final int ACTION_UNLOAD = 2;
+
     private RecyclerView listView;
     private DanmuGroupAdapter groupAdapter;
     private SearchDanmuAdapter episodeAdapter;
     private EditText searchInput;
-    private ProgressBar loadingBar;
+    private LinearLayout statusBar;
+    private TextView statusText;
+    private TextView statusCancel;
+    private int statusAction = ACTION_NONE;
+    private DanmuProvider danmuProvider;
     private ImageView backBtn;
     private TextView titleView;
     private DanmuLoader danmuLoader;
@@ -51,7 +66,10 @@ public class SearchDanmuDialog extends BaseDialog {
     private String keyword = "";
     /** 当前播放的集数，0 表示解析不出来 */
     private int currentEpisode = 0;
-    private boolean showingEpisodes = false;
+    private int level = LEVEL_GROUP;
+    /** 当前打开的一级分组与二级分组（用于回退） */
+    private DanmuGroup currentGroup = null;
+    private DanmuGroup currentChild = null;
     private List<DanmuGroup> groups = new ArrayList<>();
 
     public SearchDanmuDialog(@NonNull @NotNull Context context) {
@@ -64,11 +82,13 @@ public class SearchDanmuDialog extends BaseDialog {
     }
 
     private void initView() {
-        loadingBar = findViewById(R.id.loadingBar);
         listView = findViewById(R.id.mGridView);
         searchInput = findViewById(R.id.input);
         titleView = findViewById(R.id.dialog_title);
         backBtn = findViewById(R.id.iv_back);
+        statusBar = findViewById(R.id.statusBar);
+        statusText = findViewById(R.id.statusText);
+        statusCancel = findViewById(R.id.statusCancel);
         TextView searchButton = findViewById(R.id.inputSubmit);
         ImageView closeBtn = findViewById(R.id.iv_close);
         groupAdapter = new DanmuGroupAdapter();
@@ -78,14 +98,12 @@ public class SearchDanmuDialog extends BaseDialog {
         listView.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.VERTICAL, false));
         listView.setAdapter(groupAdapter);
 
-        // 第一层：点分组 → 看这一组的每一集
+        // 第一层 / 中间层共用 groupAdapter，点谁由 level 决定
         groupAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 FastClickCheckUtil.check(view);
-                if (position >= 0 && position < groups.size()) {
-                    openGroup(groups.get(position));
-                }
+                openGroupAt(position);
             }
         });
         // item 内部的 groupItem 自己 clickable，会吃掉 item 点击，这里必须再兜一层，
@@ -95,12 +113,10 @@ public class SearchDanmuDialog extends BaseDialog {
             public void onItemChildClick(BaseQuickAdapter adapter, View view, int position) {
                 if (view.getId() != R.id.groupItem) return;
                 FastClickCheckUtil.check(view);
-                if (position >= 0 && position < groups.size()) {
-                    openGroup(groups.get(position));
-                }
+                openGroupAt(position);
             }
         });
-        // 第二层：点某一集 → 加载弹幕
+        // 集列表：点某一集 → 状态条显示正在加载哪一条，可取消
         episodeAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
@@ -126,7 +142,7 @@ public class SearchDanmuDialog extends BaseDialog {
             backBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    showGroupList();
+                    backToParent();
                 }
             });
         }
@@ -139,6 +155,25 @@ public class SearchDanmuDialog extends BaseDialog {
                 }
             });
         }
+        if (statusCancel != null) {
+            statusCancel.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    if (statusAction == ACTION_UNLOAD) {
+                        // 卸载已挂载的弹幕（清掉播放器上的弹幕层）
+                        if (danmuProvider != null) danmuProvider.unloadDanmu();
+                        Toast.makeText(getContext(), "已卸载当前弹幕", Toast.LENGTH_SHORT).show();
+                    } else {
+                        // 取消正在拉取的弹幕请求
+                        DanmakuApi.cancel();
+                        Toast.makeText(getContext(), "已取消加载弹幕", Toast.LENGTH_SHORT).show();
+                    }
+                    statusAction = ACTION_NONE;
+                    updateIdleStatus();
+                }
+            });
+        }
         if (closeBtn != null) {
             closeBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -148,7 +183,31 @@ public class SearchDanmuDialog extends BaseDialog {
                 }
             });
         }
+        // 点卡片外空白直接关窗（卡片自身 clickable，不会误触发）
+        View root = findViewById(R.id.dialog_root);
+        if (root != null) {
+            root.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dismiss();
+                }
+            });
+        }
         applyResponsiveSize();
+    }
+
+    /** 按当前层级把 groupAdapter 的点击分发到对应的数据集 */
+    private void openGroupAt(int position) {
+        if (level == LEVEL_GROUP) {
+            if (position >= 0 && position < groups.size()) {
+                openGroup(groups.get(position));
+            }
+        } else if (level == LEVEL_CHILDREN && currentGroup != null) {
+            List<DanmuGroup> children = currentGroup.getChildren();
+            if (position >= 0 && position < children.size()) {
+                openEpisodes(currentGroup, children.get(position));
+            }
+        }
     }
 
     /** 卡片贴右边显示（不居中），尺寸按屏幕比例收窄 */
@@ -188,6 +247,8 @@ public class SearchDanmuDialog extends BaseDialog {
     @Override
     public void show() {
         super.show();
+        // 每次打开都刷新「当前弹幕」状态条，能实际看到挂载情况
+        updateIdleStatus();
         // Theme.Dialog 默认窗口是 wrap_content，根布局的 match_parent 会被压成内容宽度，
         // 面板就没法靠右贴边。这里把窗口撑满屏幕，靠右由布局里的 gravity 决定。
         try {
@@ -216,8 +277,16 @@ public class SearchDanmuDialog extends BaseDialog {
         this.danmuLoader = danmuLoader;
     }
 
+    public void setDanmuProvider(DanmuProvider provider) {
+        this.danmuProvider = provider;
+        updateIdleStatus();
+    }
+
     private void search(String word) {
         groups = new ArrayList<>();
+        currentGroup = null;
+        currentChild = null;
+        level = LEVEL_GROUP;
         groupAdapter.setNewData(new ArrayList<DanmuGroup>());
         episodeAdapter.setNewData(new ArrayList<DanmuSearchResult>());
         if (TextUtils.isEmpty(word)) {
@@ -241,45 +310,100 @@ public class SearchDanmuDialog extends BaseDialog {
         });
     }
 
+    /** 选中某一集：不关窗，状态条显示「正在加载弹幕：xxx」，失败/取消可回去继续挑 */
     private void loadDanmu(DanmuSearchResult result) {
-        // 选择即关窗：加载交给 DanmakuApi 在后台继续，弹幕就绪后由播放器自动挂载，
-        // 不再让搜索窗口在前台一直占着转圈
-        dismiss();
-        Toast.makeText(getContext(), "已选择弹幕，后台加载中", Toast.LENGTH_SHORT).show();
+        if (result == null) return;
+        showDanmuLoading(result);
         DanmakuApi.loadSearchResult(result, new DanmakuApi.SearchResultCallback() {
             @Override
             public void onSuccess(String danmu) {
-                if (danmuLoader != null) danmuLoader.loadDanmu(danmu);
+                if (danmuLoader != null) danmuLoader.loadDanmu(danmu, result.getName());
+                dismiss();
+                Toast.makeText(getContext(), "弹幕已加载", Toast.LENGTH_SHORT).show();
             }
 
             @Override
             public void onError(String message) {
-                // 窗口已关，失败只能以轻提示告知
+                // 回到列表让用户换一条再试，同时恢复「当前弹幕」显示
+                updateIdleStatus();
                 Toast.makeText(getContext(), "弹幕加载失败：" + message, Toast.LENGTH_SHORT).show();
             }
         });
     }
 
+    /**
+     * 空闲态状态条：有已挂载弹幕就显示「当前弹幕：xxx」+「卸载」，没有则整条隐藏。
+     * 重新打开搜索框时也会走到这里，能看到实际挂载的弹幕。
+     */
+    private void updateIdleStatus() {
+        String name = danmuProvider == null ? "" : danmuProvider.getLoadedDanmuName();
+        if (TextUtils.isEmpty(name)) {
+            if (statusBar != null) {
+                statusAction = ACTION_NONE;
+                if (statusCancel != null) statusCancel.setVisibility(View.GONE);
+                statusBar.setVisibility(View.GONE);
+            }
+            if (listView != null) listView.setVisibility(View.VISIBLE);
+            return;
+        }
+        statusAction = ACTION_UNLOAD;
+        if (statusText != null) statusText.setText("当前弹幕：" + name);
+        if (statusCancel != null) {
+            statusCancel.setText("卸载");
+            statusCancel.setVisibility(View.VISIBLE);
+        }
+        if (statusBar != null) statusBar.setVisibility(View.VISIBLE);
+        if (listView != null) listView.setVisibility(View.VISIBLE);
+    }
+
+    /** 状态条通用展示：action 为 true 时右侧按钮按 statusText 的用途（加载取消/卸载）复用 */
+    private void showStatus(String text, boolean action) {
+        if (statusBar == null) return;
+        if (statusText != null) statusText.setText(text);
+        if (statusCancel != null) {
+            statusCancel.setVisibility(action ? View.VISIBLE : View.GONE);
+        }
+        statusBar.setVisibility(View.VISIBLE);
+    }
+
+    private void showDanmuLoading(DanmuSearchResult result) {
+        if (statusText != null) statusText.setText("正在加载弹幕：" + result.getName());
+        statusAction = ACTION_CANCEL_LOAD;
+        if (statusCancel != null) {
+            statusCancel.setText("取消");
+            statusCancel.setVisibility(View.VISIBLE);
+        }
+        if (statusBar != null) statusBar.setVisibility(View.VISIBLE);
+        if (listView != null) listView.setVisibility(View.GONE);
+    }
+
     private void showLoading() {
-        loadingBar.setVisibility(View.VISIBLE);
-        listView.setVisibility(View.GONE);
+        showStatus("正在搜索弹幕…", false);
+        statusAction = ACTION_NONE;
+        // 新一轮搜索：恢复到第一层展示，避免停留在上次的层级
+        currentGroup = null;
+        currentChild = null;
+        level = LEVEL_GROUP;
+        if (listView != null) listView.setVisibility(View.GONE);
     }
 
     private void showResults(List<DanmuSearchResult> results) {
         if (results == null) results = new ArrayList<>();
-        // 过滤掉别的季 + 拆出「来源 / 集数」+ 按「剧集名 + 来源」分组
-        groups = DanmuTitleUtil.group(DanmuTitleUtil.refine(results, keyword));
-        loadingBar.setVisibility(View.GONE);
-        listView.setVisibility(View.VISIBLE);
+        // 只做去重与「集数 / 来源」旁路解析，标题原样保留；带剧名的按剧聚合并同名并组，点进去看每一集
+        groups = DanmuTitleUtil.group(DanmuTitleUtil.refine(results, keyword), keyword);
         showGroupList();
+        // 搜索结束后恢复「当前弹幕：xxx」的挂载状态显示
+        updateIdleStatus();
         if (groups.isEmpty()) {
             Toast.makeText(getContext(), "未查询到匹配弹幕", Toast.LENGTH_SHORT).show();
         }
     }
 
-    /** 回到第一层：剧集分组列表 */
+    /** 第一层：合并后的剧名列表 */
     private void showGroupList() {
-        showingEpisodes = false;
+        level = LEVEL_GROUP;
+        currentGroup = null;
+        currentChild = null;
         if (titleView != null) titleView.setText("搜索弹幕");
         if (backBtn != null) backBtn.setVisibility(View.GONE);
         groupAdapter.setCurrentEpisode(currentEpisode);
@@ -288,16 +412,57 @@ public class SearchDanmuDialog extends BaseDialog {
         scrollToGuessGroup();
     }
 
-    /** 进入第二层：某一部剧的每一集 */
     private void openGroup(DanmuGroup group) {
         if (group == null) return;
-        showingEpisodes = true;
+        // 同名多站的：先看中部层列出的各部完整剧名；只有一部分的直接进剧集
+        if (group.hasChildren()) {
+            openChildrenList(group);
+        } else {
+            openEpisodes(group, null);
+        }
+    }
+
+    /** 中部层：同名剧下的各部（from iqiyi / from youku…） */
+    private void openChildrenList(DanmuGroup group) {
+        currentGroup = group;
+        currentChild = null;
+        level = LEVEL_CHILDREN;
         if (titleView != null) titleView.setText(group.getShowName());
+        if (backBtn != null) backBtn.setVisibility(View.VISIBLE);
+        groupAdapter.setCurrentEpisode(currentEpisode);
+        listView.setAdapter(groupAdapter);
+        groupAdapter.setNewData(group.getChildren());
+        scrollToGuessChildren(group);
+    }
+
+    /** 集列表：child 为空表示一级分组自己就是整部剧 */
+    private void openEpisodes(DanmuGroup group, DanmuGroup child) {
+        currentGroup = group;
+        currentChild = child;
+        level = LEVEL_EPISODES;
+        if (titleView != null) {
+            String name = child != null ? child.getShowName() : group.getShowName();
+            titleView.setText(TextUtils.isEmpty(name) ? "弹幕列表" : name);
+        }
         if (backBtn != null) backBtn.setVisibility(View.VISIBLE);
         episodeAdapter.setCurrentEpisode(currentEpisode);
         listView.setAdapter(episodeAdapter);
-        episodeAdapter.setNewData(group.getItems());
-        scrollToGuessEpisode(group);
+        episodeAdapter.setNewData(child != null ? child.getItems() : group.getItems());
+        scrollToGuessEpisode(child != null ? child : group);
+    }
+
+    /** 按返回键 / 返回箭头逐层回退 */
+    private void backToParent() {
+        if (level == LEVEL_EPISODES) {
+            DanmuGroup group = currentGroup;
+            if (group != null && group.hasChildren()) {
+                openChildrenList(group);
+            } else {
+                showGroupList();
+            }
+            return;
+        }
+        showGroupList();
     }
 
     /** 搜索完成后自动滚到「含当前集」的分组 */
@@ -305,41 +470,50 @@ public class SearchDanmuDialog extends BaseDialog {
         if (currentEpisode <= 0) return;
         for (int i = 0; i < groups.size(); i++) {
             if (groups.get(i).containsEpisode(currentEpisode)) {
-                final int index = i;
-                listView.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        listView.scrollToPosition(index);
-                    }
-                });
+                scrollTo(i);
                 return;
             }
         }
     }
 
-    /** 进入分组后自动滚到「疑似此集」那一行 */
-    private void scrollToGuessEpisode(DanmuGroup group) {
+    /** 同名各部列表中滚到「含当前集」的那一部 */
+    private void scrollToGuessChildren(DanmuGroup group) {
         if (currentEpisode <= 0) return;
-        List<DanmuSearchResult> items = group.getItems();
-        for (int i = 0; i < items.size(); i++) {
-            if (items.get(i).getEpisode() == currentEpisode) {
-                final int index = i;
-                listView.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        listView.scrollToPosition(index);
-                    }
-                });
+        List<DanmuGroup> children = group.getChildren();
+        for (int i = 0; i < children.size(); i++) {
+            if (children.get(i).containsEpisode(currentEpisode)) {
+                scrollTo(i);
                 return;
             }
         }
+    }
+
+    /** 进入剧集列表后自动滚到「疑似此集」那一行 */
+    private void scrollToGuessEpisode(DanmuGroup group) {
+        if (group == null || currentEpisode <= 0) return;
+        List<DanmuSearchResult> items = group.getItems();
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).getEpisode() == currentEpisode) {
+                scrollTo(i);
+                return;
+            }
+        }
+    }
+
+    private void scrollTo(final int index) {
+        listView.post(new Runnable() {
+            @Override
+            public void run() {
+                listView.scrollToPosition(index);
+            }
+        });
     }
 
     @Override
     public void onBackPressed() {
-        // 第二层时先退回分组列表，再按一次才关闭
-        if (showingEpisodes) {
-            showGroupList();
+        // 分层时先逐层回退，回到第一层再按才关闭
+        if (level != LEVEL_GROUP) {
+            backToParent();
             return;
         }
         DanmakuApi.cancel();
@@ -347,6 +521,16 @@ public class SearchDanmuDialog extends BaseDialog {
     }
 
     public interface DanmuLoader {
-        void loadDanmu(String danmu);
+        /** danmu = 弹幕内容/地址；name = 搜索选中的条目名，供「当前弹幕：xxx」显示 */
+        void loadDanmu(String danmu, String name);
+    }
+
+    /** 提供「当前已挂载弹幕」的状态与卸载能力（由播放页实现） */
+    public interface DanmuProvider {
+        /** 当前已挂载弹幕的显示名，空 = 没有挂载弹幕 */
+        String getLoadedDanmuName();
+
+        /** 卸载当前弹幕 */
+        void unloadDanmu();
     }
 }

@@ -11,7 +11,7 @@ import com.github.tvbox.osc.bean.DanmuGroup;
 
 import java.util.ArrayList;
 
-/** 搜索弹幕第一层：剧集分组（剧集名 + 来源 + 集数），点进去看每一集 */
+/** 搜索弹幕第一层/同名各部层：一级显示合成剧名，同名多来源时会先进各部（完整剧名）列表 */
 public class DanmuGroupAdapter extends BaseQuickAdapter<DanmuGroup, BaseViewHolder> {
 
     /** 当前播放集数，用于在分组上提示「含第N集」 */
@@ -34,7 +34,7 @@ public class DanmuGroupAdapter extends BaseQuickAdapter<DanmuGroup, BaseViewHold
         if (!TextUtils.isEmpty(source) && !item.getShowName().contains(source)) {
             meta.append(source).append(" · ");
         }
-        meta.append("共 ").append(item.size()).append(" 集");
+        meta.append("共 ").append(item.size()).append(" 条");
         if (currentEpisode > 0 && item.containsEpisode(currentEpisode)) {
             meta.append(" · 含第").append(currentEpisode).append("集");
         }

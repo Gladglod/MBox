@@ -35,6 +35,8 @@ public class DanmuLoadController {
     private String danmuText = "";
     private String danmuTitle = "";
     private String danmuEpisode = "";
+    /** 展示用：正在使用的弹幕来源名（搜索框状态条「当前弹幕：xxx」），空表示用 Title/Episode 兜底 */
+    private String danmuDisplayName = "";
     private int startedSeq = -1;
     private boolean pendingPrepare;
     private boolean temporarilyClosed;
@@ -88,6 +90,10 @@ public class DanmuLoadController {
     }
 
     public void check(String danmu, String title, String episode, LoadCallback callback) {
+        check(danmu, title, episode, "", callback);
+    }
+
+    public void check(String danmu, String title, String episode, String displayName, LoadCallback callback) {
         DanmakuApi.cancel();
         loadCallback = callback;
         seekGeneration++;
@@ -96,6 +102,8 @@ public class DanmuLoadController {
         danmuText = TextUtils.isEmpty(danmu) ? "" : danmu.trim();
         danmuTitle = TextUtils.isEmpty(title) ? "" : title;
         danmuEpisode = TextUtils.isEmpty(episode) ? "" : episode;
+        // 展示名只来自本次调用（搜索选中项等），每次都要覆盖，避免串到别的集
+        danmuDisplayName = displayName == null ? "" : displayName.trim();
         releaseView();
         boolean hasDanmu = !TextUtils.isEmpty(danmuText);
         if (controller != null) controller.setHasDanmu(hasDanmu);
@@ -146,12 +154,24 @@ public class DanmuLoadController {
         danmuText = "";
         danmuTitle = "";
         danmuEpisode = "";
+        danmuDisplayName = "";
         pendingPrepare = false;
         loadCallback = null;
         loadSeq.incrementAndGet();
         startedSeq = -1;
         if (controller != null) controller.setHasDanmu(false);
         releaseView();
+    }
+
+    /**
+     * 弹幕面板「当前弹幕」的展示名：
+     * 优先用搜索选中的条目名，否则用自动加载时的 剧名+集名，没有弹幕时返回空。
+     */
+    public String getDanmuDisplayName() {
+        if (TextUtils.isEmpty(danmuText)) return "";
+        if (!TextUtils.isEmpty(danmuDisplayName)) return danmuDisplayName;
+        String name = (danmuTitle + " " + danmuEpisode).trim();
+        return name;
     }
 
     public void close() {

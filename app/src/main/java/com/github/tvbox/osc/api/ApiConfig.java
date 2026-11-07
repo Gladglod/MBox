@@ -1041,7 +1041,13 @@ public class ApiConfig {
         currentLivePyKey = "";
         initLiveSettings();
         Hawk.put(HawkConfig.LIVE_GROUP_LIST, new JsonArray());
-        Hawk.put(HawkConfig.EPG_URL, extractLiveTextEpg(content));
+        // 和 JSON 配置同一套规则：用户在「EPG源 → 自定义地址」里填的地址优先，
+        // txt 头部的 x-tvg-url 只做兜底，避免加载 txt 直播源时把用户自设的地址抹成空
+        String userEpgUrl = Hawk.get(HawkConfig.EPG_URL, "");
+        boolean keepUserEpg = userEpgUrl != null && userEpgUrl.trim().length() >= 5;
+        if (!keepUserEpg) {
+            Hawk.put(HawkConfig.EPG_URL, extractLiveTextEpg(content));
+        }
         Hawk.put(HawkConfig.LIVE_PLAY_TYPE, Hawk.get(HawkConfig.PLAY_TYPE, 2));
         Hawk.put(HawkConfig.LIVE_WEB_HEADER, null);
         JsonArray livesArray = TxtSubscribe.parseToJsonArray(content);

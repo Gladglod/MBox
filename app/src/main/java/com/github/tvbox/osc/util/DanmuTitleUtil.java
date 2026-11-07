@@ -18,11 +18,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 弹幕搜索结果清洗：
+ * 弹幕搜索结果整理：
  * <ol>
- *     <li><b>过滤</b>：剧集名为「天下3」时只保留第三部（或同标题、无季数信息）的条目，把第一、二部等噪音挡掉；</li>
- *     <li><b>拆字段</b>：把「来源 / 集数」从又长又乱的标题里解析出来，标题只留剧集名；</li>
- *     <li><b>分组</b>：按「剧集名 + 来源」聚成一层，界面上先看剧集，点进去再看每一集。</li>
+ *     <li><b>不改写</b>：接口返回的标题一律原样显示，不做替换、裁剪、删字，也不按关键词筛掉结果；</li>
+ *     <li><b>旁路解析</b>：只额外读出「集数 / 来源」两个字段，供列表标注与分组使用；</li>
+ *     <li><b>分组</b>：按剧（去掉 from 站点后缀）归并成一级，同名多站的整部剧嵌到二级，没有重名的
+ *         一级就是整部剧；接口没带剧名的退回按弹幕来源分组。</li>
  * </ol>
  */
 public final class DanmuTitleUtil {
@@ -41,139 +42,122 @@ public final class DanmuTitleUtil {
     private static final Pattern P_SEASON_EN = Pattern.compile("(?i)\\bSEASON\\s*([0-9]{1,3})\\b|\\bS([0-9]{1,3})\\b");
     /** 裸数字（「天下 03」这种没有「第…集」字样的标题）；不匹配长数字片段，避免把 1080P、年份当集数 */
     private static final Pattern P_BARE_NUMBER = Pattern.compile("(?<![0-9])[0-9]{1,3}(?![0-9])");
-    /** 尾部「分隔符 + 数字」，用于从分组标题里剪掉没写「第…集」的集数 */
-    private static final Pattern P_TAIL_NUMBER = Pattern.compile("[\\s\\-_·|,，.。:：;；/]+([0-9]{1,3})\\s*$");
 
     private DanmuTitleUtil() {
     }
 
     /**
-     * 过滤 + 拆字段，一次完成。返回的条目里 name 已是干净的剧集名，
-     * 集数与来源单独放在 {@code episode} / {@code source} 字段上。
+     * 去重 + 旁路解析集数与来源。
+     * <p>
+     * 标题本身原样保留（接口给什么就显示什么），这里只是额外算一个集数用于「疑似此集」，
+     * 以及一个来源用于分组。
      *
      * @param source  接口返回的原始结果
-     * @param keyword 用户搜索用的剧集名（如「天下3」）
+     * @param keyword 用户搜索用的剧集名，仅用于从标题尾部推断集数
      */
     public static List<DanmuSearchResult> refine(List<DanmuSearchResult> source, String keyword) {
         List<DanmuSearchResult> result = new ArrayList<>();
         if (source == null || source.isEmpty()) return result;
 
-        String base = keywordBase(keyword);
-        int season = keywordSeason(keyword);
-
-        List<DanmuSearchResult> exact = new ArrayList<>();
-        List<DanmuSearchResult> loose = new ArrayList<>();
-        for (DanmuSearchResult item : source) {
-            if (item == null) continue;
-            String raw = item.getName();
-            if (TextUtils.isEmpty(raw)) continue;
-            // 名字本身就是一坨地址的（自定义接口常见），无法判断，先归到 loose
-            if (isUrlLike(raw)) {
-                loose.add(item);
-                continue;
-            }
-            if (!base.isEmpty() && !compact(raw).contains(base)) continue;
-            int itemSeason = seasonOf(raw);
-            if (season <= 0 || itemSeason == season || itemSeason <= 0) {
-                exact.add(item);
-            } else {
-                loose.add(item);
-            }
-        }
-
-        // 优先用「季数对得上」的结果；一个都没有时退回同标题的结果，再没有就原样放回，避免列表空白
-        List<DanmuSearchResult> picked;
-        if (!exact.isEmpty()) picked = exact;
-        else if (!loose.isEmpty()) picked = loose;
-        else picked = source;
-
         Set<String> seen = new HashSet<>();
-        for (DanmuSearchResult item : picked) {
+        for (DanmuSearchResult item : source) {
             if (item == null) continue;
             String raw = item.getName();
             if (TextUtils.isEmpty(raw)) continue;
             if (!seen.add(item.getUrl() + "|" + raw)) continue;
             result.add(new DanmuSearchResult(
-                    groupTitle(raw, keyword),
+                    raw,
                     item.getUrl(),
                     item.isBuiltIn(),
                     episodeOf(raw, keyword),
-                    sourceOf(item.getUrl(), item.isBuiltIn())));
+                    sourceOf(item.getUrl(), item.isBuiltIn()),
+                    item.getAnime()));
         }
         return result;
     }
 
-    /** 把已清洗的条目按「剧集名 + 来源」聚成一层，组内按集数升序 */
-    public static List<DanmuGroup> group(List<DanmuSearchResult> refined) {
+    /**
+     * 分层整理：
+     * <ol>
+     *     <li>接口带了 animeTitle 的，先按整部剧聚合；</li>
+     *     <li>剧名去掉「from 某站点」尾巴后一致的（同剧不同站），把整部剧的条目再并进同一个一级分组，
+     *         一级显示合成的剧名，各部完整剧名挂在二级，减少一级列表的长度；没有重名的保持一级就是整部剧；</li>
+     *     <li>接口没带剧名的（自定义源），退回按弹幕来源分组、一级沿用搜索词做标题。</li>
+     * </ol>
+     * 组内保持接口返回的顺序，能读出集数的按集数升序排。
+     */
+    public static List<DanmuGroup> group(List<DanmuSearchResult> refined, String keyword) {
         List<DanmuGroup> groups = new ArrayList<>();
         if (refined == null || refined.isEmpty()) return groups;
-        Map<String, DanmuGroup> index = new LinkedHashMap<>();
+        String title = keyword == null ? "" : keyword.trim();
+
+        // 第一轮：按 animeTitle 整部聚合；没带剧名的按来源各成一部
+        Map<String, DanmuGroup> animeIndex = new LinkedHashMap<>();
         for (DanmuSearchResult item : refined) {
             if (item == null) continue;
-            String key = item.getName() + "@" + item.getSource();
-            DanmuGroup group = index.get(key);
+            String anime = item.getAnime();
+            boolean byAnime = !TextUtils.isEmpty(anime);
+            String key = byAnime ? "anime|" + compact(anime) : "source|" + item.getSource();
+            DanmuGroup entry = animeIndex.get(key);
+            if (entry == null) {
+                String showName = byAnime ? anime : (TextUtils.isEmpty(title) ? item.getSource() : title);
+                entry = new DanmuGroup(showName, item.getSource());
+                animeIndex.put(key, entry);
+            }
+            entry.add(item);
+        }
+
+        // 第二轮：剧名去掉来源后缀（from xxx）后一致的并成一组，原剧名下挂为二级
+        Map<String, DanmuGroup> merged = new LinkedHashMap<>();
+        int solo = 0;
+        for (Map.Entry<String, DanmuGroup> e : animeIndex.entrySet()) {
+            DanmuGroup entry = e.getValue();
+            sortEpisodes(entry.getItems());
+            if (e.getKey().startsWith("source|")) {
+                // 自定义源按来源归的组，保持原样不参与剧名合并
+                merged.put("solo|" + (solo++), entry);
+                continue;
+            }
+            String base = stripSourceSuffix(entry.getShowName());
+            String key = "base|" + compact(base);
+            DanmuGroup group = merged.get(key);
             if (group == null) {
-                group = new DanmuGroup(item.getName(), item.getSource());
-                index.put(key, group);
+                group = new DanmuGroup(base, entry.getSource());
+                merged.put(key, group);
+            }
+            group.addChild(entry);
+        }
+
+        // 收尾：并入后只有一部的不多套一层，直接把整部剧的完整标题提到一级
+        for (DanmuGroup group : merged.values()) {
+            if (group.hasChildren() && group.getChildren().size() == 1) {
+                groups.add(group.getChildren().get(0));
+            } else {
                 groups.add(group);
             }
-            group.add(item);
-        }
-        for (DanmuGroup group : groups) {
-            Collections.sort(group.getItems(), new Comparator<DanmuSearchResult>() {
-                @Override
-                public int compare(DanmuSearchResult left, DanmuSearchResult right) {
-                    int a = left.getEpisode();
-                    int b = right.getEpisode();
-                    if (a == b) return 0;
-                    if (a <= 0) return 1;
-                    if (b <= 0) return -1;
-                    return a - b;
-                }
-            });
         }
         return groups;
     }
 
-    /** 展示用的剧集名：「天下 第三季」/「天下3(2023)」都收敛成「天下3」 */
-    public static String showName(String keyword) {
-        String base = keywordBase(keyword);
-        int season = keywordSeason(keyword);
-        if (!TextUtils.isEmpty(base) && season > 0) return base + season;
-        if (!TextUtils.isEmpty(base)) return base;
-        return compact(keyword);
+    /** 组内按能识别出的集数升序排；识别不出的（0）靠后，其余保持接口返回顺序 */
+    private static void sortEpisodes(List<DanmuSearchResult> items) {
+        Collections.sort(items, new Comparator<DanmuSearchResult>() {
+            @Override
+            public int compare(DanmuSearchResult left, DanmuSearchResult right) {
+                int a = left.getEpisode();
+                int b = right.getEpisode();
+                if (a == b) return 0;
+                if (a <= 0) return 1;
+                if (b <= 0) return -1;
+                return a - b;
+            }
+        });
     }
 
-    /**
-     * 第一层分组标题。
-     * <p>
-     * 已经分了二级层次，第一层不用再把「第几集」挤进去，所以这里只把集数片段抠掉，
-     * 来源、季数、清晰度、括注等原始信息**尽量留着**——这样同一部剧的不同版本 / 不同来源
-     * 在列表里能一眼区分，也不会把「天下第一」错并进「天下3」。
-     */
-    public static String groupTitle(String raw, String keyword) {
-        if (TextUtils.isEmpty(raw)) return showName(keyword);
-        if (isUrlLike(raw)) {
-            String name = showName(keyword);
-            return TextUtils.isEmpty(name) ? sourceOf(raw, false) : name;
-        }
-        String text = normalize(raw);
-        text = P_EP_CN.matcher(text).replaceAll(" ");
-        text = P_EP_SUFFIX.matcher(text).replaceAll(" ");
-        text = P_EP_EN.matcher(text).replaceAll(" ");
-        text = text.replaceAll("\\s+", " ").trim();
-        // 「天下 03」这种集数没写「第…集」的：把尾部孤立数字去掉。
-        // 前面必须有分隔符，所以「天下3」这种剧名结尾的数字不会被误删
-        Matcher tailNumber = P_TAIL_NUMBER.matcher(text);
-        if (tailNumber.find()) {
-            text = text.substring(0, tailNumber.start()).trim();
-        }
-        // 抠掉集数后可能留下「-」「·」之类挂在首尾的分隔符
-        text = text.replaceAll("^[\\s\\-_·|,，.。:：;；/]+", "");
-        text = text.replaceAll("[\\s\\-_·|,，.。:：;；/]+$", "").trim();
-        if (TextUtils.isEmpty(text)) text = showName(keyword);
-        if (text.length() > 24) text = text.substring(0, 24);
-        return text;
+    /** 去掉剧名尾巴上的来源标注：「少年神探狄仁杰(2014)…from iqiyi」→「少年神探狄仁杰(2014)…」 */
+    private static String stripSourceSuffix(String title) {
+        String text = normalize(title);
+        return text.replaceAll("(?i)\\s*from\\s+\\S+\\s*$", "").trim();
     }
 
     /** 来源标识：取接口域名，取不到时按内置/自定义兜底 */
@@ -283,12 +267,6 @@ public final class DanmuTitleUtil {
             builder.append(ch);
         }
         return builder.toString();
-    }
-
-    private static boolean isUrlLike(String text) {
-        if (TextUtils.isEmpty(text)) return false;
-        String trimmed = text.trim().toLowerCase();
-        return trimmed.startsWith("http://") || trimmed.startsWith("https://");
     }
 
     private static int toNumber(String value) {

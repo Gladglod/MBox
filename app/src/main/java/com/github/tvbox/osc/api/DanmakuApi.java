@@ -13,6 +13,7 @@ import com.github.tvbox.osc.util.DanmuHelper;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.github.catvod.crawler.js.Trans;
+import com.github.tvbox.osc.util.DanmuTitleUtil;
 import com.orhanobut.hawk.Hawk;
 
 import org.json.JSONArray;
@@ -276,7 +277,7 @@ public class DanmakuApi {
                 if (!isCurrentSearch(seq)) return;
                 try {
                     String body = response.body() == null ? "" : response.body().string();
-                    EpisodeMatch episodeMatch = findEpisodeFromSearchEpisodes(body, simpleEpisode);
+                    EpisodeMatch episodeMatch = findEpisodeFromSearchEpisodes(body, simpleName, simpleEpisode);
                     if (episodeMatch != null && !TextUtils.isEmpty(episodeMatch.id)) {
                         loadBuiltinComment(baseUrl, simpleName, simpleEpisode, episodeMatch, callback, seq);
                         return;
@@ -322,7 +323,7 @@ public class DanmakuApi {
                 if (!isCurrentSearch(seq)) return;
                 try {
                     String body = response.body() == null ? "" : response.body().string();
-                    String animeId = findAnimeId(body);
+                    String animeId = findAnimeId(body, name);
                     if (TextUtils.isEmpty(animeId)) {
                         if (notifyOnEmpty) notifyNotFound(callback, seq);
                         return;
@@ -480,26 +481,86 @@ public class DanmakuApi {
         return -1;
     }
 
-    private static String findAnimeId(String body) throws Exception {
+    private static String findAnimeId(String body, String name) throws Exception {
         JSONObject object = new JSONObject(body);
         JSONArray array = object.optJSONArray("animes");
         if (array == null) array = object.optJSONArray("anime");
         if (array == null) array = object.optJSONArray("data");
         if (array == null || array.length() <= 0) return "";
-        JSONObject item = array.optJSONObject(0);
+        // 多部同名/同系列剧：按剧名与季数挑出最贴近搜索词的那一部，挑不出再沿用第一个
+        JSONObject best = pickBestAnime(array, name);
+        JSONObject item = best != null ? best : array.optJSONObject(0);
         if (item == null) return "";
         String id = item.optString("animeId", "");
         if (TextUtils.isEmpty(id)) id = item.optString("id", "");
         return id;
     }
 
+    /**
+     * 剧名相似度打分：用于多部剧（同一系列的各部/各季、不同站点同名剧）时挑出最匹配的一部。
+     * 剧名对不上直接减分，季数（第2部/第3季/S02）对不上重减，避免把第一部当成搜索词的那一部。
+     */
+    private static int animeTitleScore(String title, String query) {
+        if (TextUtils.isEmpty(query)) return 0;
+        String t = DanmuTitleUtil.compact(title);
+        if (TextUtils.isEmpty(t)) return -100;
+        String q = DanmuTitleUtil.compact(query);
+        int score = 0;
+        if (t.equals(q)) {
+            score += 10;
+        } else {
+            String base = DanmuTitleUtil.compact(DanmuTitleUtil.keywordBase(query));
+            if (!TextUtils.isEmpty(base)) {
+                if (base.equals(t)) score += 6;
+                else if (t.startsWith(base)) score += 4;
+                else if (t.contains(base)) score += 3;
+                else score -= 3;
+            }
+        }
+        int qs = DanmuTitleUtil.keywordSeason(query);
+        int ts = DanmuTitleUtil.seasonOf(title);
+        if (qs > 0) {
+            if (ts == qs) score += 5;
+            else if (ts > 0) score -= 9;
+            else score -= 1;
+        } else if (ts > 0) {
+            score -= 1;
+        }
+        return score;
+    }
+
+    /** 在剧集列表里挑出得分明显更优的一部；都差不多（<=0 分）时返回 null 走旧逻辑 */
+    private static JSONObject pickBestAnime(JSONArray animes, String name) {
+        if (animes == null || animes.length() <= 0 || TextUtils.isEmpty(name)) return null;
+        JSONObject best = null;
+        int bestScore = 0;
+        for (int i = 0; i < animes.length(); i++) {
+            JSONObject anime = animes.optJSONObject(i);
+            if (anime == null) continue;
+            int score = animeTitleScore(firstString(anime, "animeTitle", "title", "name"), name);
+            if (score > bestScore) {
+                bestScore = score;
+                best = anime;
+            }
+        }
+        return best;
+    }
+
     private static EpisodeMatch findEpisode(String body, String episode) throws Exception {
-        return findEpisode(body, episode, true);
+        return findEpisode(new JSONObject(body), episode, true, null);
     }
 
     private static EpisodeMatch findEpisode(String body, String episode, boolean allowMovieFallback) throws Exception {
-        JSONObject object = new JSONObject(body);
-        EpisodeList episodeList = findEpisodeList(object);
+        return findEpisode(new JSONObject(body), episode, allowMovieFallback, null);
+    }
+
+    /** 带搜索词的版本：在同系列多部剧里先挑出最匹配的那一部，再在它底下找集 */
+    private static EpisodeMatch findEpisode(String body, String name, String episode, boolean allowMovieFallback) throws Exception {
+        return findEpisode(new JSONObject(body), episode, allowMovieFallback, name);
+    }
+
+    private static EpisodeMatch findEpisode(JSONObject object, String episode, boolean allowMovieFallback, String name) throws Exception {
+        EpisodeList episodeList = findEpisodeList(object, name);
         JSONArray episodes = episodeList == null ? null : episodeList.episodes;
         if (episodes == null || episodes.length() <= 0) return null;
         int targetNumber = extractNumber(episode);
@@ -512,6 +573,9 @@ public class DanmakuApi {
             if (TextUtils.isEmpty(id)) continue;
             String title = firstString(item, "episodeTitle", "title", "name");
             int number = parseEpisodeNumber(firstString(item, "episodeNumber", "number", "sort"));
+            // 标题里的集数用「第N集 / N话 / 尾部裸数字」的智能解析，不能把标题里所有数字连起来
+            // （「第1集 少年神探狄仁杰 01」拼起来会变成 101，第 1 集就永远匹配不上了）
+            int numberFromTitle = TextUtils.isEmpty(title) ? -1 : DanmuTitleUtil.episodeOf(title, "");
             EpisodeMatch match = new EpisodeMatch(id, title, number);
             if (first == null) first = match;
             if (firstMandarin == null && isMandarinTitle(title)) firstMandarin = match;
@@ -519,15 +583,19 @@ public class DanmakuApi {
                 return match;
             }
             if (targetNumber > 0 && number == targetNumber) return match;
-            if (targetNumber > 0 && extractNumber(title) == targetNumber) return match;
+            if (targetNumber > 0 && numberFromTitle == targetNumber) return match;
         }
         if (TextUtils.isEmpty(episode)) return first;
         if (allowMovieFallback && episodeList.isMovie) return firstMandarin == null ? first : firstMandarin;
         return null;
     }
 
-    private static EpisodeMatch findEpisodeFromSearchEpisodes(String body, String episode) throws Exception {
-        EpisodeMatch match = findEpisode(body, episode, false);
+    private static EpisodeMatch findEpisodeFromSearchEpisodes(String body, String name, String episode) throws Exception {
+        EpisodeMatch match = findEpisode(body, name, episode, false);
+        // 按剧名挑出的那一部里没找到所需集数时，退回旧逻辑兜底（取第一个有剧集的）
+        if (match == null && !TextUtils.isEmpty(name)) {
+            match = findEpisode(body, episode, false);
+        }
         if (match != null) return match;
         EpisodeMatch movieFallback = findMovieFallback(new JSONObject(body), episode);
         if (movieFallback != null) {
@@ -537,11 +605,12 @@ public class DanmakuApi {
     }
 
     private static JSONArray findEpisodes(JSONObject object) {
-        EpisodeList episodeList = findEpisodeList(object);
+        EpisodeList episodeList = findEpisodeList(object, null);
         return episodeList == null ? null : episodeList.episodes;
     }
 
-    private static EpisodeList findEpisodeList(JSONObject object) {
+    /** name 非空时，在同系列多部剧里先按剧名/季数挑最贴近搜索词的一部再取其剧集 */
+    private static EpisodeList findEpisodeList(JSONObject object, String name) {
         JSONArray array = object.optJSONArray("episodes");
         if (array != null) return new EpisodeList(array, isMovieType(object));
         JSONObject bangumi = object.optJSONObject("bangumi");
@@ -553,6 +622,12 @@ public class DanmakuApi {
         if (animes == null) animes = object.optJSONArray("anime");
         if (animes == null) animes = object.optJSONArray("data");
         if (animes != null) {
+            // 按剧名挑出最匹配的一部；挑不出更优的（得分都不高）保持旧行为取第一个有剧集的
+            JSONObject best = pickBestAnime(animes, name);
+            if (best != null) {
+                array = best.optJSONArray("episodes");
+                if (array != null && array.length() > 0) return new EpisodeList(array, isMovieType(best));
+            }
             for (int i = 0; i < animes.length(); i++) {
                 JSONObject item = animes.optJSONObject(i);
                 if (item == null) continue;
@@ -760,7 +835,7 @@ public class DanmakuApi {
         }
         String url = object.optString("url", "").trim();
         if (!TextUtils.isEmpty(url)) {
-            results.add(new DanmuSearchResult(firstString(object, "name", "title"), url, false));
+            results.add(new DanmuSearchResult(firstString(object, "name", "title"), url, false, 0, "", firstString(object, "animeTitle", "anime")));
         }
         return results;
     }
@@ -771,15 +846,18 @@ public class DanmakuApi {
             if (item == null) continue;
             String url = item.optString("url", "").trim();
             if (TextUtils.isEmpty(url)) continue;
-            String name = firstString(item, "name", "title", "episode", "vod_name");
-            results.add(new DanmuSearchResult(name, url, false));
+            String name = firstString(item, "name", "title", "episode", "episodeTitle", "vod_name");
+            // 自定义接口也可能返回 dandanplay 风格的 animeTitle，用于一级按剧分组
+            String anime = firstString(item, "animeTitle", "anime");
+            results.add(new DanmuSearchResult(name, url, false, 0, "", anime));
         }
     }
 
     private static List<DanmuSearchResult> parseBuiltinSearchList(String body, String baseUrl) throws Exception {
         List<DanmuSearchResult> results = new ArrayList<>();
         JSONObject object = new JSONObject(body);
-        appendBuiltinResults(results, baseUrl, object, "");
+        // 顶层直接挂 episodes 的（单片）也带上 animeTitle，供一级分组展示剧名
+        appendBuiltinResults(results, baseUrl, object, firstString(object, "animeTitle", "title", "name"));
         JSONObject bangumi = object.optJSONObject("bangumi");
         if (bangumi != null) appendBuiltinResults(results, baseUrl, bangumi, firstString(bangumi, "animeTitle", "title", "name"));
         appendBuiltinAnimeResults(results, baseUrl, object.optJSONArray("animes"));
@@ -809,11 +887,12 @@ public class DanmakuApi {
             if (episode == null) continue;
             String id = firstString(episode, "episodeId", "id");
             if (TextUtils.isEmpty(id)) continue;
+            // 第一层展示 animeTitle（分组用），第二层展示 episodeTitle（本条的 name），
+            // 不再把两个标题拼在一起显示
             String episodeName = firstString(episode, "episodeTitle", "title", "name");
-            String name = TextUtils.isEmpty(animeName) ? episodeName : animeName + " " + episodeName;
-            if (TextUtils.isEmpty(name)) name = id;
+            String name = TextUtils.isEmpty(episodeName) ? id : episodeName;
             String url = baseUrl + "/api/v2/comment/" + id + "?format=json";
-            results.add(new DanmuSearchResult(name, url, true));
+            results.add(new DanmuSearchResult(name, url, true, 0, "", animeName));
         }
     }
 
