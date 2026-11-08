@@ -147,6 +147,15 @@ public abstract class AbstractPlayer {
     public abstract void setSurface(Surface surface);
 
     /**
+     * 获取当前绑定的渲染 Surface（内核未实现则返回 null）。
+     * 用于诊断打印与身份校验：小窗/全屏切换前后该引用的 hashCode 必须一致，
+     * 以证明 Surface 没有随窗口路径销毁重建。
+     */
+    public Surface getSurface() {
+        return null;
+    }
+
+    /**
      * 设置渲染视频的View,主要用于SurfaceView
      */
     public abstract void setDisplay(SurfaceHolder holder);

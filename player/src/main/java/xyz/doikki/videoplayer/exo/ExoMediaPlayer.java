@@ -54,6 +54,8 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
     protected String currentPlayPath;
     protected Map<String, String> currentHeaders;
     private boolean mRetriedAsHls;
+    /** 最近一次绑定给播放内核的 Surface，供 getSurface() 身份校验（诊断用，不参与渲染决策） */
+    private volatile Surface mLastBoundSurface;
 
     public ExoMediaPlayer(Context context) {
         mAppContext = context.getApplicationContext();
@@ -221,9 +223,15 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
     @Override
     public void setSurface(Surface surface) {
+        mLastBoundSurface = surface;
         if (mInternalPlayer != null) {
             mInternalPlayer.setVideoSurface(surface);
         }
+    }
+
+    @Override
+    public Surface getSurface() {
+        return mLastBoundSurface;
     }
 
     @Override

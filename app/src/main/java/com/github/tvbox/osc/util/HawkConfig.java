@@ -117,6 +117,26 @@ public class HawkConfig {
     /** 竖屏上下滑动切换上一集 / 下一集 */
     public static final String GESTURE_PORTRAIT_SWIPE = "gesture_portrait_swipe";
 
+    /* ===== 画中画（PiP） ===== */
+    /**
+     * 画中画模式：0 = 系统 PiP（默认，稳定省电）/ 1 = 自定义 Overlay 小窗（自由尺寸，
+     * 需悬浮窗权限，功耗略高）/ 2 = 关闭画中画。
+     * 系统 PiP 在 Android 12+ 自带双指缩放与双击切换大小；自定义 Overlay 提供任意尺寸。
+     */
+    public static final String PIP_MODE = "pip_mode";
+    public static final int PIP_MODE_SYSTEM = 0;
+    public static final int PIP_MODE_OVERLAY = 1;
+    public static final int PIP_MODE_OFF = 2;
+    /** 自定义小窗比例锁：FREE 自由（默认）/ 16:9 / VIDEO 跟随当前视频原始比例 */
+    public static final String PIP_RATIO_LOCK = "pip_ratio_lock";
+    public static final int PIP_RATIO_FREE = 0;
+    public static final int PIP_RATIO_16_9 = 1;
+    public static final int PIP_RATIO_VIDEO = 2;
+    /** 自定义小窗上次尺寸（"w|h"），下次进窗恢复（读取后统一 clamp 到当前屏幕可用区） */
+    public static final String PIP_WINDOW_SIZE = "pip_window_size";
+    /** 自定义小窗上次位置（"x|y"），下次进窗恢复 */
+    public static final String PIP_WINDOW_POS = "pip_window_pos";
+
     /* ===== 版本更新（GitHub Releases） ===== */
     /** 启动时自动检查更新，默认开启（每天最多一次） */
     public static final String UPDATE_AUTO_CHECK = "update_auto_check";

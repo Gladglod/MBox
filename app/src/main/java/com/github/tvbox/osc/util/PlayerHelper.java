@@ -253,6 +253,28 @@ public class PlayerHelper {
         }
     }
 
+    public static String getPipModeName(int pipMode) {
+        switch (pipMode) {
+            case HawkConfig.PIP_MODE_OVERLAY:
+                return "自定义画中画";
+            case HawkConfig.PIP_MODE_OFF:
+                return "关闭";
+            default:
+                return "系统画中画";
+        }
+    }
+
+    public static String getPipRatioLockName(int ratioLock) {
+        switch (ratioLock) {
+            case HawkConfig.PIP_RATIO_16_9:
+                return "16:9";
+            case HawkConfig.PIP_RATIO_VIDEO:
+                return "视频比例";
+            default:
+                return "自由";
+        }
+    }
+
     public static String getScaleName(int screenScaleType) {
         String scaleText = "默认";
         switch (screenScaleType) {

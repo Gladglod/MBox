@@ -562,6 +562,40 @@ public class MineSettingActivity extends BaseActivity {
                         PlayerHelper.init();
                     }
                 });
+        addSelectRow("画中画模式", "系统：稳定省电；自定义：可自由调整尺寸（需悬浮窗权限）", "请选择画中画模式",
+                new String[]{
+                        PlayerHelper.getPipModeName(HawkConfig.PIP_MODE_SYSTEM),
+                        PlayerHelper.getPipModeName(HawkConfig.PIP_MODE_OVERLAY),
+                        PlayerHelper.getPipModeName(HawkConfig.PIP_MODE_OFF)},
+                new IntProvider() {
+                    @Override
+                    public int get() {
+                        return Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM);
+                    }
+                },
+                new IntAction() {
+                    @Override
+                    public void run(int value) {
+                        Hawk.put(HawkConfig.PIP_MODE, value);
+                    }
+                });
+        addSelectRow("小窗比例锁", "锁住自定义小窗的宽高比，避免画面拉伸", "请选择小窗比例锁定",
+                new String[]{
+                        PlayerHelper.getPipRatioLockName(HawkConfig.PIP_RATIO_FREE),
+                        PlayerHelper.getPipRatioLockName(HawkConfig.PIP_RATIO_16_9),
+                        PlayerHelper.getPipRatioLockName(HawkConfig.PIP_RATIO_VIDEO)},
+                new IntProvider() {
+                    @Override
+                    public int get() {
+                        return Hawk.get(HawkConfig.PIP_RATIO_LOCK, HawkConfig.PIP_RATIO_FREE);
+                    }
+                },
+                new IntAction() {
+                    @Override
+                    public void run(int value) {
+                        Hawk.put(HawkConfig.PIP_RATIO_LOCK, value);
+                    }
+                });
         addSelectRow("画面缩放", "默认画面显示比例", "请选择默认画面缩放",
                 scaleNames(),
                 new IntProvider() {

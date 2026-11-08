@@ -28,6 +28,8 @@ public class IjkPlayer extends AbstractPlayer implements IMediaPlayer.OnErrorLis
     protected IjkMediaPlayer mMediaPlayer;
     private int mBufferedPercent;
     private final Context mAppContext;
+    /** 最近一次绑定给ijk内核的 Surface，供 getSurface() 身份校验（诊断用，不参与渲染决策） */
+    private volatile Surface mLastBoundSurface;
 
     public IjkPlayer(Context context) {
         mAppContext = context;
@@ -181,7 +183,13 @@ public class IjkPlayer extends AbstractPlayer implements IMediaPlayer.OnErrorLis
 
     @Override
     public void setSurface(Surface surface) {
+        mLastBoundSurface = surface;
         mMediaPlayer.setSurface(surface);
+    }
+
+    @Override
+    public Surface getSurface() {
+        return mLastBoundSurface;
     }
 
     @Override

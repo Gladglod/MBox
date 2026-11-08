@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -11,8 +12,11 @@ import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.text.TextUtils;
+import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -29,7 +33,9 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -55,9 +61,11 @@ import com.github.tvbox.osc.cache.CacheManager;
 import com.github.tvbox.osc.dlna.CastVideo;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.ExoPlayer;
+import com.github.tvbox.osc.player.FloatPlayWindow;
 import com.github.tvbox.osc.player.IjkMediaPlayer;
 import com.github.tvbox.osc.player.MyVideoView;
 import com.github.tvbox.osc.player.MusicPlaybackService;
+import com.github.tvbox.osc.player.PipHelper;
 import com.github.tvbox.osc.player.TrackInfo;
 import com.github.tvbox.osc.player.TrackInfoBean;
 import com.github.tvbox.osc.player.controller.VodController;
@@ -135,7 +143,7 @@ import xyz.doikki.videoplayer.player.AbstractPlayer;
 import xyz.doikki.videoplayer.player.ProgressManager;
 import xyz.doikki.videoplayer.player.VideoView;
 
-public class PlayFragment extends BaseLazyFragment {
+public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Owner {
     private static final int MSG_PARSE_TIMEOUT = 100;
     private static final int MSG_RESOLVE_PLAY_URL_TIMEOUT = 101;
     private static final int MSG_SWITCH_LINE_PLAY_TIMEOUT = 102;
@@ -156,6 +164,20 @@ public class PlayFragment extends BaseLazyFragment {
     private boolean reusePlayerOnSwitch;
     private boolean releasePlayerOnSwitch;
     private boolean previewMode;
+    /** 系统 PiP 进行中（DetailActivity.onPictureInPictureModeChanged 转发） */
+    private boolean pipModeActive;
+    /* —— 系统 PiP 内的轻量控件层：轻点画面呼出 播放/暂停，再次轻点或超时自动消失 —— */
+    private static final long PIP_CONTROLS_AUTO_HIDE_MS = 3500L;
+    private FrameLayout pipOverlay;
+    private LinearLayout pipControlRow;
+    private ImageView pipPlayBtn;
+    private final Handler pipOverlayHandler = new Handler(Looper.getMainLooper());
+    private final Runnable pipOverlayAutoHide = new Runnable() {
+        @Override
+        public void run() {
+            hidePipControls();
+        }
+    };
     private String playLyric;
     private String lyricCacheKey;
     private String playArtwork;
@@ -371,6 +393,13 @@ public class PlayFragment extends BaseLazyFragment {
                 }
                 if (!switchingPlayback) updateMusicSession();
                 startDanmuIfReady();
+                // PiP 中视频源切换 / 宽高变化 → 同步系统 PiP 画面比例（六.4 宽高正确上报）
+                if (pipModeActive && isStartedPlayState(playState)) {
+                    PipHelper.updateParams(getActivity(), currentVideoRatio());
+                }
+                if (pipControlRow != null && pipControlRow.getVisibility() == View.VISIBLE) {
+                    updatePipOverlayIcon();
+                }
             }
         });
         mController.setListener(new VodController.VodControlListener() {
@@ -527,6 +556,11 @@ public class PlayFragment extends BaseLazyFragment {
 
             @Override
             public void setAllowSwitchPlayer(boolean isAllow){allowSwitchPlayer=isAllow;}
+
+            @Override
+            public void enterFloatPlayback() {
+                PlayFragment.this.enterFloatPlayback();
+            }
         });
         mVideoView.setVideoController(mController);
     }
@@ -1580,7 +1614,20 @@ public class PlayFragment extends BaseLazyFragment {
     @Override
     public void onPause() {
         super.onPause();
-        if (mVideoView != null && !exitingPreview && !hasAudioOnlyPlayback()) {
+        // 生命周期修正（红线 3）：此处刻意不暂停播放。旧实现把 pause 放在这里，
+        // 导致系统 PiP（Activity 可见但 Paused）一进小窗就被暂停。
+        // PiP / 悬浮小窗 / 退后台期间都不动播放状态，真正的暂停统一收敛在 onStop()。
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        // 生命周期修正（红线 3）：pause 由 onPause 迁移至此 —— Activity 真正不可见
+        //（App 退后台 / PiP 被系统划掉）才暂停。幂等：VideoView.pause() 只对正在播放的
+        // 实例生效，onStop 被多次触发也不会异常；恢复在 onResume() 的 resume() 完成。
+        if (floatMode || pipModeActive || PipHelper.isInPip(getActivity())) return;
+        if (hasAudioOnlyPlayback() || exitingPreview) return;
+        if (mVideoView != null) {
             mVideoView.pause();
         }
     }
@@ -1597,7 +1644,7 @@ public class PlayFragment extends BaseLazyFragment {
     @Override
     public void onHiddenChanged(boolean hidden) {
         if (hidden) {
-            if (mVideoView != null) {
+            if (mVideoView != null && !floatMode && !pipModeActive) {
                 mVideoView.pause();
             }
         } else {
@@ -1626,9 +1673,16 @@ public class PlayFragment extends BaseLazyFragment {
             danmuLoadController = null;
         }
         if (mVideoView != null) {
-            mVideoView.release();
+            if (floatMode && FloatPlayWindow.get().isOwner(this)) {
+                // 小窗仍在悬浮：播放移交窗口以孤儿模式继续，本 fragment 不再过问
+                // （此时才退出页面也不会中断小窗播放；收回新页面/释放时由窗口侧负责）
+                FloatPlayWindow.get().markOwnerGone(this);
+            } else {
+                mVideoView.release();
+            }
             mVideoView = null;
         }
+        teardownPipOverlay();
         stopLoadWebView(true);
         stopParse();
         mController.stopOther();
@@ -2286,6 +2340,368 @@ public class PlayFragment extends BaseLazyFragment {
         if (mController != null) {
             mController.setPreviewMode(previewMode);
             mController.mLyricView.setTextSize(previewMode ? 16 : 24);
+        }
+    }
+
+    /* ==================== 画中画 / 小窗（悬浮窗） ==================== */
+
+    /** 本 fragment 的视频当前是否处于悬浮小窗中 */
+    private boolean floatMode;
+    /** 进入小窗时在原页面隐藏的浮层（弹幕 / 加载 / 错误图标），收回时恢复 */
+    private final java.util.ArrayList<View> floatHiddenViews = new java.util.ArrayList<>();
+    private final java.util.ArrayList<Integer> floatHiddenVis = new java.util.ArrayList<>();
+
+    public boolean isInFloatMode() {
+        return floatMode;
+    }
+
+    /** 小窗播放入口：播放器锁定键对侧的 tv_pip 按钮；读取 PIP_MODE 三态分发 */
+    public void enterFloatPlayback() {
+        if (mVideoView == null || mController == null || !isAdded()) return;
+        int pipConfig = Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM);
+        FloatPlayWindow floatWindow = FloatPlayWindow.get();
+        try {
+            if (floatWindow.isOwner(this)) {
+                // 已在窗口：再点一次入口按钮 = 收回全屏
+                floatWindow.recall(false);
+                return;
+            }
+            // 画中画已关闭：不进入任何小窗
+            if (pipConfig == HawkConfig.PIP_MODE_OFF) {
+                Toast.makeText(requireContext(), "画中画已在设置中关闭", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // 应用内唯一小窗：现存的旧悬浮窗内容被顶替（会先停掉并释放旧播放）
+            if (floatWindow.isShowing()) {
+                floatWindow.recall(true);
+            }
+            // 系统 PiP（Mode 0，默认）：Activity 整窗进入 PiP，mVideoView 原地不动，
+            // Surface / 解码零迁移 —— 这是它稳定省电的原因
+            if (pipConfig == HawkConfig.PIP_MODE_SYSTEM) {
+                if (!PipHelper.isSupported(requireContext())) {
+                    Toast.makeText(requireContext(),
+                            "系统画中画需要 Android 8.0+，可在设置中改用自定义画中画",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+                PipHelper.logSurfaceIdentity("pip-enter", mVideoView);
+                if (!PipHelper.enter(requireActivity(), currentVideoRatio())) {
+                    Toast.makeText(requireContext(), "系统画中画启动失败", Toast.LENGTH_SHORT).show();
+                }
+                return;
+            }
+            // 自定义 Overlay（Mode 1）：走悬浮窗 reparent 路径（同一 mVideoView，不重建）
+            // 内核兼容软防线（Phase C）：SurfaceView 跨窗口 reparent + 矩阵缩放的兼容性
+            // 弱于 TextureView，软提示不改配置（IJK/EXO 均走同一 VideoView，无需特判内核类型）
+            try {
+                JSONObject cfgForRender = mVodPlayerCfg;
+                int renderType = cfgForRender == null
+                        ? Hawk.get(HawkConfig.PLAY_RENDER, 0) : cfgForRender.optInt("pr", Hawk.get(HawkConfig.PLAY_RENDER, 0));
+                if (renderType == 1) {
+                    Toast.makeText(requireContext(),
+                            "当前为 SurfaceView 渲染，小窗缩放建议改用 TextureView（我的→播放设定→渲染方式）",
+                            Toast.LENGTH_LONG).show();
+                }
+            } catch (Throwable ignore) {
+            }
+            if (!FloatPlayWindow.hasOverlayPermission(requireContext())) {
+                Toast.makeText(requireContext(),
+                        "小窗播放需要「显示在其他应用上层」权限，请在打开的设置页中开启",
+                        Toast.LENGTH_LONG).show();
+                FloatPlayWindow.openOverlayPermission(requireActivity());
+                return;
+            }
+            floatMode = true;
+            mController.setFloatMode(true);
+            hideFloatOverlayViews();
+            PipHelper.logSurfaceIdentity("overlay-enter", mVideoView);
+            boolean ok = FloatPlayWindow.get().enter(requireContext(), mVideoView, mController, this, currentVideoRatio());
+            if (!ok) {
+                recoverFloatUi();
+                return;
+            }
+            // 进入小窗的一般意图是去用别的应用：应用整体退到后台（进程与页面保留，
+            // 悬浮窗继续在最上层播放；点小窗里的「回到全屏」再恢复）
+            try {
+                Activity act = getActivity();
+                if (act != null) act.moveTaskToBack(true);
+            } catch (Throwable ignore) {
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+            recoverFloatUi();
+        }
+    }
+
+    /** PiP 模式切换（DetailActivity.onPictureInPictureModeChanged 转发） */
+    public void setPipModeChanged(boolean inPip) {
+        boolean changed = pipModeActive != inPip;
+        pipModeActive = inPip;
+        try {
+            if (inPip) {
+                // 到这一步系统已经整窗接管了画面：控制器抽稀 + 隐藏浮层（弹幕/加载/错误）
+                if (mController != null && !floatMode) mController.setFloatMode(true);
+                hideFloatOverlayViews();
+                setupPipOverlay();
+            } else {
+                teardownPipOverlay();
+                restoreFloatOverlayViews();
+                if (mController != null && !floatMode) mController.setFloatMode(false);
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        if (changed) {
+            PipHelper.logSurfaceIdentity(inPip ? "pip-entered" : "pip-exited", mVideoView);
+            if (!inPip) updateMusicSession();
+        }
+    }
+
+    /* ==================== 系统 PiP 控件层 ==================== */
+
+    /** PiP 内轻点画面呼出 播放/暂停 胶囊；再次轻点或 3.5 秒后自动消失 */
+    private void setupPipOverlay() {
+        if (floatMode || mVideoView == null || pipOverlay != null || !isAdded()) return;
+        try {
+            final GestureDetector detector = new GestureDetector(requireContext(),
+                    new GestureDetector.SimpleOnGestureListener() {
+                        @Override
+                        public boolean onSingleTapConfirmed(MotionEvent e) {
+                            togglePipControls();
+                            return true;
+                        }
+                    });
+            // 轻点命中层：盖在视频（此时控制器已抽稀隐藏）之上，负责呼出 / 隐藏控件
+            FrameLayout catcher = new FrameLayout(requireContext());
+            catcher.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            catcher.setClickable(true);
+            catcher.setLongClickable(false);
+            catcher.setOnTouchListener(new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    detector.onTouchEvent(event);
+                    return true;
+                }
+            });
+
+            // 控件行：回全屏 + 播放/暂停（与悬浮小窗一致的最小集合）
+            LinearLayout row = new LinearLayout(requireContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setVisibility(View.GONE);
+
+            ImageView expand = new ImageView(requireContext());
+            LinearLayout.LayoutParams expandLp = new LinearLayout.LayoutParams(pipDp(34), pipDp(34));
+            expandLp.setMarginEnd(pipDp(8));
+            expand.setLayoutParams(expandLp);
+            expand.setBackgroundResource(R.drawable.bg_player_circle);
+            expand.setPadding(pipDp(8), pipDp(8), pipDp(8), pipDp(8));
+            expand.setImageResource(R.drawable.ic_player_fullscreen);
+            expand.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    try {
+                        PipHelper.expand(requireActivity());
+                    } catch (Throwable ignore) {
+                    }
+                }
+            });
+            row.addView(expand);
+
+            ImageView play = new ImageView(requireContext());
+            LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams(pipDp(34), pipDp(34));
+            play.setLayoutParams(playLp);
+            play.setBackgroundResource(R.drawable.bg_player_circle);
+            play.setPadding(pipDp(8), pipDp(8), pipDp(8), pipDp(8));
+            play.setImageResource(R.drawable.ic_player_play);
+            play.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    togglePipPlayback();
+                }
+            });
+            row.addView(play);
+            pipPlayBtn = play;
+
+            FrameLayout.LayoutParams rowLp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowLp.gravity = Gravity.BOTTOM | Gravity.START;
+            int margin = pipDp(10);
+            rowLp.setMargins(margin, 0, margin, margin);
+            catcher.addView(row, rowLp);
+            pipControlRow = row;
+
+            // 插在播放器视图最上层（addDisplay / artwork 都在 index 0 侧，不被顶掉）
+            mVideoView.addView(catcher, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            pipOverlay = catcher;
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    private void teardownPipOverlay() {
+        pipOverlayHandler.removeCallbacks(pipOverlayAutoHide);
+        if (pipOverlay != null && mVideoView != null) {
+            try {
+                mVideoView.removeView(pipOverlay);
+            } catch (Throwable ignore) {
+            }
+        }
+        pipOverlay = null;
+        pipControlRow = null;
+        pipPlayBtn = null;
+    }
+
+    /** 轻点逻辑：控件隐藏 → 呼出并启动定时；控件已显示 → 立即隐藏 */
+    private void togglePipControls() {
+        if (pipControlRow == null) return;
+        boolean show = pipControlRow.getVisibility() != View.VISIBLE;
+        pipOverlayHandler.removeCallbacks(pipOverlayAutoHide);
+        if (show) {
+            updatePipOverlayIcon();
+            pipControlRow.setVisibility(View.VISIBLE);
+            pipOverlayHandler.postDelayed(pipOverlayAutoHide, PIP_CONTROLS_AUTO_HIDE_MS);
+        } else {
+            pipControlRow.setVisibility(View.GONE);
+        }
+    }
+
+    private void hidePipControls() {
+        pipOverlayHandler.removeCallbacks(pipOverlayAutoHide);
+        if (pipControlRow != null) {
+            pipControlRow.setVisibility(View.GONE);
+        }
+    }
+
+    private void togglePipPlayback() {
+        if (mVideoView == null) return;
+        try {
+            int state = mVideoView.getCurrentPlayState();
+            if (state == VideoView.STATE_PAUSED) {
+                mVideoView.resume();
+            } else if (state == VideoView.STATE_PLAYING) {
+                mVideoView.pause();
+            } else {
+                mVideoView.start();
+            }
+        } catch (Throwable ignore) {
+        }
+        updatePipOverlayIcon();
+        // 操作过控件后重新计时，与「等一段时间自己消失」一致
+        pipOverlayHandler.removeCallbacks(pipOverlayAutoHide);
+        pipOverlayHandler.postDelayed(pipOverlayAutoHide, PIP_CONTROLS_AUTO_HIDE_MS);
+    }
+
+    private void updatePipOverlayIcon() {
+        if (pipPlayBtn == null || mVideoView == null) return;
+        try {
+            boolean playing = mVideoView.getCurrentPlayState() == VideoView.STATE_PLAYING;
+            pipPlayBtn.setImageResource(playing ? R.drawable.ic_player_pause : R.drawable.ic_player_play);
+        } catch (Throwable ignore) {
+        }
+    }
+
+    private int pipDp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    public boolean isInPipMode() {
+        return pipModeActive;
+    }
+
+    /** 当前视频原始宽高比（w/h），PiP / 小窗初始形状与比例锁共用 */
+    private float currentVideoRatio() {
+        float ratio = 16f / 9f;
+        try {
+            int[] size = mVideoView == null ? null : mVideoView.getVideoSize();
+            if (size != null && size[0] > 0 && size[1] > 0) {
+                ratio = size[0] * 1f / size[1];
+            }
+        } catch (Throwable ignore) {
+        }
+        return ratio;
+    }
+
+    /** 进入小窗失败 / 异常时把本页 UI 还原到正常播放状态 */
+    private void recoverFloatUi() {
+        floatMode = false;
+        restoreFloatOverlayViews();
+        if (mController != null) mController.setFloatMode(false);
+    }
+
+    /** 小窗期间留在原页面的浮层（弹幕 / 加载态 / 错误图标）整个隐藏，避免空页面上鬼影 */
+    private void hideFloatOverlayViews() {
+        try {
+            View root = getView();
+            if (root == null) return;
+            int[] ids = {R.id.danmaku, R.id.play_loading, R.id.play_load_error};
+            for (int id : ids) {
+                View v = root.findViewById(id);
+                if (v == null || v.getVisibility() == GONE_STATE) continue;
+                floatHiddenViews.add(v);
+                floatHiddenVis.add(v.getVisibility());
+                v.setVisibility(GONE_STATE);
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    private void restoreFloatOverlayViews() {
+        try {
+            for (int i = 0; i < floatHiddenViews.size(); i++) {
+                floatHiddenViews.get(i).setVisibility(floatHiddenVis.get(i));
+            }
+        } catch (Throwable ignore) {
+        }
+        floatHiddenViews.clear();
+        floatHiddenVis.clear();
+    }
+
+    private static final int GONE_STATE = View.GONE;
+    private static final int VISIBLE_STATE = View.VISIBLE;
+
+    @Override
+    public void onFloatRecall(boolean releasePlayer) {
+        // FloatPlayWindow 已先把播放器视图挂回原页面，这里恢复本页 UI
+        PipHelper.logSurfaceIdentity("overlay-recall", mVideoView);
+        recoverFloatUi();
+        if (releasePlayer) {
+            // 旧播放被新的小窗顶替：停止并释放
+            if (mVideoView != null) {
+                mVideoView.release();
+            }
+            return;
+        }
+        // 正常收回：视频继续播（小窗期间从未暂停）
+        if (mVideoView != null && mVideoView.getCurrentPlayState() == VideoView.STATE_PAUSED) {
+            mVideoView.resume();
+        }
+        mController.showControls();
+        // 进入小窗时把整个应用退到了后台，这里把本页面带回前台
+        bringActivityToFront();
+    }
+
+    /** 把进入小窗时退到后台的详情页整个任务拉回前台 */
+    private void bringActivityToFront() {
+        Activity act = null;
+        try {
+            act = getActivity();
+            if (act == null || act.isFinishing()) return;
+            android.app.ActivityManager am = (android.app.ActivityManager)
+                    act.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null || act.getTaskId() == 0) throw new IllegalStateException("no task");
+            am.moveTaskToFront(act.getTaskId(), android.app.ActivityManager.MOVE_TASK_NO_USER_ACTION);
+        } catch (Throwable th) {
+            // 兜底：走启动器意图回到应用首页
+            try {
+                if (act != null) {
+                    Intent launch = act.getPackageManager().getLaunchIntentForPackage(act.getPackageName());
+                    if (launch != null) act.startActivity(launch);
+                }
+            } catch (Throwable ignore) {
+            }
         }
     }
 

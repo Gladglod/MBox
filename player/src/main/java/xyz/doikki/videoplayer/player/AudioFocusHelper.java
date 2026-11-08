@@ -109,6 +109,13 @@ final class AudioFocusHelper implements AudioManager.OnAudioFocusChangeListener 
         }
 
         mStartRequested = false;
-        mAudioManager.abandonAudioFocus(this);
+        try {
+            mAudioManager.abandonAudioFocus(this);
+        } finally {
+            // 修正：abandon 后必须清掉本地焦点记录，否则下次 requestFocus 会因
+            // mCurrentFocus == AUDIOFOCUS_GAIN 直接短路返回，导致重新获得焦点失败
+            //（反复 pause -> resume 的小窗场景会踩到）。
+            mCurrentFocus = 0; // AUDIOFOCUS_NOFOCUS
+        }
     }
 }

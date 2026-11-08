@@ -217,6 +217,10 @@ public class VodController extends BaseController {
                         if (mLockView != null) {
                             mLockView.setVisibility(INVISIBLE);
                         }
+                        if (mPipBtn != null && mPipBtn.getVisibility() != GONE) {
+                            // 小窗键与锁键成对：控制条一起隐藏
+                            mPipBtn.setVisibility(INVISIBLE);
+                        }
                         if (listener != null) listener.onControlsVisibilityChanged(false);
                         break;
                     }
@@ -559,6 +563,8 @@ public class VodController extends BaseController {
     TextView mProgressText;
     ImageView mProgressIcon;
     ImageView mLockView;
+    /** 小窗播放（画中画）入口，位于锁定键对侧 */
+    ImageView mPipBtn;
     LinearLayout mBottomRoot;
     LinearLayout mPlayBtnGroup;
     LinearLayout mTopRoot1;
@@ -670,13 +676,54 @@ public class VodController extends BaseController {
             if (mLockView != null) {
                 mLockView.setVisibility(INVISIBLE);
             }
+            if (mPipBtn != null) {
+                mPipBtn.setVisibility(INVISIBLE);
+            }
             return;
         }
         mLockView.setVisibility(ScreenUtils.isTv(getContext()) ? INVISIBLE : VISIBLE);
+        if (mPipBtn != null && mPipBtn.getVisibility() != GONE) {
+            // 小窗键跟随锁定键的节奏；仅系统不支持 PiP 的设备整组隐藏
+            mPipBtn.setVisibility(ScreenUtils.isTv(getContext()) ? INVISIBLE : VISIBLE);
+        }
         mHandler.removeCallbacks(lockRunnable);
         if (isLock) {
             mHandler.postDelayed(lockRunnable, 3000);
         }
+    }
+
+    /* ==================== 小窗播放（悬浮窗） ==================== */
+
+    /**
+     * 进入 / 退出悬浮小窗时收敛控制器：小窗里自己提供 播放/暂停 和 倍速 两个按钮，
+     * 控制层整组隐藏（GONE 的视图也不参与触摸命中，手势自然全部失效），
+     * 收回窗口后再恢复控制条。
+     */
+    public void setFloatMode(boolean inFloat) {
+        if (inFloat) {
+            dismissMenuFan(); // 内部已判空，未展开时是无害空操作
+            if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
+            setVisibility(GONE);
+            mHandler.removeCallbacks(lockRunnable);
+        } else {
+            setVisibility(VISIBLE);
+            mHandler.sendEmptyMessage(1002);
+        }
+    }
+
+    /** 小窗里的倍速调节入口（悬浮窗按钮循环档位时调用）：走统一 applySpeed，写回配置 */
+    public void applyFloatSpeed(float value) {
+        try {
+            applySpeed(value);
+        } catch (Throwable th) {
+            th.printStackTrace();
+            if (mControlWrapper != null) mControlWrapper.setSpeed(value);
+        }
+    }
+
+    /** 当前播放倍速（小窗按钮初始化显示用） */
+    public float getCurrentSpeed() {
+        return currentPlaySpeed();
     }
 
     /* ==================== 锁定态触摸 ==================== */
@@ -750,6 +797,9 @@ public class VodController extends BaseController {
         mHandler.removeCallbacks(lockRunnable);
         if (mLockView != null) {
             mLockView.setVisibility(INVISIBLE);
+        }
+        if (mPipBtn != null && mPipBtn.getVisibility() != GONE) {
+            mPipBtn.setVisibility(INVISIBLE);
         }
         updateFullScreenIcon(!previewMode);
         applyControlBarMode();
@@ -869,6 +919,21 @@ public class VodController extends BaseController {
                 showLockView();
             }
         });
+        mPipBtn = findViewById(R.id.tv_pip);
+        if (mPipBtn != null) {
+            if (ScreenUtils.isTv(getContext())) {
+                // 电视 / 遥控场景不给悬浮小窗入口（小窗是触摸优先的交互）
+                mPipBtn.setVisibility(GONE);
+            } else {
+                mPipBtn.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        FastClickCheckUtil.check(v);
+                        if (listener != null) listener.enterFloatPlayback();
+                    }
+                });
+            }
+        }
         View rootView = findViewById(R.id.rootView);
         rootView.setOnTouchListener(new OnTouchListener() {
             @Override
@@ -3291,6 +3356,10 @@ public class VodController extends BaseController {
         void clickCast();
 
         void setAllowSwitchPlayer(boolean isAllow);
+
+        /** 小窗播放入口（锁定键对侧的按钮）；默认空实现，详情页播放 fragment 处理 */
+        default void enterFloatPlayback() {
+        }
     }
 
     public void setListener(VodControlListener listener) {
@@ -3864,6 +3933,9 @@ public class VodController extends BaseController {
         @Override
         public void run() {
             mLockView.setVisibility(INVISIBLE);
+            if (mPipBtn != null && mPipBtn.getVisibility() != GONE) {
+                mPipBtn.setVisibility(INVISIBLE);
+            }
         }
     }
     

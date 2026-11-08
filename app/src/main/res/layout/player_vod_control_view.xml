@@ -1507,6 +1507,22 @@
         android:visibility="invisible"
         tools:ignore="ContentDescription" />
 
+    <!-- 小窗播放：锁定键的对侧（右缘居中），系统画中画 -->
+    <ImageView
+        android:id="@+id/tv_pip"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="end|center_vertical"
+        android:layout_marginEnd="12dp"
+        android:layout_marginRight="12dp"
+        android:background="@drawable/bg_player_circle"
+        android:clickable="true"
+        android:focusable="false"
+        android:padding="9dp"
+        android:src="@drawable/ic_player_pip"
+        android:visibility="invisible"
+        tools:ignore="ContentDescription" />
+
     <FrameLayout
         android:id="@+id/play_speed_3_container"
         android:layout_width="wrap_content"

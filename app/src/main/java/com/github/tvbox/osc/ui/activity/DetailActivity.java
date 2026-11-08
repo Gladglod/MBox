@@ -2263,6 +2263,19 @@ public class DetailActivity extends BaseActivity {
         playFragment.setAutoSwitchLineEnabled(!fullWindows);
     }
 
+    /** 系统 PiP 模式切换回调（Android 8.0+ 才会被调用）：转发给播放 Fragment 收敛 / 恢复播放器 UI */
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        try {
+            super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        } catch (Throwable ignored) {
+        }
+        if (playFragment != null) {
+            playFragment.setPipModeChanged(isInPictureInPictureMode);
+        }
+        LOG.i("pip mode changed -> " + isInPictureInPictureMode);
+    }
+
     void releasePlayFragment() {
         if (playFragment == null) return;
         getSupportFragmentManager().beginTransaction().remove(playFragment).commitNowAllowingStateLoss();
