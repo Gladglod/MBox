@@ -141,29 +141,68 @@ public class AppDataManager {
     }
 
     public static boolean backup(File path) throws IOException {
-        if (dbInstance != null && dbInstance.isOpen()) {
-            dbInstance.close();
-        }
+        closeInstance();
         File db = App.getInstance().getDatabasePath(dbPath());
-        if (db.exists()) {
-            FileUtils.copyFile(db, path);
-            return true;
-        } else {
+        if (!db.exists() || db.length() <= 0) {
             return false;
         }
+        FileUtils.copyFile(db, path);
+        // rollback journal / wal 一般为空或无关紧要，但为避免极端情况把未落盘页落进备份，
+        // 顺带拷一份备份（恢复时不还原，只清本地旧文件）
+        try {
+            File journal = new File(db.getAbsolutePath() + "-journal");
+            if (journal.exists() && journal.length() > 0) {
+                FileUtils.copyFile(journal, new File(path.getParentFile(), path.getName() + "-journal"));
+            }
+            File wal = new File(db.getAbsolutePath() + "-wal");
+            if (wal.exists() && wal.length() > 0) {
+                FileUtils.copyFile(wal, new File(path.getParentFile(), path.getName() + "-wal"));
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        return true;
     }
 
     public static boolean restore(File path) throws IOException {
-        if (dbInstance != null && dbInstance.isOpen()) {
-            dbInstance.close();
-        }
+        closeInstance();
         File db = App.getInstance().getDatabasePath(dbPath());
         if (db.exists()) {
             db.delete();
         }
+        // 清掉本机上可能残留的旧 journal / wal：它们对应的是被替换前的库，
+        // 打开新文件时若仍存在，可能触发回滚破坏刚拷进去的数据
+        File journal = new File(db.getAbsolutePath() + "-journal");
+        if (journal.exists()) journal.delete();
+        File wal = new File(db.getAbsolutePath() + "-wal");
+        if (wal.exists()) wal.delete();
+        File shm = new File(db.getAbsolutePath() + "-shm");
+        if (shm.exists()) shm.delete();
         if (!db.getParentFile().exists())
             db.getParentFile().mkdirs();
         FileUtils.copyFile(path, db);
+        if (db.length() <= 0) {
+            return false;
+        }
+        // dbInstance 已置空，下一次 get() 会重新打开恢复后的文件
         return true;
+    }
+
+    /**
+     * 关闭数据库连接并将实例引用置空：
+     * 备份 / 恢复拷贝文件期间必须独占文件，且关闭后必须清理引用，
+     * 否则 {@link #get()} 拿到的仍是已 关闭 的旧实例，
+     * 之后的播放进度 / 历史记录 / 收藏写入会全部失效——表现为"备份把数据弄丢"。
+     */
+    private static void closeInstance() {
+        try {
+            if (dbInstance != null && dbInstance.isOpen()) {
+                dbInstance.close();
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        } finally {
+            dbInstance = null;
+        }
     }
 }

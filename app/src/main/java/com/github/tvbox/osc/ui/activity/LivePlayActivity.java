@@ -1691,7 +1691,7 @@ public class LivePlayActivity extends BaseActivity {
             ivFloatPlayPause.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     toggleLivePause();
                 }
             });
@@ -1701,7 +1701,7 @@ public class LivePlayActivity extends BaseActivity {
             ivFloatFullscreen.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     toggleFullscreen();
                 }
             });
@@ -1711,7 +1711,7 @@ public class LivePlayActivity extends BaseActivity {
             livePauseChip.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     toggleLivePause();
                 }
             });
@@ -1720,7 +1720,7 @@ public class LivePlayActivity extends BaseActivity {
             ivLiveBarPause.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     toggleLivePause();
                 }
             });
@@ -1742,7 +1742,7 @@ public class LivePlayActivity extends BaseActivity {
             ivFullscreenEpgClose.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     hideFullscreenEpg(true);
                 }
             });
@@ -1772,6 +1772,27 @@ public class LivePlayActivity extends BaseActivity {
                 return false;
             }
         });
+    }
+
+    /**
+     * 玻璃钮专用防连点：只按时间戳忽略过快的重复点击。
+     * 绝不用 {@link com.github.tvbox.osc.util.FastClickCheckUtil}——那套会把 clickable
+     * 关掉 0.5s，期间的点击不消费，事件穿透到画面手势层，看起来像「点了空白」。
+     */
+    private long mLastGlassClickAt = 0;
+    private int mLastGlassClickId = 0;
+
+    /** @return true 放行本次点击；false 忽略（同一钮 0.45s 内的连击） */
+    private boolean allowGlassClick(View v) {
+        if (v == null) return false;
+        long now = android.os.SystemClock.uptimeMillis();
+        int id = v.getId();
+        if (id == mLastGlassClickId && now - mLastGlassClickAt < 450) {
+            return false;
+        }
+        mLastGlassClickAt = now;
+        mLastGlassClickId = id;
+        return true;
     }
 
     /** 暂停 / 继续直播画面；只有播放器处于可暂停状态时才动作 */

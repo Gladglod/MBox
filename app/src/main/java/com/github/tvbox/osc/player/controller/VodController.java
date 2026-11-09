@@ -17,6 +17,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -883,7 +884,7 @@ public class VodController extends BaseController {
         backBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-                FastClickCheckUtil.check(v);
+                if (!allowGlassClick(v)) return;
                 hideDrawer();
                 Activity host = mActivity;
                 if (host == null && getContext() instanceof Activity) {
@@ -1122,6 +1123,7 @@ public class VodController extends BaseController {
         mNextBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
+                if (!allowGlassClick(view)) return;
                 listener.playNext(false);
                 hideBottom();
             }
@@ -1138,6 +1140,7 @@ public class VodController extends BaseController {
         mPlayerScaleBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
+                if (!allowGlassClick(view)) return;
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
                 showScalePicker(view);
@@ -1163,6 +1166,7 @@ public class VodController extends BaseController {
         mPlayerSpeedBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
+                if (!allowGlassClick(view)) return;
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
                 showSpeedPicker(view);
@@ -1423,6 +1427,7 @@ public class VodController extends BaseController {
         mCastBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
+                if (!allowGlassClick(view)) return;
                 if (listener != null) listener.clickCast();
             }
         });
@@ -1981,6 +1986,27 @@ public class VodController extends BaseController {
         });
     }
 
+    /**
+     * 玻璃钮专用防连点：只按时间戳忽略过快的重复点击。
+     * 绝不 {@link FastClickCheckUtil#check(View)}——那套会把 clickable 关掉 0.5s，
+     * 期间的点击不消费，事件穿透到父级手势层，看上去像「点了空白把控制条藏掉」。
+     */
+    private long mLastGlassClickAt = 0;
+    private int mLastGlassClickId = 0;
+
+    /** @return true 放行本次点击；false 忽略（同一钮 0.45s 内的连击） */
+    private boolean allowGlassClick(View v) {
+        if (v == null) return false;
+        long now = SystemClock.uptimeMillis();
+        int id = v.getId();
+        if (id == mLastGlassClickId && now - mLastGlassClickAt < 450) {
+            return false;
+        }
+        mLastGlassClickAt = now;
+        mLastGlassClickId = id;
+        return true;
+    }
+
     private void bindMainControlButtons() {
         // 玻璃质感控件统一挂按压动效（按下缩小、松开平滑回弹），点击逻辑不受影响；
         // 菜单键 mMenuBtn 除外 —— 触摸模式下它有自己的跟手选择手势，动效会覆盖手势
@@ -1996,7 +2022,7 @@ public class VodController extends BaseController {
             mPlayPauseBtn.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     togglePlay();
                     myHandle.removeCallbacks(myRunnable);
                     myHandle.postDelayed(myRunnable, myHandleSeconds);
@@ -2007,7 +2033,7 @@ public class VodController extends BaseController {
             mDanmuBtn.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     boolean opened = listener != null && listener.toggleDanmu();
                     updateDanmuSwitch(opened);
                     myHandle.removeCallbacks(myRunnable);
@@ -2021,7 +2047,7 @@ public class VodController extends BaseController {
             mDanmuCfgBtn.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     showDanmuSettingPanel(v);
                 }
             });
@@ -2031,7 +2057,7 @@ public class VodController extends BaseController {
             mFullScreenBtn.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     togglePlayerFullScreen();
                 }
             });
@@ -2040,7 +2066,7 @@ public class VodController extends BaseController {
             mPortraitBtn.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
+                    if (!allowGlassClick(v)) return;
                     togglePortraitFullScreen();
                 }
             });
@@ -2294,7 +2320,7 @@ public class VodController extends BaseController {
     /* ==================== 右上角扇形功能菜单 ==================== */
 
     /** 一级扇形：半径 / 气泡尺寸 / 展开角度（以菜单键为圆心向下扇开） */
-    private static final int MENU_FAN_RADIUS_DP = 78;
+    private static final int MENU_FAN_RADIUS_DP = 90;
     private static final int MENU_FAN_ITEM_DP = 38;
     /** 起始角 110°：整条弧相对竖直向下顺时针转过 26°，第一个气泡更靠左下 */
     private static final float MENU_FAN_START_DEG = 100f;

@@ -1142,8 +1142,7 @@ public class MineSettingActivity extends BaseActivity {
         addInfoRow("备份范围", new TextProvider() {
             @Override
             public String get() {
-                return "数据源配置 · 外观主题 · 播放与字幕 · 直播 · 弹幕 · 播放手势 · 短剧源。\n"
-                        + "观看记录与收藏等媒体数据不包含在内。";
+                return "数据源配置 · 外观主题 · 播放与字幕 · 直播 · 弹幕 · 播放手势 · 短剧源。 观看记录与收藏等媒体数据。";
             }
         });
         addActionRow("备份配置", "弹出系统文件选择器，自行选择保存位置与文件名", new Action() {

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  主题自适应玻璃胶囊按钮底（对话框内主/次按钮）：
+  白天=白色透明玻璃+深色文字，夜间=深玻璃+白文字，颜色走 glass_card_* 主题色。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="99dp" />
+            <solid android:color="@color/glass_row_fill" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/glass_row_stroke" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="99dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="@color/glass_card_highlight"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

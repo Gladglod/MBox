@@ -55,6 +55,9 @@
     <color name="glass_card_fill">#DD14141A</color>
     <color name="glass_card_stroke">#2EFFFFFF</color>
     <color name="glass_card_highlight">#26FFFFFF</color>
+    <!-- 对话框内的行条/胶囊按钮：夜间为深玻璃行，靠亮描边在深面板上分层 -->
+    <color name="glass_row_fill">#4D10141A</color>
+    <color name="glass_row_stroke">#2EFFFFFF</color>
 
     <!-- 开关：夜间关闭态轨道提亮一档，深色滑块靠细亮边跟轨道拉开层次 -->
     <color name="switch_track_off">#33FFFFFF</color>

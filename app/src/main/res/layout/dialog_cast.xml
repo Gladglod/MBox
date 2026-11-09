@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="@dimen/vs_520"
+    android:layout_width="@dimen/vs_400"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_glass_menu"
+    android:background="@drawable/bg_glass_card_panel"
     android:orientation="vertical"
     android:paddingLeft="@dimen/vs_30"
     android:paddingTop="@dimen/vs_24"
@@ -88,29 +88,29 @@
         <TextView
             android:id="@+id/btnRefresh"
             android:layout_width="0dp"
-            android:layout_height="@dimen/vs_50"
+            android:layout_height="@dimen/vs_80"
             android:layout_marginRight="@dimen/vs_10"
             android:layout_weight="1"
-            android:background="@drawable/bg_glass_pill"
+            android:background="@drawable/bg_glass_card_pill"
             android:focusable="true"
             android:gravity="center"
             android:text="刷新"
             android:textColor="@color/dialog_text_primary"
-            android:textSize="@dimen/ts_20"
+            android:textSize="@dimen/ts_16"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/btnCancel"
             android:layout_width="0dp"
-            android:layout_height="@dimen/vs_50"
+            android:layout_height="@dimen/vs_80"
             android:layout_marginLeft="@dimen/vs_10"
             android:layout_weight="1"
-            android:background="@drawable/bg_glass_pill"
+            android:background="@drawable/bg_glass_card_pill"
             android:focusable="true"
             android:gravity="center"
             android:text="取消"
             android:textColor="@color/dialog_text_primary"
-            android:textSize="@dimen/ts_20"
+            android:textSize="@dimen/ts_16"
             android:textStyle="bold" />
     </LinearLayout>
 

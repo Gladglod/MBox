@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 玻璃质感的轻提示（Toast 替身）：
+  bg_glass_pill 玻璃胶囊 + 白字，顶部居中滑入。
+  深玻璃在白天主题的内容上也保持可读（与直播「已暂停」胶囊同一套做法）。
+-->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tvGlassTipText"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_glass_pill"
+    android:ellipsize="end"
+    android:maxLines="2"
+    android:paddingLeft="18dp"
+    android:paddingTop="10dp"
+    android:paddingRight="18dp"
+    android:paddingBottom="10dp"
+    android:singleLine="true"
+    android:textColor="#F2FFFFFF"
+    android:textSize="13sp" />

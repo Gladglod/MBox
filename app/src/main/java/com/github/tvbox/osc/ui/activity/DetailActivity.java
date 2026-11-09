@@ -49,6 +49,7 @@ import com.github.tvbox.osc.ui.adapter.SeriesFlagAdapter;
 import com.github.tvbox.osc.ui.fragment.PlayFragment;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.GlassTip;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
@@ -446,11 +447,11 @@ public class DetailActivity extends BaseActivity {
                 boolean fav = RoomDataManger.isVodCollect(sourceKey, vodId);
                 if (fav) {
                     RoomDataManger.deleteVodCollect(sourceKey, vodInfo);
-                    Toast.makeText(DetailActivity.this, "已移除收藏夹", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(DetailActivity.this, "已移除收藏夹");
                     updateCollectStar(false);
                 } else {
                     RoomDataManger.insertVodCollect(sourceKey, vodInfo);
-                    Toast.makeText(DetailActivity.this, "已加入收藏夹", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(DetailActivity.this, "已加入收藏夹");
                     updateCollectStar(true);
                 }
                 // 星标的「点亮」小脉冲，给收藏操作一个明确反馈

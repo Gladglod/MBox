@@ -51,11 +51,18 @@ public class FileUtils {
     public static byte[] readSimple(File src) {
         try {
             BufferedInputStream bis = new BufferedInputStream(new FileInputStream(src));
-            int len = bis.available();
-            byte[] data = new byte[len];
-            bis.read(data);
-            bis.close();
-            return data;
+            try {
+                // available() 只是估计值，单次 read 不保证读满；循环读到 EOF，避免大文件被截断
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream(Math.max(8192, bis.available()));
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = bis.read(buf)) != -1) {
+                    bos.write(buf, 0, n);
+                }
+                return bos.toByteArray();
+            } finally {
+                bis.close();
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }

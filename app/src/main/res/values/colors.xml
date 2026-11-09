@@ -135,6 +135,9 @@
     <color name="glass_card_fill">#D9FFFFFF</color>
     <color name="glass_card_stroke">#1A000000</color>
     <color name="glass_card_highlight">#4DFFFFFF</color>
+    <!-- 对话框内的行条/胶囊按钮：白天为白色玻璃行，靠深描边在白面板上分层 -->
+    <color name="glass_row_fill">#A6FFFFFF</color>
+    <color name="glass_row_stroke">#33000000</color>
 
     <!-- 开关（SpringSwitch）：关闭态轨道压暗一档，滑块用表面色加细描边保证在两种轨道上都看得见 -->
     <color name="switch_track_off">#33000000</color>
