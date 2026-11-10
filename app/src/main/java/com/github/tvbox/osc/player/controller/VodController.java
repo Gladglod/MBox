@@ -68,6 +68,7 @@ import com.github.tvbox.osc.util.M3u8;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.ScreenUtils;
 import com.github.tvbox.osc.util.SubtitleHelper;
+import com.github.tvbox.osc.util.ThemeUtil;
 import com.github.tvbox.osc.util.VideoParseRuler;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.util.thunder.Thunder;
@@ -109,7 +110,10 @@ public class VodController extends BaseController {
     private static final long PORTRAIT_EPISODE_TITLE_SHOW_MS = 3000L;
 
     /* ===== 长按加速 ===== */
-    /** 横向滑动多少 dp 对应 0.2 倍速的变化（左减右加） */
+    /** 每档倍速的变化量（长按锚定 1.0，长按瞬间 +1 档到 1.25，之后左减右加每屏档 0.25） */
+    private static final float SPEED_BOOST_GEAR = 0.25f;
+    /** 横向滑动多少 dp 对应一档（±0.25 倍速）的变化 */
+
     private static final float SPEED_BOOST_STEP_DP = 56f;
     private static final float SPEED_BOOST_MIN = 0.5f;
     private static final float SPEED_BOOST_MAX = 3.0f;
@@ -120,6 +124,8 @@ public class VodController extends BaseController {
     private static final int SPEED_VIBRATE_AMPLITUDE = 80;
     /** 固定态抬手后提示文字停留时长 */
     private static final long SPEED_TIP_LINGER_MS = 1100L;
+    /** 长按不松手时，屏幕提示显示 3 秒后自动消失 */
+    private static final long SPEED_TIP_AUTO_HIDE_MS = 3000L;
     /** 倍速按钮常态文字颜色（始终叠在深色播放条上，与 XML 一致） */
     private static final int SPEED_BTN_COLOR_NORMAL = 0xF2FFFFFF;
     /** 倍速菜单里的预置档位（升序；展示时按「最高倍速」设置过滤） */
@@ -130,13 +136,14 @@ public class VodController extends BaseController {
     private boolean speedBoostActive;
     private float speedBoostStartX;
     private float speedBoostStartY;
+    /** 本轮长按手势的锚点速度：恒为 1.0（需求约定：每次长按都「从头开始」） */
     private float speedBoostBaseSpeed = 1.0f;
     private float speedBoostSpeed = 1.0f;
-    /** 上滑固定后：抬手保持该倍速；未固定则抬手回落原速。重新长按自动解除 */
+    /** 上滑固定后：抬手保持该倍速；未固定则抬手回落 1.0。重新长按从头开始 */
     private boolean speedBoostLocked;
     /** 一次上滑只固定一次，手指退回阈值一半以内才允许再次触发 */
     private boolean speedPinSwipeConsumed;
-    /** 进入本轮手势前的原速，未固定抬手时回到这里 */
+    /** 本轮未固定抬手时回落的速度：恒为 1.0 */
     private float speedBoostNaturalSpeed = 1.0f;
     /** 顶部加速提示浮层（数值 + 小字手势提示，无底框纯文字） */
     private LinearLayout mSpeedBoostTip;
@@ -250,38 +257,44 @@ public class VodController extends BaseController {
     }
 
     /**
-     * 长按进入加速状态：
-     * 左右滑动按 0.2 一步增减倍速（左减右加）；上滑固定当前倍速。
-     * 若上一轮已固定，重新长按会自动解除固定，回到临时变速状态。
+     * 长按进入加速状态（每一轮都「从头开始」，锚点恒为 1.0）：
+     * 长按瞬间变为 1.25，左右滑动每档 ±0.25（左减右加）；上滑固定当前倍速；
+     * 未固定抬手回落 1.0；上一轮已固定也没关系，再次长按仍从 1.0 重新开始。
      */
     private void enterSpeedBoost(float downX, float downY) {
         speedBoostActive = true;
-        speedBoostStartX = downX;
-        speedBoostStartY = downY;
-        speedBoostBaseSpeed = currentPlaySpeed();
-        speedBoostSpeed = speedBoostBaseSpeed;
-        if (speedBoostLocked) {
-            // 再次长按即解除固定：本轮属于临时变速，抬手不保持
-            speedBoostLocked = false;
-        }
-        speedBoostNaturalSpeed = speedBoostBaseSpeed;
+        speedBoostLocked = false;
         speedPinSwipeConsumed = false;
+        speedBoostBaseSpeed = 1.0f;
+        speedBoostNaturalSpeed = 1.0f;
+        float step = getResources().getDisplayMetrics().density * SPEED_BOOST_STEP_DP;
+        // 长按落地即为 1.25：把水平基准预先左移一档，令当前手指位置对应 +1 档，
+        // 此后的 updateSpeedBoost 无需特判，直接按 gear*0.25 计算
+        speedBoostStartX = downX - step;
+        speedBoostStartY = downY;
+        speedBoostSpeed = clampBoostSpeed(speedBoostBaseSpeed + SPEED_BOOST_GEAR);
+        if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostSpeed);
         vibrateBoostFeedback();
         showSpeedBoostTip(speedBoostSpeed);
+        syncSpeedButton(speedBoostSpeed, false, false);
+    }
+
+    /** 把倍速夹到合法区间 [最低档, 「最高倍速」设置]，并圆整到两位小数 */
+    private float clampBoostSpeed(float speed) {
+        float maxSpeed = Hawk.get(HawkConfig.GESTURE_MAX_SPEED, SPEED_BOOST_MAX);
+        if (maxSpeed < SPEED_BOOST_MIN) maxSpeed = SPEED_BOOST_MIN;
+        if (speed < SPEED_BOOST_MIN) speed = SPEED_BOOST_MIN;
+        if (speed > maxSpeed) speed = maxSpeed;
+        return Math.round(speed * 100) / 100f;
     }
 
     private void updateSpeedBoost(float currentX) {
         if (!speedBoostActive) return;
         float step = getResources().getDisplayMetrics().density * SPEED_BOOST_STEP_DP;
         if (step <= 0) return;
-        float maxSpeed = Hawk.get(HawkConfig.GESTURE_MAX_SPEED, SPEED_BOOST_MAX);
-        if (maxSpeed < SPEED_BOOST_MIN) maxSpeed = SPEED_BOOST_MIN;
-        // 横向滑动位移换算成 0.2 一档：右移为正加速，左移为负减速，上下位移不参与
+        // 横向滑动位移换算成 ±0.25 一档：右移为正加速，左移为负减速，上下位移不参与
         float gear = Math.round((currentX - speedBoostStartX) / step);
-        float speed = speedBoostBaseSpeed + gear * 0.2f;
-        if (speed < SPEED_BOOST_MIN) speed = SPEED_BOOST_MIN;
-        if (speed > maxSpeed) speed = maxSpeed;
-        speed = Math.round(speed * 10) / 10f;
+        float speed = clampBoostSpeed(speedBoostBaseSpeed + gear * SPEED_BOOST_GEAR);
         if (speed == speedBoostSpeed) return;
         speedBoostSpeed = speed;
         if (mControlWrapper != null) mControlWrapper.setSpeed(speed);
@@ -290,7 +303,7 @@ public class VodController extends BaseController {
     }
 
     /**
-     * 上滑固定当前倍速。固定后抬手保持该倍速（否则视为临时变速，回落原速）。
+     * 上滑固定当前倍速。固定后抬手保持该倍速（否则视为临时变速，回落 1.0）。
      * 手指退回阈值一半以内重置标记，但本轮手势内不重复触发固定。
      */
     private void handleSpeedPinSwipe(MotionEvent event) {
@@ -318,6 +331,8 @@ public class VodController extends BaseController {
     private void exitSpeedBoost() {
         if (!speedBoostActive) return;
         speedBoostActive = false;
+        // 无论本轮结果如何，先撒掉「3 秒自动收起」的定时，避免把之后的展示误收
+        if (mHandler != null) mHandler.removeCallbacks(speedTipAutoHideRunnable);
         if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
         if (speedBoostLocked) {
             // 已固定：抬手保持当前倍速并落库；提示文字多留一会儿，让用户看到「已固定」的结果
@@ -330,7 +345,7 @@ public class VodController extends BaseController {
             }
             return;
         }
-        // 未固定：临时变速，抬手回落到进入手势时的原速
+        // 未固定：临时变速，抬手回落 1.0
         if (mControlWrapper != null) mControlWrapper.setSpeed(speedBoostNaturalSpeed);
         speedBoostSpeed = speedBoostNaturalSpeed;
         syncSpeedButton(speedBoostNaturalSpeed, false, true);
@@ -345,15 +360,35 @@ public class VodController extends BaseController {
         }
     };
 
+    /** 长按不松手时提示浮层的自动收起定时（每次提示刷新都重新计时） */
+    private final Runnable speedTipAutoHideRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!speedBoostActive) return;
+            if (mSpeedBoostTip != null) mSpeedBoostTip.setVisibility(GONE);
+        }
+    };
+
     private void showSpeedBoostTip(float speed) {
         if (mSpeedBoostTip == null) return;
         if (mSpeedBoostTipValue != null) {
             mSpeedBoostTipValue.setText(fmtSpeed(speed) + "x");
         }
         if (mSpeedBoostTipHint != null) {
-            mSpeedBoostTipHint.setText(speedBoostLocked ? "已固定 · 再长按可解除" : "左右滑动调整倍速 · 上滑固定");
+            mSpeedBoostTipHint.setText(speedBoostLocked ? "已固定 · 再长按重新开始" : "左右滑动调整 · 上滑固定 · 松手回1.0");
         }
         mSpeedBoostTip.setVisibility(VISIBLE);
+        if (mHandler != null) {
+            // 长按期间提示显示太久会一直压着画面：3 秒后自动收起，
+            // 若随后继续滑动调整，会在更新数值时重新点亮并重新计时
+            mHandler.removeCallbacks(speedTipAutoHideRunnable);
+            mHandler.postDelayed(speedTipAutoHideRunnable, SPEED_TIP_AUTO_HIDE_MS);
+            if (!speedBoostActive) {
+                // 固定态抬手后的停留场景走独立的 linger 定时，两个互不打架
+                mHandler.removeCallbacks(speedTipHideRunnable);
+                mHandler.postDelayed(speedTipHideRunnable, SPEED_TIP_LINGER_MS);
+            }
+        }
     }
 
     /** 倍速浮点转展示文本：最多两位小数并去掉无意义的 0（1x → 1.0x，1.75 保持 1.75） */
@@ -444,7 +479,7 @@ public class VodController extends BaseController {
         if (speedBoostActive && event != null) {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_MOVE) {
-                // 长按后：左右滑动按 0.2 一档变速（左减右加）；上滑固定当前倍速
+                // 长按后：左右滑动 ±0.25 一档变速（左减右加）；上滑固定当前倍速
                 handleSpeedPinSwipe(event);
                 updateSpeedBoost(event.getX());
                 return true;
@@ -1458,7 +1493,7 @@ public class VodController extends BaseController {
             final Context ctx = getContext();
             LinearLayout list = new LinearLayout(ctx);
             list.setOrientation(LinearLayout.VERTICAL);
-            list.setBackgroundResource(R.drawable.bg_player_drawer);
+            list.setBackgroundResource(R.drawable.bg_glass_menu);
             int pad = dp(5);
             list.setPadding(pad, pad, pad, pad);
 
@@ -1476,14 +1511,15 @@ public class VodController extends BaseController {
                 TextView tv = new TextView(ctx);
                 tv.setText(options.get(i));
                 tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_22));
+                // 主题语义色：日间深色字（强调项用 ui_accent），夜间自动回到白/青
                 tv.setTextColor(i == checkedIndex
-                        ? getResources().getColor(R.color.color_02F8E1) : 0xFFFFFFFF);
+                        ? getResources().getColor(R.color.ui_accent) : getResources().getColor(R.color.ui_text_primary));
                 tv.setGravity(Gravity.CENTER_VERTICAL);
                 tv.setSingleLine(true);
                 tv.setEllipsize(TextUtils.TruncateAt.END);
                 tv.setPadding(dp(10), 0, dp(10), 0);
                 tv.setBackgroundResource(i == checkedIndex
-                        ? R.drawable.bg_chip_selected : R.drawable.bg_player_chip);
+                        ? R.drawable.bg_glass_chip_selected : R.drawable.bg_glass_chip);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
                 lp.topMargin = i == 0 ? 0 : dp(3);
@@ -1514,6 +1550,9 @@ public class VodController extends BaseController {
      * 系统栏会按弹窗窗口自己的系统 UI 标志重新渲染，于是一弹窗状态栏就冒出来。
      * 这里把宿主 Activity 的沉浸标志复制到弹窗内容上，保持系统栏隐藏；
      * 宿主不在沉浸式时什么都不做，交给系统默认表现。
+     *
+     * <p>部分 ROM 即便复制了标志也会把状态栏放出来，所以同时把「浅色状态栏图标」
+     * 的主题标志一起带上：万一状态栏露出来，日间也是白底深字，而不是白底白字。</p>
      */
     private void applyImmersiveToPopup(PopupWindow popup) {
         try {
@@ -1523,13 +1562,24 @@ public class VodController extends BaseController {
             int flags = decor.getSystemUiVisibility();
             int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
             if ((flags & hidden) != hidden) return;
-            popup.getContentView().setSystemUiVisibility(
+            popup.getContentView().setSystemUiVisibility(lightStatusBarFlags(
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                             | hidden
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY));
         } catch (Throwable ignore) {
+        }
+    }
+
+    /** 日间主题下补上「浅色状态栏 / 导航栏（深色图标）」标志，夜间不加 */
+    private int lightStatusBarFlags(int base) {
+        try {
+            if (ThemeUtil.isNight(getContext())) return base;
+            return base | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        } catch (Throwable ignore) {
+            return base;
         }
     }
 
@@ -1545,15 +1595,19 @@ public class VodController extends BaseController {
             View decor = activity.getWindow().getDecorView();
             final int flags = decor.getSystemUiVisibility();
             int hidden = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
-            if ((flags & hidden) != hidden) return;
+            boolean immersive = (flags & hidden) == hidden;
+            final int applyFlags = immersive ? lightStatusBarFlags(flags) : 0;
+            if (!immersive) return;
             popup.getContentView().post(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        popup.getContentView().setSystemUiVisibility(flags);
+                        popup.getContentView().setSystemUiVisibility(applyFlags);
+                        // 附着后内容 View 的父亲就是 PopupDecorView（弹窗自己的窗口根），
+                        // 直接挂在它身上最能保证 ROM 生效；部分 ROM 只认这一层
                         View parent = popup.getContentView().getParent() instanceof View
                                 ? (View) popup.getContentView().getParent() : null;
-                        if (parent != null) parent.setSystemUiVisibility(flags);
+                        if (parent != null) parent.setSystemUiVisibility(applyFlags);
                     } catch (Throwable ignore) {
                     }
                 }
@@ -1664,8 +1718,9 @@ public class VodController extends BaseController {
                 TextView tv = new TextView(ctx);
                 tv.setText(options.get(i));
                 tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_22));
+                // 主题语义色：日间深色字（强调项用 ui_accent），夜间自动回到白/青
                 tv.setTextColor(i == checkedIndex
-                        ? getResources().getColor(R.color.color_02F8E1) : 0xFFFFFFFF);
+                        ? getResources().getColor(R.color.ui_accent) : getResources().getColor(R.color.ui_text_primary));
                 tv.setGravity(Gravity.CENTER);
                 tv.setSingleLine(true);
                 tv.setEllipsize(TextUtils.TruncateAt.END);
@@ -1712,8 +1767,8 @@ public class VodController extends BaseController {
             listener.updatePlayerCfg();
             speed_old = value;
             mControlWrapper.setSpeed(value);
-            // 手动选定后同步长按手势的基准，避免下次长按从旧值跳变；同时解除「固定」态
-            speedBoostBaseSpeed = value;
+            // 手动选定后解除长按手势的「固定」态；本轮长按手势的锚点恒为 1.0，
+            // 与手动选择值无关，无需同步
             speedBoostSpeed = value;
             speedBoostLocked = false;
         } catch (JSONException e) {
@@ -3120,6 +3175,7 @@ public class VodController extends BaseController {
                 xoff -= (panelLeft + width) - (screenW - margin);
             }
             popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
+            reApplyImmersiveToPopup(popup);
         } catch (Throwable th) {
             th.printStackTrace();
         }
@@ -3796,7 +3852,7 @@ public class VodController extends BaseController {
         if (!Hawk.get(HawkConfig.GESTURE_SPEED_BOOST, true)) return;
         if (videoPlayState == VideoView.STATE_PAUSED) return;
         if (!isInPlaybackState() || isLocked()) return;
-        // 长按进入加速状态：左右滑动 0.2 一档变速（左减右加），上滑固定，再长按自动解除
+        // 长按进入加速状态：长按即 1.25，左右滑动 ±0.25 一档（左减右加），上滑固定，未固定抬手回落 1.0
         enterSpeedBoost(e.getX(), e.getY());
     }
 

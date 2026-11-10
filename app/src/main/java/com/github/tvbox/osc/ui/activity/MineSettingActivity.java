@@ -562,7 +562,7 @@ public class MineSettingActivity extends BaseActivity {
                         PlayerHelper.init();
                     }
                 });
-        addSelectRow("画中画模式", "系统：稳定省电；自定义：可自由调整尺寸（需悬浮窗权限）", "请选择画中画模式",
+        addSelectRow("画中画模式", "系统：稳定省电，双击/双指缩放取决于系统支持；自定义：可自由调整尺寸（需悬浮窗权限）", "请选择画中画模式",
                 new String[]{
                         PlayerHelper.getPipModeName(HawkConfig.PIP_MODE_SYSTEM),
                         PlayerHelper.getPipModeName(HawkConfig.PIP_MODE_OVERLAY),
@@ -867,7 +867,7 @@ public class MineSettingActivity extends BaseActivity {
     private void buildGesture() {
         header("长按加速");
         card();
-        addSwitchRow("长按加速", "播放时长按屏幕进入变速，左右滑动按 0.2 调速（左减右加）", HawkConfig.GESTURE_SPEED_BOOST, true, null);
+        addSwitchRow("长按加速", "长按即 1.25 倍速，左右滑动每档 0.25 调速（左减右加），上滑固定，松手回 1.0", HawkConfig.GESTURE_SPEED_BOOST, true, null);
         addSwitchRow("锁定时可加速", "控制条锁定后仍可长按加速；退出键始终不受锁定影响",
                 HawkConfig.GESTURE_SPEED_BOOST_LOCKED, true, null);
         addSelectRow("最高倍速", "长按加速可达到的最高倍速", "请选择最高倍速",

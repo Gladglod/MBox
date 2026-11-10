@@ -1,16 +1,16 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
-  iOS 玻璃质感行条底（菜单列表项 / 设备行）：
-  半透明深玻璃底 + 白细描边 + 顶部高光，与 bg_glass_circle / bg_glass_pill 同一套画法。
--->
+  主题自适应玻璃行条底（菜单列表行 / 设备行）：
+  半透明玻璃底 + 细描边 + 顶部高光，颜色引用 glass_row_* 主题色，
+  日间白玻璃、夜间深玻璃。10dp 圆角。-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <corners android:radius="10dp" />
-            <solid android:color="#4D10141A" />
+            <solid android:color="@color/glass_row_fill" />
             <stroke
                 android:width="1dp"
-                android:color="#1FFFFFFF" />
+                android:color="@color/glass_row_stroke" />
         </shape>
     </item>
     <item>
@@ -18,7 +18,7 @@
             <corners android:radius="10dp" />
             <gradient
                 android:angle="270"
-                android:startColor="#1FFFFFFF"
+                android:startColor="@color/glass_card_highlight"
                 android:endColor="#00FFFFFF" />
         </shape>
     </item>

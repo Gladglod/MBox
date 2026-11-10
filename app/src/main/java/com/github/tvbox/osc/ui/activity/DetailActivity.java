@@ -2219,13 +2219,20 @@ public class DetailActivity extends BaseActivity {
             }
         }
         if (immersive) {
+            // 沉浸标志整组重设；日间主题要保留「浅色栏（深色图标）」标志——
+            // 否则弹层打开时部分 ROM 会把状态栏放出来，白底 + 白字完全看不清
+            int visible = ThemeUtil.isNight(this) ? 0
+                    : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0);
             decor.setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | visible);
         } else {
             decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
             // 退出沉浸式时整组标志是重设的，主题给的「浅色底 = 深色图标」

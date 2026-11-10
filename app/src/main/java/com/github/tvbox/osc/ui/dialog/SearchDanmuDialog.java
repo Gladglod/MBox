@@ -10,7 +10,6 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -25,6 +24,7 @@ import com.github.tvbox.osc.ui.adapter.DanmuGroupAdapter;
 import com.github.tvbox.osc.ui.adapter.SearchDanmuAdapter;
 import com.github.tvbox.osc.util.DanmuTitleUtil;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.GlassTip;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -163,11 +163,11 @@ public class SearchDanmuDialog extends BaseDialog {
                     if (statusAction == ACTION_UNLOAD) {
                         // 卸载已挂载的弹幕（清掉播放器上的弹幕层）
                         if (danmuProvider != null) danmuProvider.unloadDanmu();
-                        Toast.makeText(getContext(), "已卸载当前弹幕", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(getContext(), "已卸载当前弹幕");
                     } else {
                         // 取消正在拉取的弹幕请求
                         DanmakuApi.cancel();
-                        Toast.makeText(getContext(), "已取消加载弹幕", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(getContext(), "已取消加载弹幕");
                     }
                     statusAction = ACTION_NONE;
                     updateIdleStatus();
@@ -290,7 +290,7 @@ public class SearchDanmuDialog extends BaseDialog {
         groupAdapter.setNewData(new ArrayList<DanmuGroup>());
         episodeAdapter.setNewData(new ArrayList<DanmuSearchResult>());
         if (TextUtils.isEmpty(word)) {
-            Toast.makeText(getContext(), "输入内容不能为空", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "输入内容不能为空");
             return;
         }
         keyword = word;
@@ -305,7 +305,7 @@ public class SearchDanmuDialog extends BaseDialog {
             @Override
             public void onError(String message) {
                 showResults(new ArrayList<DanmuSearchResult>());
-                Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), message);
             }
         });
     }
@@ -318,15 +318,15 @@ public class SearchDanmuDialog extends BaseDialog {
             @Override
             public void onSuccess(String danmu) {
                 if (danmuLoader != null) danmuLoader.loadDanmu(danmu, result.getName());
+                GlassTip.show(getContext(), "弹幕已加载");
                 dismiss();
-                Toast.makeText(getContext(), "弹幕已加载", Toast.LENGTH_SHORT).show();
             }
 
             @Override
             public void onError(String message) {
                 // 回到列表让用户换一条再试，同时恢复「当前弹幕」显示
                 updateIdleStatus();
-                Toast.makeText(getContext(), "弹幕加载失败：" + message, Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "弹幕加载失败：" + message);
             }
         });
     }
@@ -395,7 +395,7 @@ public class SearchDanmuDialog extends BaseDialog {
         // 搜索结束后恢复「当前弹幕：xxx」的挂载状态显示
         updateIdleStatus();
         if (groups.isEmpty()) {
-            Toast.makeText(getContext(), "未查询到匹配弹幕", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "未查询到匹配弹幕");
         }
     }
 

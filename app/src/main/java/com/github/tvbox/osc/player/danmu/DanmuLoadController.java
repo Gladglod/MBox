@@ -44,6 +44,8 @@ public class DanmuLoadController {
     private LoadCallback loadCallback;
     private volatile int seekGeneration;
     private volatile long pendingSeekPosition = -1;
+    /** seek 复用路径的重同步待执行标记（与 resyncIfReady 配对，新 seek 会重新置位） */
+    private volatile boolean resyncPending;
 
     public DanmuLoadController(MyVideoView videoView, VodController controller, DanmakuView danmuView) {
         this.videoView = videoView;
@@ -125,6 +127,11 @@ public class DanmuLoadController {
             pendingPrepare = false;
             prepare(danmuText);
             return;
+        }
+        // seek 复用路径：恢复播放等时机下优先把弹幕时间轴按视频实际进度重新拉起
+        if (resyncPending) {
+            resyncIfReady();
+            if (resyncPending) return;
         }
         startIfReady(loadSeq.get());
     }
@@ -318,6 +325,15 @@ public class DanmuLoadController {
 
     private void onDanmuSeek(long position) {
         long targetPosition = Math.max(0, position);
+        // 快进/快退等普通 seek：弹幕已经解析挂载好的话，直接把弹幕时间轴同步过去即可，
+        // 不再整份重新解析（否则每次 seek 都要重新下载/解析，并重复触发一轮加载流程）
+        if (DanmuHelper.isOpen() && !TextUtils.isEmpty(danmuText)
+                && danmuView != null && danmuView.isPrepared()
+                && startedSeq == loadSeq.get()) {
+            danmuSeekResync();
+            return;
+        }
+        // 兜底：弹幕还没挂载好（首次加载/被释放/切换集数中）才走重新解析的老路径。
         pendingSeekPosition = targetPosition;
         seekGeneration++;
         loadSeq.incrementAndGet();
@@ -333,6 +349,35 @@ public class DanmuLoadController {
                 danmuView.postDelayed(this::startIfReady, 2500);
             }
         }
+    }
+
+    /** seek 复用路径：视频 seek 可能还在缓冲，用视频实际进度把弹幕时间轴同步过去，多补几次 */
+    private void danmuSeekResync() {
+        resyncPending = true;
+        danmuView.setVisibility(View.GONE);
+        danmuView.postDelayed(this::resyncIfReady, 400);
+        danmuView.postDelayed(this::resyncIfReady, 1200);
+        danmuView.postDelayed(this::resyncIfReady, 2500);
+    }
+
+    private void resyncIfReady() {
+        if (!resyncPending) return;
+        // 弹幕被卸载/重新加载/关闭后，旧的重同步任务直接作废
+        if (!DanmuHelper.isOpen() || TextUtils.isEmpty(danmuText)
+                || danmuView == null || !danmuView.isPrepared()
+                || startedSeq != loadSeq.get()
+                || videoView == null || !videoView.isPlaying()) {
+            return;
+        }
+        long position = videoView.getCurrentPosition();
+        // 进度还没落地时用记录的播放位置兜底，仍未拿到就留给最后一次重试
+        if (position <= 0) position = videoView.getPlaybackPosition();
+        if (position <= 0) return;
+        resyncPending = false;
+        danmuView.setVisibility(View.VISIBLE);
+        danmuView.seekTo(position);
+        danmuView.start(position);
+        LOG.i("echo-danmu resync at: " + position);
     }
 
     private void clearLoadCallback(int seq) {

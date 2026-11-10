@@ -1,16 +1,17 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
-  iOS 玻璃质感菜单面板底（倍速 / 画面比例弹出列表等）：
-  与 bg_glass_sheet 同一套玻璃画法（半透明深底 + 白描边 + 顶部高光），四角均为 14dp 圆角。
--->
+  主题自适应玻璃菜单面板底（倍速 / 画面比例 / 数据源弹出列表等）：
+  与 bg_glass_card_panel 同一套玻璃画法，但颜色全部引用 glass_menu_* 主题色：
+  日间主题自动变白色透明玻璃、夜间为深玻璃，无需两套布局。
+  四角均为 14dp 圆角。-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <corners android:radius="14dp" />
-            <solid android:color="#D9111418" />
+            <solid android:color="@color/glass_menu_bg" />
             <stroke
                 android:width="1dp"
-                android:color="#1FFFFFFF" />
+                android:color="@color/glass_menu_stroke" />
         </shape>
     </item>
     <item>
@@ -18,7 +19,7 @@
             <corners android:radius="14dp" />
             <gradient
                 android:angle="270"
-                android:startColor="#1FFFFFFF"
+                android:startColor="@color/glass_card_highlight"
                 android:endColor="#00FFFFFF" />
         </shape>
     </item>

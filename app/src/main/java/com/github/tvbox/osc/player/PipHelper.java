@@ -67,6 +67,14 @@ public final class PipHelper {
     /**
      * 进入系统 PiP。返回 true 表示已请求成功（随后 Activity 会收到
      * onPictureInPictureModeChanged(true)），false 表示不支持或被系统拒绝。
+     *
+     * <p><b>系统手势语义说明（App 无法干预）：</b>PiP 的拖动/双击/双指缩放全部由系统
+     * WM Shell 在 App 之前处理（InputMonitor 抢先收口）。双击的行为依赖设备配置
+     * {@code config_pipEnablePinchResize}（AOSP 默认 true，即 Android 12+ 的
+     * 「双击在最大/默认尺寸间切换」；该配置关闭或 Android &lt; 12 时，系统把双击
+     * 固定映射为 <b>回全屏</b>，此时双指缩放同样不可用）。App 没有公开 API 能
+     * 查询或改变该配置——无法在系统模式里自造「双击改尺寸」。需要自由缩放的
+     * 用户请使用自定义小窗（PIP_MODE=1）。</p>
      */
     public static boolean enter(Activity activity, float videoRatio) {
         if (!isSupported(activity) || activity.isFinishing() || activity.isDestroyed()) {
@@ -74,6 +82,11 @@ public final class PipHelper {
             return false;
         }
         try {
+            // 真机验收归因：把 ROM 信息打进 pip-surface 通道，便于核对
+            // 「双击=尺寸切换还是回全屏」这类系统侧差异（见类头手势语义说明）
+            LOG.i("pip enter: device="
+                    + Build.MANUFACTURER + "/" + Build.MODEL
+                    + " sdk=" + Build.VERSION.SDK_INT);
             activity.enterPictureInPictureMode(buildParams(videoRatio));
             return true;
         } catch (Throwable th) {

@@ -1,9 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 弹幕设置面板里的进度条：细轨道 + 青绿进度 -->
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  弹幕设置面板里的进度条：细轨道 + 主题强调色进度。
+  颜色引用 ui_* 主题色：日间浅灰轨道 + 深色强调进度，夜间深轨道 + 青色进度。-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background">
         <shape android:shape="rectangle">
-            <solid android:color="#2EFFFFFF" />
+            <solid android:color="@color/ui_divider" />
             <corners android:radius="2dp" />
             <size android:height="3dp" />
         </shape>
@@ -11,7 +13,7 @@
     <item android:id="@android:id/progress">
         <clip>
             <shape android:shape="rectangle">
-                <solid android:color="#02F8E1" />
+                <solid android:color="@color/ui_accent" />
                 <corners android:radius="2dp" />
                 <size android:height="3dp" />
             </shape>
