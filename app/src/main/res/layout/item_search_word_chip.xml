@@ -4,7 +4,7 @@
     android:layout_width="wrap_content"
     android:layout_height="@dimen/vs_80"
     android:layout_margin="@dimen/vs_4"
-    android:background="@drawable/bg_chip"
+    android:background="@drawable/bg_glass_card_chip"
     android:clickable="true"
     android:ellipsize="end"
     android:gravity="center"

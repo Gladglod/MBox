@@ -41,6 +41,7 @@ import com.github.tvbox.osc.ui.adapter.PinyinAdapter;
 import com.github.tvbox.osc.ui.adapter.SearchAdapter;
 import com.github.tvbox.osc.ui.dialog.SearchCheckboxDialog;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.GlassTip;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.SearchHelper;
@@ -107,6 +108,7 @@ public class SearchActivity extends BaseActivity {
     private TextView tvSearch;
     private TextView tvClear;
     private ImageView tvHistoryClear;
+    private TextView tvHistoryEmpty;
     private SearchAdapter searchAdapter;
     private PinyinAdapter wordAdapter;
     private PinyinAdapter hotWordAdapter;
@@ -194,6 +196,7 @@ public class SearchActivity extends BaseActivity {
         });
         historyWordGrid = findViewById(R.id.historyWordGrid);
         tvHistoryClear = findViewById(R.id.tvHistoryClear);
+        tvHistoryEmpty = findViewById(R.id.tvHistoryEmpty);
         mGridViewWord.setHasFixedSize(true);
         wordAdapter = new PinyinAdapter();
         hotWordAdapter = new PinyinAdapter();
@@ -450,6 +453,11 @@ public class SearchActivity extends BaseActivity {
                 if (!aggregateSearchMode) return;
                 ArrayList<String> history = Hawk.get(HawkConfig.SEARCH_HISTORY, new ArrayList<String>());
                 historyWordGrid.removeAllViews();
+                if (history.isEmpty()) {
+                    if (tvHistoryEmpty != null) tvHistoryEmpty.setVisibility(View.VISIBLE);
+                    return;
+                }
+                if (tvHistoryEmpty != null) tvHistoryEmpty.setVisibility(View.GONE);
                 int itemHeight = getResources().getDimensionPixelSize(R.dimen.vs_80);
                 int itemMargin = getResources().getDimensionPixelSize(R.dimen.vs_5);
                 int paddingH = getResources().getDimensionPixelSize(R.dimen.vs_10);
@@ -458,25 +466,40 @@ public class SearchActivity extends BaseActivity {
                 if (availableWidth <= 0) availableWidth = llHistoryWord.getWidth();
                 float textSize = getResources().getDimension(R.dimen.ts_22);
                 int textColor = getResources().getColor(R.color.ui_text_primary);
+                int tintHint = getResources().getColor(R.color.ui_text_hint);
                 LinearLayout row = null;
                 int rowWidth = 0;
                 for (int i = 0; i < history.size(); i++) {
                     final String word = history.get(i);
-                    TextView item = new TextView(SearchActivity.this);
-                    item.setText(word);
-                    item.setSingleLine(true);
-                    item.setGravity(Gravity.CENTER);
-                    item.setIncludeFontPadding(false);
-                    item.setFocusable(true);
-                    item.setTextColor(textColor);
-                    item.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize);
-                    item.setMinWidth(minWidth);
-                    item.setPadding(paddingH, 0, paddingH, 0);
-                    item.setBackgroundResource(R.drawable.bg_chip);
-                    item.measure(
+                    // 玻璃质感搜索历史芯片：词条 + 右侧 × 单删
+                    LinearLayout chip = new LinearLayout(SearchActivity.this);
+                    chip.setOrientation(LinearLayout.HORIZONTAL);
+                    chip.setGravity(Gravity.CENTER_VERTICAL);
+                    chip.setPadding(paddingH, 0, paddingH, 0);
+                    chip.setFocusable(true);
+                    chip.setBackgroundResource(R.drawable.bg_glass_card_chip);
+                    TextView label = new TextView(SearchActivity.this);
+                    label.setText(word);
+                    label.setSingleLine(true);
+                    label.setGravity(Gravity.CENTER);
+                    label.setIncludeFontPadding(false);
+                    label.setTextColor(textColor);
+                    label.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize);
+                    LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT);
+                    chip.addView(label, labelParams);
+                    ImageView del = new ImageView(SearchActivity.this);
+                    del.setImageResource(R.drawable.icon_clear);
+                    del.setColorFilter(tintHint);
+                    int delSize = Math.round(textSize * 1.2f);
+                    LinearLayout.LayoutParams delParams = new LinearLayout.LayoutParams(delSize, delSize);
+                    delParams.leftMargin = paddingH / 2;
+                    chip.addView(del, delParams);
+                    chip.measure(
                             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                             View.MeasureSpec.makeMeasureSpec(itemHeight, View.MeasureSpec.EXACTLY));
-                    int itemWidth = Math.max(minWidth, item.getMeasuredWidth());
+                    int itemWidth = Math.max(minWidth, chip.getMeasuredWidth());
                     int rowItemWidth = itemWidth + itemMargin * 2;
                     if (row == null || (rowWidth > 0 && rowWidth + rowItemWidth > availableWidth)) {
                         row = new LinearLayout(SearchActivity.this);
@@ -489,15 +512,32 @@ public class SearchActivity extends BaseActivity {
                         historyWordGrid.addView(row, rowParams);
                         rowWidth = 0;
                     }
-                    item.setOnClickListener(new View.OnClickListener() {
+                    chip.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
                             startSearch(word);
                         }
                     });
+                    // 条目右侧的小 ×：删掉这一条历史（带玻璃缩小淡出动效后重建）
+                    del.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            v.animate().cancel();
+                            chip.animate().cancel();
+                            chip.animate().scaleX(0.8f).scaleY(0.8f).alpha(0f).setDuration(130)
+                                    .withEndAction(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            HistoryHelper.removeSearchHistory(word);
+                                            refreshSearchHistoryWords();
+                                            GlassTip.show(SearchActivity.this, "已删除");
+                                        }
+                                    }).start();
+                        }
+                    });
                     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(itemWidth, itemHeight);
                     params.setMargins(itemMargin, itemMargin, itemMargin, itemMargin);
-                    row.addView(item, params);
+                    row.addView(chip, params);
                     rowWidth += rowItemWidth;
                 }
             }

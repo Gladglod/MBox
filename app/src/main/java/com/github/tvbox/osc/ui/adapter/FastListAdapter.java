@@ -44,6 +44,9 @@ public class FastListAdapter extends BaseQuickAdapter<String, BaseViewHolder> {
         boolean selected = TextUtils.equals(item, selectedName);
         textView.setSelected(selected);
         textView.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
-        textView.setTextColor(mContext.getResources().getColor(selected ? R.color.color_02F8E1 : R.color.color_FFFFFF));
+        // 字色走主题色：日间主题芯片是浅色玻璃，写死的白色字会直接看不见；
+        // 选中保持主题强调色（日深青 / 夜荧光青），两种主题都读得清。
+        textView.setTextColor(mContext.getResources().getColor(selected
+                ? R.color.ui_accent : R.color.ui_text_primary));
     }
 }

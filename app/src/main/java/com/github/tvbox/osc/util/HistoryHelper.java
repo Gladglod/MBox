@@ -38,6 +38,13 @@ public class HistoryHelper {
         Hawk.put(HawkConfig.SEARCH_HISTORY, new ArrayList<String>());
     }
 
+    /** 删除单条搜索历史 */
+    public static void removeSearchHistory(String title){
+        ArrayList<String> history = Hawk.get(HawkConfig.SEARCH_HISTORY, new ArrayList<String>());
+        history.remove(title);
+        Hawk.put(HawkConfig.SEARCH_HISTORY, history);
+    }
+
     public static void setLiveApiHistory(String value){
         ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
         if (!history.contains(value)) {

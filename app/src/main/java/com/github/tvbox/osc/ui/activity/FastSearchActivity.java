@@ -1027,7 +1027,11 @@ public class FastSearchActivity extends BaseActivity {
         span.setSpan(new StyleSpan(Typeface.BOLD), 0, split, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         span.setSpan(new RelativeSizeSpan(1.05f), 0, split, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         span.setSpan(new RelativeSizeSpan(0.78f), split + 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        span.setSpan(new ForegroundColorSpan(0xCCFFFFFF), split + 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        // 第二行弱化字色也走主题色：写死白色在日间主题的浅玻璃底上会看不见
+        span.setSpan(new ForegroundColorSpan(
+                mContext != null ? mContext.getResources().getColor(R.color.ui_text_secondary)
+                        : getResources().getColor(R.color.ui_text_secondary)),
+                split + 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         mSearchTitle.setText(span);
     }
 

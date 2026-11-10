@@ -85,7 +85,7 @@
             android:id="@+id/tvSearchCheckboxBtn"
             android:layout_width="wrap_content"
             android:layout_height="32dp"
-            android:background="@drawable/bg_chip"
+            android:background="@drawable/bg_glass_card_chip"
             android:clickable="true"
             android:focusable="false"
             android:gravity="center"
@@ -106,7 +106,7 @@
             android:id="@+id/tvClear"
             android:layout_width="wrap_content"
             android:layout_height="32dp"
-            android:background="@drawable/bg_chip"
+            android:background="@drawable/bg_glass_card_chip"
             android:clickable="true"
             android:focusable="false"
             android:gravity="center"
@@ -207,11 +207,29 @@
             android:clipToPadding="false"
             android:scrollbars="none">
 
-            <GridLayout
-                android:id="@+id/historyWordGrid"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:columnCount="1" />
+                android:orientation="vertical">
+
+                <GridLayout
+                    android:id="@+id/historyWordGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:columnCount="1" />
+
+                <TextView
+                    android:id="@+id/tvHistoryEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingTop="@dimen/vs_60"
+                    android:paddingBottom="@dimen/vs_60"
+                    android:text="暂无搜索记录"
+                    android:textColor="@color/ui_text_hint"
+                    android:textSize="@dimen/ts_18"
+                    android:visibility="gone" />
+            </LinearLayout>
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 

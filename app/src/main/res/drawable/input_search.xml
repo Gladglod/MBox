@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  搜索输入框底：iOS 主题玻璃场域（glass_row_* 主题色随日/夜切换），
+  白天白色透明玻璃、夜间深玻璃，文字色仍走 ui_text_*。
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <corners android:radius="10mm" />
-    <solid android:color="@color/ui_surface_alt" />
+    <solid android:color="@color/glass_row_fill" />
     <stroke
         android:width="@dimen/vs_1"
-        android:color="@color/ui_divider" />
+        android:color="@color/glass_row_stroke" />
 </shape>
