@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -56,6 +57,7 @@ public class SearchDanmuDialog extends BaseDialog {
     private LinearLayout statusBar;
     private TextView statusText;
     private TextView statusCancel;
+    private ProgressBar statusProgress;
     private int statusAction = ACTION_NONE;
     private DanmuProvider danmuProvider;
     private ImageView backBtn;
@@ -89,6 +91,7 @@ public class SearchDanmuDialog extends BaseDialog {
         statusBar = findViewById(R.id.statusBar);
         statusText = findViewById(R.id.statusText);
         statusCancel = findViewById(R.id.statusCancel);
+        statusProgress = findViewById(R.id.statusProgress);
         TextView searchButton = findViewById(R.id.inputSubmit);
         ImageView closeBtn = findViewById(R.id.iv_close);
         groupAdapter = new DanmuGroupAdapter();
@@ -317,7 +320,7 @@ public class SearchDanmuDialog extends BaseDialog {
         DanmakuApi.loadSearchResult(result, new DanmakuApi.SearchResultCallback() {
             @Override
             public void onSuccess(String danmu) {
-                if (danmuLoader != null) danmuLoader.loadDanmu(danmu, result.getName());
+                if (danmuLoader != null) danmuLoader.loadDanmu(danmu, DanmuTitleUtil.displayTitle(result.getName()));
                 GlassTip.show(getContext(), "弹幕已加载");
                 dismiss();
             }
@@ -348,6 +351,8 @@ public class SearchDanmuDialog extends BaseDialog {
         }
         statusAction = ACTION_UNLOAD;
         if (statusText != null) statusText.setText("当前弹幕：" + name);
+        // 已挂载是稳定状态，不显示转圈
+        if (statusProgress != null) statusProgress.setVisibility(View.GONE);
         if (statusCancel != null) {
             statusCancel.setText("卸载");
             statusCancel.setVisibility(View.VISIBLE);
@@ -360,6 +365,8 @@ public class SearchDanmuDialog extends BaseDialog {
     private void showStatus(String text, boolean action) {
         if (statusBar == null) return;
         if (statusText != null) statusText.setText(text);
+        // 搜索中显示转圈，之后各状态按需自行切换
+        if (statusProgress != null) statusProgress.setVisibility(View.VISIBLE);
         if (statusCancel != null) {
             statusCancel.setVisibility(action ? View.VISIBLE : View.GONE);
         }
@@ -367,8 +374,9 @@ public class SearchDanmuDialog extends BaseDialog {
     }
 
     private void showDanmuLoading(DanmuSearchResult result) {
-        if (statusText != null) statusText.setText("正在加载弹幕：" + result.getName());
+        if (statusText != null) statusText.setText("正在加载弹幕：" + DanmuTitleUtil.displayTitle(result.getName()));
         statusAction = ACTION_CANCEL_LOAD;
+        if (statusProgress != null) statusProgress.setVisibility(View.VISIBLE);
         if (statusCancel != null) {
             statusCancel.setText("取消");
             statusCancel.setVisibility(View.VISIBLE);

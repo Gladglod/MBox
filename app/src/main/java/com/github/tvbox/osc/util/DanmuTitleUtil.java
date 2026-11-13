@@ -42,6 +42,15 @@ public final class DanmuTitleUtil {
     private static final Pattern P_SEASON_EN = Pattern.compile("(?i)\\bSEASON\\s*([0-9]{1,3})\\b|\\bS([0-9]{1,3})\\b");
     /** 裸数字（「天下 03」这种没有「第…集」字样的标题）；不匹配长数字片段，避免把 1080P、年份当集数 */
     private static final Pattern P_BARE_NUMBER = Pattern.compile("(?<![0-9])[0-9]{1,3}(?![0-9])");
+    /** 日期（综艺单集标题常带录制/播出日期）：20220128 / 2022-01-28 / 2022.1.28 / 2022年1月28日 */
+    private static final Pattern P_DATE = Pattern.compile(
+            "(?<![0-9])20[0-9]{2}[-/.年]\\s*[0-9]{1,2}[-/.月]\\s*[0-9]{1,2}日?(?![0-9])"
+                    + "|(?<![0-9])20[0-9]{6}(?![0-9])");
+    /** 标题头部成段的括号标注：【综艺】 / 【qq】 / （高清） 这类 */
+    private static final Pattern P_BRACKET_HEAD =
+            Pattern.compile("^[\\(（\\[【][^\\)）\\]】]*[\\)）\\]】]");
+    /** 标题头部的来源标注：from 360 / From qq 这类 */
+    private static final Pattern P_FROM_HEAD = Pattern.compile("(?i)^[\\s]*from\\s+\\S+");
 
     private DanmuTitleUtil() {
     }
@@ -239,6 +248,73 @@ public final class DanmuTitleUtil {
             if (value > 0) last = value;
         }
         return last;
+    }
+
+    /**
+     * 综艺等节目单集标题的显示整理（只改显示，不改加载用的原始标题）：
+     * <ol>
+     *     <li>去掉头部成段的来源标注：「【综艺】from 360 【qq】 第1期…」→「第1期…」；</li>
+     *     <li>标题里的日期提到最前面（「第1期 … 2023-08-13期」→「20230813 第1期 …」），按日期找期数更直观。</li>
+     * </ol>
+     * 没有日期也没有头部标注的标题原样返回。
+     */
+    public static String displayTitle(String raw) {
+        String text = stripSourcePrefix(normalize(raw));
+        if (TextUtils.isEmpty(text)) return text;
+        Matcher matcher = P_DATE.matcher(text);
+        if (!matcher.find()) return text;
+        String digits = compactDate(matcher.group());
+        if (TextUtils.isEmpty(digits) || text.startsWith(digits)) return text;
+        String head = text.substring(0, matcher.start()).trim();
+        String tail = text.substring(matcher.end()).trim();
+        // 日期后面如果只剩「期 / 集」标记词，是日期自带的「…期」尾巴，一并去掉
+        if (tail.matches("^[期集][\\s:：，,·.．-]*$")) tail = "";
+        StringBuilder display = new StringBuilder(digits);
+        if (!TextUtils.isEmpty(head)) display.append(' ').append(head);
+        if (!TextUtils.isEmpty(tail)) display.append(' ').append(tail);
+        return display.toString().replaceAll("\\s{2,}", " ").trim();
+    }
+
+    /**
+     * 去掉标题头部成段的来源标注：「【综艺】from 360 【qq】 第1期…」→「第1期…」。
+     * 只从头部连续地摘，遇到真正的标题内容就停，避免误伤正文里的括号段。
+     */
+    private static String stripSourcePrefix(String text) {
+        String result = text;
+        while (true) {
+            String trimmed = result.replaceFirst("^[\\s\\-–—:：|｜]+", "");
+            Matcher bracket = P_BRACKET_HEAD.matcher(trimmed);
+            if (bracket.find()) {
+                result = trimmed.substring(bracket.end());
+                continue;
+            }
+            Matcher from = P_FROM_HEAD.matcher(trimmed);
+            if (from.find()) {
+                result = trimmed.substring(from.end());
+                continue;
+            }
+            return trimmed;
+        }
+    }
+
+    /** 日期统一成 20220128 的 8 位形式，解析不出返回空 */
+    private static String compactDate(String matched) {
+        String digits = matched.replaceAll("[^0-9]", "");
+        if (digits.length() == matched.length()) {
+            // 纯数字形式，8 位才算日期
+            return digits.length() == 8 ? digits : "";
+        }
+        // 带分隔符的形式：2022-01-28 / 2022年1月28日 → 补零成 8 位
+        String[] parts = matched.split("[-/.年月日\\s]+");
+        if (parts.length != 3) return "";
+        try {
+            return String.format(java.util.Locale.US, "%04d%02d%02d",
+                    Integer.parseInt(parts[0].trim()),
+                    Integer.parseInt(parts[1].trim()),
+                    Integer.parseInt(parts[2].trim()));
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     /** 全角转半角 + 去首尾空白 */

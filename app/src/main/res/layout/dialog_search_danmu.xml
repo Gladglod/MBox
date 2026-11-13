@@ -87,6 +87,7 @@
             android:visibility="gone">
 
             <ProgressBar
+                android:id="@+id/statusProgress"
                 android:layout_width="18dp"
                 android:layout_height="18dp"
                 android:indeterminateBehavior="repeat"

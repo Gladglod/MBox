@@ -7,6 +7,7 @@ import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.chad.library.adapter.base.BaseViewHolder;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.bean.DanmuSearchResult;
+import com.github.tvbox.osc.util.DanmuTitleUtil;
 
 import java.util.ArrayList;
 
@@ -27,8 +28,8 @@ public class SearchDanmuAdapter extends BaseQuickAdapter<DanmuSearchResult, Base
     @Override
     protected void convert(BaseViewHolder helper, DanmuSearchResult item) {
         int episode = item.getEpisode();
-        // 标题原样显示接口返回的内容，不做任何替换/裁剪；集数只用来打「疑似此集」的标
-        helper.setText(R.id.danmuName, item.getName());
+        // 标题原样显示接口返回的内容，只把综艺标题里的日期提到最前面；集数只用来打「疑似此集」的标
+        helper.setText(R.id.danmuName, DanmuTitleUtil.displayTitle(item.getName()));
         View guess = helper.getView(R.id.danmuGuess);
         if (guess != null) {
             guess.setVisibility(currentEpisode > 0 && episode == currentEpisode ? View.VISIBLE : View.GONE);

@@ -37,6 +37,8 @@ public class DanmuLoadController {
     private String danmuEpisode = "";
     /** 展示用：正在使用的弹幕来源名（搜索框状态条「当前弹幕：xxx」），空表示用 Title/Episode 兜底 */
     private String danmuDisplayName = "";
+    /** 弹幕是否真正解析挂载成功（下载/解析失败、被释放、被卸载时为 false），状态条以此为准 */
+    private boolean danmuLoaded;
     private int startedSeq = -1;
     private boolean pendingPrepare;
     private boolean temporarilyClosed;
@@ -175,7 +177,8 @@ public class DanmuLoadController {
      * 优先用搜索选中的条目名，否则用自动加载时的 剧名+集名，没有弹幕时返回空。
      */
     public String getDanmuDisplayName() {
-        if (TextUtils.isEmpty(danmuText)) return "";
+        // 只有真正挂载成功的弹幕才对外显示，下载/解析失败的不算
+        if (!danmuLoaded || TextUtils.isEmpty(danmuText)) return "";
         if (!TextUtils.isEmpty(danmuDisplayName)) return danmuDisplayName;
         String name = (danmuTitle + " " + danmuEpisode).trim();
         return name;
@@ -279,6 +282,8 @@ public class DanmuLoadController {
                 return;
             }
             danmuView.prepare(parser, danmakuContext);
+            // 到这里才算真正挂载成功，状态条的「当前弹幕：xxx」以此为准
+            danmuLoaded = true;
             clearLoadCallback(seq);
             danmuView.setVisibility(DanmuHelper.isOpen() ? View.VISIBLE : View.GONE);
             startIfReady(seq);
@@ -424,6 +429,8 @@ public class DanmuLoadController {
         } catch (Throwable ignored) {
         }
         danmuView.setVisibility(View.GONE);
+        // 弹幕层被释放后就不能再说「已挂载」了，否则搜索框状态条会显示一个实际不存在的弹幕
+        danmuLoaded = false;
     }
 
     private String getSourceSummary(String danmu) {

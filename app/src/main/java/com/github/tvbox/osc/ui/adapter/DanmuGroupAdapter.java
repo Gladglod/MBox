@@ -8,6 +8,7 @@ import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.chad.library.adapter.base.BaseViewHolder;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.bean.DanmuGroup;
+import com.github.tvbox.osc.util.DanmuTitleUtil;
 
 import java.util.ArrayList;
 
@@ -27,7 +28,7 @@ public class DanmuGroupAdapter extends BaseQuickAdapter<DanmuGroup, BaseViewHold
 
     @Override
     protected void convert(BaseViewHolder helper, DanmuGroup item) {
-        helper.setText(R.id.groupName, item.getShowName());
+        helper.setText(R.id.groupName, DanmuTitleUtil.displayTitle(item.getShowName()));
         // 标题里已经带了来源就不再重复，避免「xx弹幕 · xx弹幕 · 共3集」
         StringBuilder meta = new StringBuilder();
         String source = item.getSource();
