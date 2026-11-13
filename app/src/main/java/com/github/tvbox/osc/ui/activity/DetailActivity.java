@@ -24,7 +24,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 
@@ -159,7 +158,7 @@ public class DetailActivity extends BaseActivity {
             if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
                 sourceSpeedDialog.setRowSearching(switchSourceTargetKey, false);
             }
-            Toast.makeText(DetailActivity.this, "搜索片源超时，请稍后再试", Toast.LENGTH_SHORT).show();
+            GlassTip.show(DetailActivity.this, "搜索片源超时，请稍后再试");
         }
     };
     /** 收藏星标：★ = 已收藏，☆ = 未收藏 */
@@ -495,7 +494,7 @@ public class DetailActivity extends BaseActivity {
                 ClipboardManager cm = (ClipboardManager)getSystemService(mContext.CLIPBOARD_SERVICE);
                 //设置内容到剪切板
                 cm.setPrimaryClip(ClipData.newPlainText(null, tvPlayUrl.getText().toString().replace("播放地址：","")));
-                Toast.makeText(DetailActivity.this, "已复制", Toast.LENGTH_SHORT).show();
+                GlassTip.show(DetailActivity.this, "已复制");
             }
         });
 
@@ -1006,7 +1005,7 @@ public class DetailActivity extends BaseActivity {
                     if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
                         sourceSpeedDialog.setRowSearching(switchSourceTargetKey, false);
                     }
-                    Toast.makeText(DetailActivity.this, "「" + switchSourceTargetName + "」未找到同名片源", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(DetailActivity.this, "「" + switchSourceTargetName + "」未找到同名片源");
                     return;
                 }
                 // 记入换源历史，后续自动换源（线路耗尽兜底）不会再走这个源
@@ -1043,15 +1042,15 @@ public class DetailActivity extends BaseActivity {
                     if (fallbackResult) {
                         SourceBean fallbackSource = ApiConfig.get().getSource(sourceKey);
                         String fallbackName = fallbackSource == null ? sourceKey : fallbackSource.getName();
-                        Toast.makeText(DetailActivity.this, "站点切换至" + fallbackName, Toast.LENGTH_SHORT).show();
+                        GlassTip.show(DetailActivity.this, "站点切换至" + fallbackName);
                     } else if (!TextUtils.isEmpty(manualSwitchSourceName)) {
-                        Toast.makeText(DetailActivity.this, "已切换至" + manualSwitchSourceName, Toast.LENGTH_SHORT).show();
+                        GlassTip.show(DetailActivity.this, "已切换至" + manualSwitchSourceName);
                         manualSwitchSourceName = "";
                     }
                     showSuccess();
                     if(!TextUtils.isEmpty(absXml.msg) && !absXml.msg.equals("数据列表")){
                         resetDetailFallback();
-                        Toast.makeText(DetailActivity.this, absXml.msg, Toast.LENGTH_SHORT).show();
+                        GlassTip.show(DetailActivity.this, absXml.msg);
                         showEmpty();
                         return;
                     }
@@ -1234,7 +1233,7 @@ public class DetailActivity extends BaseActivity {
         if (shouldFinish || fromCollect) {
             resetDetailFallback();
             if (shouldFinish) {
-                Toast.makeText(this, data.msg, Toast.LENGTH_SHORT).show();
+                GlassTip.show(this, data.msg);
             }
             finish();
             return;
@@ -1262,12 +1261,12 @@ public class DetailActivity extends BaseActivity {
         }
         SourceBean currentSource = ApiConfig.get().getSource(sourceKey);
         if (currentSource == null || !currentSource.isChangeable()) {
-            Toast.makeText(this, "当前站点不支持换源", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "当前站点不支持换源");
             return;
         }
         String title = mVideo != null && !TextUtils.isEmpty(mVideo.name) ? mVideo.name : vod_name;
         if (TextUtils.isEmpty(title)) {
-            Toast.makeText(this, "暂无片名信息，无法换源", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "暂无片名信息，无法换源");
             return;
         }
         List<SourceBean> sources = new ArrayList<>();
@@ -1277,7 +1276,7 @@ public class DetailActivity extends BaseActivity {
             }
         }
         if (sources.isEmpty()) {
-            Toast.makeText(this, "暂无可切换的片源", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "暂无可切换的片源");
             return;
         }
         sourceSpeedDialog = new SourceSpeedDialog(this, sources, title.trim(), new SourceSpeedDialog.OnSourcePickListener() {

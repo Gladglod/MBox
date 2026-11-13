@@ -4,8 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 
 import com.github.tvbox.osc.R;
@@ -14,6 +12,7 @@ import com.github.tvbox.osc.util.SubtitleHelper;
 
 import org.jetbrains.annotations.NotNull;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class SubtitleDialog extends BaseDialog {
 
     public TextView selectInternal;
@@ -191,7 +190,7 @@ public class SubtitleDialog extends BaseDialog {
                 int style = 0;
                 dismiss();
                 mSubtitleViewListener.setTextStyle(style);
-                Toast.makeText(getContext(), "设置样式成功", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "设置样式成功");
             }
         });
 
@@ -208,7 +207,7 @@ public class SubtitleDialog extends BaseDialog {
                 int style = 1;
                 dismiss();
                 mSubtitleViewListener.setTextStyle(style);
-                Toast.makeText(getContext(), "设置样式成功", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "设置样式成功");
             }
         });
     }

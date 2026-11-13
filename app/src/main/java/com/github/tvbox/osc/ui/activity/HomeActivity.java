@@ -19,8 +19,6 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
@@ -78,6 +76,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class HomeActivity extends BaseActivity {
     private LinearLayout topLayout;
     private View searchBar;
@@ -618,7 +617,7 @@ public class HomeActivity extends BaseActivity {
                         mHandler.post(new Runnable() {
                             @Override
                             public void run() {
-                                Toast.makeText(HomeActivity.this, msg, Toast.LENGTH_SHORT).show();
+                                GlassTip.show(HomeActivity.this, msg);
                             }
                         });
                     }
@@ -630,7 +629,7 @@ public class HomeActivity extends BaseActivity {
                         mHandler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
-                                Toast.makeText(HomeActivity.this, msg + " jar load err", Toast.LENGTH_SHORT).show();
+                                GlassTip.show(HomeActivity.this, msg + " jar load err");
                                 initData();
                             }
                         }, 50);
@@ -645,7 +644,7 @@ public class HomeActivity extends BaseActivity {
                 mHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        Toast.makeText(HomeActivity.this, msg, Toast.LENGTH_SHORT).show();
+                        GlassTip.show(HomeActivity.this, msg);
                     }
                 });
             }
@@ -907,7 +906,7 @@ public class HomeActivity extends BaseActivity {
             System.exit(0);
         } else {
             mExitTime = System.currentTimeMillis();
-            Toast.makeText(mContext, "再按一次返回键退出应用", Toast.LENGTH_SHORT).show();
+            GlassTip.show(mContext, "再按一次返回键退出应用");
         }
     }
 

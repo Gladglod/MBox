@@ -9,8 +9,6 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 
 import com.github.tvbox.osc.R;
@@ -34,6 +32,7 @@ import java.util.List;
 
 import me.jessyan.autosize.utils.AutoSizeUtils;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 描述
  *
@@ -92,7 +91,7 @@ public class ApiDialog extends BaseDialog {
             public void onClick(View v) {
                 ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
                 if (history.isEmpty()){
-                    Toast.makeText(getContext(), "直播历史为空", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), "直播历史为空");
                     return;
                 }
                 String current = Hawk.get(HawkConfig.LIVE_API_URL, "");
@@ -121,7 +120,7 @@ public class ApiDialog extends BaseDialog {
             @Override
             public void onClick(View v) {
                 if (XXPermissions.isGranted(getContext(), Permission.Group.STORAGE)) {
-                    Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), "已获得存储权限");
                 } else {
                     XXPermissions.with(getContext())
                             .permission(Permission.Group.STORAGE)
@@ -129,17 +128,17 @@ public class ApiDialog extends BaseDialog {
                                 @Override
                                 public void onGranted(List<String> permissions, boolean all) {
                                     if (all) {
-                                        Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
+                                        GlassTip.show(getContext(), "已获得存储权限");
                                     }
                                 }
 
                                 @Override
                                 public void onDenied(List<String> permissions, boolean never) {
                                     if (never) {
-                                        Toast.makeText(getContext(), "获取存储权限失败,请在系统设置中开启", Toast.LENGTH_SHORT).show();
+                                        GlassTip.show(getContext(), "获取存储权限失败,请在系统设置中开启");
                                         XXPermissions.startPermissionActivity((Activity) getContext(), permissions);
                                     } else {
-                                        Toast.makeText(getContext(), "获取存储权限失败", Toast.LENGTH_SHORT).show();
+                                        GlassTip.show(getContext(), "获取存储权限失败");
                                     }
                                 }
                             });

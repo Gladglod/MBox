@@ -3,8 +3,6 @@ package com.github.tvbox.osc.ui.activity;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -26,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 「短剧源」设置页。
  *
@@ -92,8 +91,7 @@ public class ShortDramaSourceActivity extends BaseActivity {
                 if (position < 0 || position >= adapter.getData().size()) return;
                 ShortDramaSource item = adapter.getData().get(position);
                 if (!item.alive) {
-                    Toast.makeText(ShortDramaSourceActivity.this,
-                            R.string.short_drama_source_dead_tag, Toast.LENGTH_SHORT).show();
+                    GlassTip.show(ShortDramaSourceActivity.this, ShortDramaSourceActivity.this.getString(R.string.short_drama_source_dead_tag));
                     return;
                 }
                 item.enabled = !item.enabled;
@@ -145,7 +143,7 @@ public class ShortDramaSourceActivity extends BaseActivity {
     private void remove(ShortDramaSource item) {
         ShortDramaConfig.remove(item);
         reload();
-        Toast.makeText(this, R.string.short_drama_source_removed, Toast.LENGTH_SHORT).show();
+        GlassTip.show(this, this.getString(R.string.short_drama_source_removed));
     }
 
     /* ============================ 自动识别 ============================ */
@@ -207,7 +205,7 @@ public class ShortDramaSourceActivity extends BaseActivity {
             sites.add(bean);
         }
         if (sites.isEmpty()) {
-            Toast.makeText(this, R.string.short_drama_source_no_site, Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, this.getString(R.string.short_drama_source_no_site));
             return;
         }
         List<String> names = new ArrayList<>();
@@ -244,8 +242,7 @@ public class ShortDramaSourceActivity extends BaseActivity {
                 btnAdd.setEnabled(true);
                 showScanStatus("");
                 if (list == null || list.isEmpty()) {
-                    Toast.makeText(ShortDramaSourceActivity.this,
-                            R.string.short_drama_source_failed, Toast.LENGTH_SHORT).show();
+                    GlassTip.show(ShortDramaSourceActivity.this, ShortDramaSourceActivity.this.getString(R.string.short_drama_source_failed));
                     return;
                 }
                 final List<MovieSort.SortData> categories = new ArrayList<>();
@@ -256,8 +253,7 @@ public class ShortDramaSourceActivity extends BaseActivity {
                     names.add(TextUtils.isEmpty(sort.name) ? sort.id : sort.name);
                 }
                 if (categories.isEmpty()) {
-                    Toast.makeText(ShortDramaSourceActivity.this,
-                            R.string.short_drama_source_failed, Toast.LENGTH_SHORT).show();
+                    GlassTip.show(ShortDramaSourceActivity.this, ShortDramaSourceActivity.this.getString(R.string.short_drama_source_failed));
                     return;
                 }
                 new ChoiceListDialog(ShortDramaSourceActivity.this,
@@ -268,10 +264,8 @@ public class ShortDramaSourceActivity extends BaseActivity {
                                 if (position < 0 || position >= categories.size()) return;
                                 MovieSort.SortData sort = categories.get(position);
                                 boolean added = ShortDramaConfig.addManual(bean.getKey(), sort.id, sort.name);
-                                Toast.makeText(ShortDramaSourceActivity.this,
-                                        added ? getString(R.string.short_drama_source_added, sort.name)
-                                                : getString(R.string.short_drama_source_exists),
-                                        Toast.LENGTH_SHORT).show();
+                                GlassTip.show(ShortDramaSourceActivity.this, added ? getString(R.string.short_drama_source_added, sort.name)
+                                                : getString(R.string.short_drama_source_exists));
                                 reload();
                             }
                         }).show();

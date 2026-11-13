@@ -38,8 +38,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.Observer;
@@ -584,7 +582,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
 
     private void showCastDialog() {
         if (TextUtils.isEmpty(webPlayUrl)) {
-            Toast.makeText(mContext, "暂无可投屏播放地址", Toast.LENGTH_SHORT).show();
+            GlassTip.show(mContext, "暂无可投屏播放地址");
             return;
         }
         HashMap<String, String> headers = webHeaderMap == null ? null : new HashMap<>(webHeaderMap);
@@ -770,7 +768,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             trackInfo = ((ExoPlayer)mediaPlayer).getTrackInfo();
         }
         if (trackInfo == null) {
-            Toast.makeText(mContext, "没有音轨", Toast.LENGTH_SHORT).show();
+            GlassTip.show(mContext, "没有音轨");
             return;
         }
         List<TrackInfoBean> bean = trackInfo.getAudio();
@@ -828,7 +826,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             trackInfo = ((ExoPlayer) mediaPlayer).getTrackInfo();
         }
         if (trackInfo == null || trackInfo.getVideo().isEmpty()) {
-            Toast.makeText(mContext, "没有视轨", Toast.LENGTH_SHORT).show();
+            GlassTip.show(mContext, "没有视轨");
             return;
         }
         List<TrackInfoBean> tracks = trackInfo.getVideo();
@@ -888,7 +886,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             trackInfo = ((ExoPlayer) mediaPlayer).getTrackInfo();
         }
         if (trackInfo == null) {
-            Toast.makeText(mContext, "没有内置字幕", Toast.LENGTH_SHORT).show();
+            GlassTip.show(mContext, "没有内置字幕");
             return;
         }
         List<TrackInfoBean> bean = trackInfo.getSubtitle();
@@ -1053,7 +1051,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                 public void run() {
                     if (finish) {
                         setTip(err, false, true);
-                        Toast.makeText(mContext, err, Toast.LENGTH_SHORT).show();
+                        GlassTip.show(mContext, err);
                     } else {
                         setTip(err, false, true);
                     }
@@ -1719,7 +1717,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             hasNext = mVodInfo.playIndex + 1 < mVodInfo.seriesMap.get(mVodInfo.playFlag).size();
         }
         if (!hasNext) {
-            Toast.makeText(requireContext(), "已经是最后一集了!", Toast.LENGTH_SHORT).show();
+            GlassTip.show(requireContext(), "已经是最后一集了!");
             return;
         }else {
             mVodInfo.playIndex++;
@@ -1737,7 +1735,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             hasPre = mVodInfo.playIndex - 1 >= 0;
         }
         if (!hasPre) {
-            Toast.makeText(requireContext(), "已经是第一集了!", Toast.LENGTH_SHORT).show();
+            GlassTip.show(requireContext(), "已经是第一集了!");
             return;
         }
         mVodInfo.playIndex--;
@@ -1901,7 +1899,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             requireActivity().runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(mContext, "线路切换至" + flagToSwitch, Toast.LENGTH_SHORT).show();
+                    GlassTip.show(mContext, "线路切换至" + flagToSwitch);
                 }
             });
         }
@@ -2385,7 +2383,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             }
             // 画中画已关闭：不进入任何小窗
             if (pipConfig == HawkConfig.PIP_MODE_OFF) {
-                Toast.makeText(requireContext(), "画中画已在设置中关闭", Toast.LENGTH_SHORT).show();
+                GlassTip.show(requireContext(), "画中画已在设置中关闭");
                 return;
             }
             // 应用内唯一小窗：现存的旧悬浮窗内容被顶替（会先停掉并释放旧播放）
@@ -2396,14 +2394,12 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             // Surface / 解码零迁移 —— 这是它稳定省电的原因
             if (pipConfig == HawkConfig.PIP_MODE_SYSTEM) {
                 if (!PipHelper.isSupported(requireContext())) {
-                    Toast.makeText(requireContext(),
-                            "系统画中画需要 Android 8.0+，可在设置中改用自定义画中画",
-                            Toast.LENGTH_LONG).show();
+                    GlassTip.show(requireContext(), "系统画中画需要 Android 8.0+，可在设置中改用自定义画中画");
                     return;
                 }
                 PipHelper.logSurfaceIdentity("pip-enter", mVideoView);
                 if (!PipHelper.enter(requireActivity(), currentVideoRatio())) {
-                    Toast.makeText(requireContext(), "系统画中画启动失败", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(requireContext(), "系统画中画启动失败");
                 }
                 return;
             }
@@ -2415,16 +2411,12 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                 int renderType = cfgForRender == null
                         ? Hawk.get(HawkConfig.PLAY_RENDER, 0) : cfgForRender.optInt("pr", Hawk.get(HawkConfig.PLAY_RENDER, 0));
                 if (renderType == 1) {
-                    Toast.makeText(requireContext(),
-                            "当前为 SurfaceView 渲染，小窗缩放建议改用 TextureView（我的→播放设定→渲染方式）",
-                            Toast.LENGTH_LONG).show();
+                    GlassTip.show(requireContext(), "当前为 SurfaceView 渲染，小窗缩放建议改用 TextureView（我的→播放设定→渲染方式）");
                 }
             } catch (Throwable ignore) {
             }
             if (!FloatPlayWindow.hasOverlayPermission(requireContext())) {
-                Toast.makeText(requireContext(),
-                        "小窗播放需要「显示在其他应用上层」权限，请在打开的设置页中开启",
-                        Toast.LENGTH_LONG).show();
+                GlassTip.show(requireContext(), "小窗播放需要「显示在其他应用上层」权限，请在打开的设置页中开启");
                 FloatPlayWindow.openOverlayPermission(requireActivity());
                 return;
             }
@@ -2949,7 +2941,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                             requireActivity().runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    Toast.makeText(mContext, "解析来自:" + rs.optString("jxFrom"), Toast.LENGTH_SHORT).show();
+                                    GlassTip.show(mContext, "解析来自:" + rs.optString("jxFrom"));
                                 }
                             });
                         }
@@ -3069,7 +3061,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             requireActivity().runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(mContext, "解析来自:" + rs.optString("jxFrom"), Toast.LENGTH_SHORT).show();
+                    GlassTip.show(mContext, "解析来自:" + rs.optString("jxFrom"));
                 }
             });
         }
@@ -3135,14 +3127,14 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
 
                     @Override
                     public void fail() {
-                        Toast.makeText(mContext, "XWalkView不兼容，已替换为系统自带WebView", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(mContext, "XWalkView不兼容，已替换为系统自带WebView");
                         initWebView(true);
                         loadUrl(url);
                     }
 
                     @Override
                     public void ignore() {
-                        Toast.makeText(mContext, "XWalkView运行组件未下载，已替换为系统自带WebView", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(mContext, "XWalkView运行组件未下载，已替换为系统自带WebView");
                         initWebView(true);
                         loadUrl(url);
                     }

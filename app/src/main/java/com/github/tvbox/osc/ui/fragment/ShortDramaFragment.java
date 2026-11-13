@@ -6,8 +6,6 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -37,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 底部导航「短剧」页。
  *
@@ -304,7 +303,7 @@ public class ShortDramaFragment extends BaseLazyFragment {
                         gridAdapter.loadMoreEnd();
                         gridAdapter.setEnableLoadMore(false);
                         if (getContext() != null) {
-                            Toast.makeText(getContext(), R.string.short_drama_load_more_end, Toast.LENGTH_SHORT).show();
+                            GlassTip.show(getContext(), getContext().getString(R.string.short_drama_load_more_end));
                         }
                     }
                 }

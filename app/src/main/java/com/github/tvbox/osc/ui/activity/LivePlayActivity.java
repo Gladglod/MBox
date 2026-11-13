@@ -34,8 +34,6 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -124,6 +122,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import xyz.doikki.videoplayer.exo.ExoMediaSourceHelper;
 import xyz.doikki.videoplayer.player.VideoView;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * @author pj567
  * @date :2021/1/12
@@ -1390,7 +1389,7 @@ public class LivePlayActivity extends BaseActivity {
     public  void divLoadEpgRight(View view) {
         if (epgListAdapter == null || epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
             updateEpgPanelState(false);
-            Toast.makeText(App.getInstance(), "当前频道暂无节目信息", Toast.LENGTH_SHORT).show();
+            GlassTip.show(LivePlayActivity.this, "当前频道暂无节目信息");
             return;
         }
         mChannelGroupView.setVisibility(View.GONE);
@@ -2210,7 +2209,7 @@ public class LivePlayActivity extends BaseActivity {
             return;
         }
         if (epgListAdapter == null || epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
-            Toast.makeText(App.getInstance(), "当前频道暂无节目信息", Toast.LENGTH_SHORT).show();
+            GlassTip.show(LivePlayActivity.this, "当前频道暂无节目信息");
             return;
         }
         if (currentLiveLookBackIndex > -1) {
@@ -2232,7 +2231,7 @@ public class LivePlayActivity extends BaseActivity {
     private void showFullscreenEpg() {
         if (liveFullscreenEpgOverlay == null || epgListAdapter == null
                 || epgListAdapter.getData() == null || epgListAdapter.getData().isEmpty()) {
-            Toast.makeText(App.getInstance(), "当前频道暂无节目信息", Toast.LENGTH_SHORT).show();
+            GlassTip.show(LivePlayActivity.this, "当前频道暂无节目信息");
             return;
         }
         if (tvRightSettingLayout.getVisibility() == View.VISIBLE) {
@@ -3501,7 +3500,7 @@ public class LivePlayActivity extends BaseActivity {
                                 if (mVideoView != null) mVideoView.release();
                                 ApiConfig.get().refreshLiveApiHistoryItems();
                                 setEmptyLiveChannelList(false);
-                                Toast.makeText(LivePlayActivity.this, msg, Toast.LENGTH_SHORT).show();
+                                GlassTip.show(LivePlayActivity.this, msg);
                             }
                         });
                     }
@@ -3512,7 +3511,7 @@ public class LivePlayActivity extends BaseActivity {
                             @Override
                             public void run() {
                                 if (requestId != liveConfigRequestId || isFinishing()) return;
-                                Toast.makeText(LivePlayActivity.this, msg, Toast.LENGTH_SHORT).show();
+                                GlassTip.show(LivePlayActivity.this, msg);
                             }
                         });
                     }
@@ -3630,7 +3629,7 @@ public class LivePlayActivity extends BaseActivity {
                 mHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        Toast.makeText(LivePlayActivity.this, msg, Toast.LENGTH_SHORT).show();
+                        GlassTip.show(LivePlayActivity.this, msg);
                     }
                 });
             }
@@ -4101,7 +4100,7 @@ public class LivePlayActivity extends BaseActivity {
                     channelGroupPasswordConfirmed.add(groupIndex);
                     loadChannelGroupDataAndPlay(groupIndex, liveChannelIndex);
                 } else {
-                    Toast.makeText(App.getInstance(), "密码错误", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(LivePlayActivity.this, "密码错误");
                 }
 
                 if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE)
@@ -4229,7 +4228,7 @@ public class LivePlayActivity extends BaseActivity {
 
     private boolean isCurrentLiveChannelValid() {
         if (currentLiveChannelItem == null) {
-            Toast.makeText(App.getInstance(), "请先选择频道", Toast.LENGTH_SHORT).show();
+            GlassTip.show(LivePlayActivity.this, "请先选择频道");
             return false;
         }
         return true;
@@ -4457,6 +4456,6 @@ public class LivePlayActivity extends BaseActivity {
 
     private void setEmptyLiveChannelList(boolean releasePlayer) {
         clearLiveChannelList(releasePlayer);
-//        Toast.makeText(App.getInstance(), "源异常,请切换到其他源", Toast.LENGTH_SHORT).show();
+//        GlassTip.show(LivePlayActivity.this, "源异常,请切换到其他源");
     }
 }

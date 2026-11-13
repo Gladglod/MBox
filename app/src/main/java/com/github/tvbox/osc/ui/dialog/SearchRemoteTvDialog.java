@@ -5,8 +5,6 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 
@@ -26,6 +24,7 @@ import org.greenrobot.eventbus.ThreadMode;
 import org.jetbrains.annotations.NotNull;
 
 
+import com.github.tvbox.osc.util.GlassTip;
 public class SearchRemoteTvDialog extends BaseDialog{
 
 
@@ -58,7 +57,7 @@ public class SearchRemoteTvDialog extends BaseDialog{
             if (ModelSettingFragment.loadingSearchRemoteTvDialog != null) {
                 ModelSettingFragment.loadingSearchRemoteTvDialog.showEmpty();
             }
-            Toast.makeText(getContext(), "未找到附近TVBox", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "未找到附近TVBox");
             return;
         }
         if (ModelSettingFragment.loadingSearchRemoteTvDialog != null) {
@@ -75,7 +74,7 @@ public class SearchRemoteTvDialog extends BaseDialog{
             @Override
             public void click(String value, int pos) {
                 RemoteTVBox.setAvalible(value);
-                Toast.makeText(getContext(), "设置成功", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "设置成功");
             }
 
             @Override

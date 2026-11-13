@@ -33,11 +33,10 @@ import org.json.JSONObject;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 
-import android.widget.Toast;
-
 import java.util.ArrayList;
 import java.util.List;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 首页第 0 页「热门推荐」。
  *
@@ -172,7 +171,7 @@ public class HotRecommendFragment extends BaseLazyFragment {
                 if (jsonObject == null) return;
                 String msg = jsonObject.optString("msg");
                 if (!msg.isEmpty() && getContext() != null) {
-                    Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), msg);
                 }
             }
         });

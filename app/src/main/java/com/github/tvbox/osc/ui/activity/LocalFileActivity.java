@@ -7,8 +7,6 @@ import android.os.Environment;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.base.BaseActivity;
@@ -25,6 +23,7 @@ import java.util.List;
 
 import me.jessyan.autosize.utils.AutoSizeUtils;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class LocalFileActivity extends BaseActivity {
     public static final String EXTRA_LIVE = "live";
 
@@ -73,7 +72,7 @@ public class LocalFileActivity extends BaseActivity {
 
     private void loadDir(File dir) {
         if (dir == null || !dir.exists() || !dir.isDirectory()) {
-            Toast.makeText(this, "无法打开目录", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "无法打开目录");
             return;
         }
         currentDir = dir;

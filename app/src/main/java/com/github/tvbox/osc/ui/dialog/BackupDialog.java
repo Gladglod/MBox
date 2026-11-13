@@ -7,8 +7,6 @@ import android.content.SharedPreferences;
 import android.os.Environment;
 import android.os.Handler;
 import android.view.View;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 
 import com.chad.library.adapter.base.BaseQuickAdapter;
@@ -38,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class BackupDialog extends BaseDialog {
 
     public BackupDialog(@NonNull @NotNull Context context) {
@@ -70,7 +69,7 @@ public class BackupDialog extends BaseDialog {
             @Override
             public void onClick(View v) {
                 if (XXPermissions.isGranted(getContext(), Permission.Group.STORAGE)) {
-                    Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), "已获得存储权限");
                 } else {
                     XXPermissions.with(getContext())
                             .permission(Permission.Group.STORAGE)
@@ -79,17 +78,17 @@ public class BackupDialog extends BaseDialog {
                                 public void onGranted(List<String> permissions, boolean all) {
                                     if (all) {
                                         adapter.setNewData(allBackup());
-                                        Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
+                                        GlassTip.show(getContext(), "已获得存储权限");
                                     }
                                 }
 
                                 @Override
                                 public void onDenied(List<String> permissions, boolean never) {
                                     if (never) {
-                                        Toast.makeText(getContext(), "获取存储权限失败,请在系统设置中开启", Toast.LENGTH_SHORT).show();
+                                        GlassTip.show(getContext(), "获取存储权限失败,请在系统设置中开启");
                                         XXPermissions.startPermissionActivity((Activity) getContext(), permissions);
                                     } else {
-                                        Toast.makeText(getContext(), "获取存储权限失败", Toast.LENGTH_SHORT).show();
+                                        GlassTip.show(getContext(), "获取存储权限失败");
                                     }
                                 }
                             });
@@ -168,11 +167,11 @@ public class BackupDialog extends BaseDialog {
                         }
                     }
                     if (hawkOk) {
-                        Toast.makeText(getContext(), "恢复成功,即将自动重启应用!", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(getContext(), "恢复成功,即将自动重启应用!");
                     } else {
                         // Hawk 文件读取失败不能就此停止：DB 已被替换，不重启会继续用
                         // 内存里的旧连接 / 旧配置，反而造成"数据错乱、像被丢掉"的体验
-                        Toast.makeText(getContext(), "Hawk恢复失败,但DB已恢复,即将自动重启应用!", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(getContext(), "Hawk恢复失败,但DB已恢复,即将自动重启应用!");
                     }
                     new Handler().postDelayed(new Runnable() {
                         @Override
@@ -181,7 +180,7 @@ public class BackupDialog extends BaseDialog {
                         }
                     }, 3000);
                 } else {
-                    Toast.makeText(getContext(), "DB文件恢复失败!", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), "DB文件恢复失败!");
                 }
             }
         } catch (Throwable e) {
@@ -273,17 +272,17 @@ public class BackupDialog extends BaseDialog {
                 }
                 if (!FileUtils.writeSimple(jsonObject.toString().getBytes("UTF-8"), new File(backup, "hawk"))) {
                     backup.delete();
-                    Toast.makeText(getContext(), "备份Hawk失败!", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), "备份Hawk失败!");
                 } else {
-                    Toast.makeText(getContext(), "备份成功!", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), "备份成功!");
                 }
             } else {
-                Toast.makeText(getContext(), "DB文件不存在!", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "DB文件不存在!");
                 backup.delete();
             }
         } catch (Throwable e) {
             e.printStackTrace();
-            Toast.makeText(getContext(), "备份失败!", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "备份失败!");
         }
     }
 
@@ -326,7 +325,7 @@ public class BackupDialog extends BaseDialog {
             String root = Environment.getExternalStorageDirectory().getAbsolutePath();
             File backup = new File(root + "/tvbox_backup/" + dir);
             FileUtils.recursiveDelete(backup);
-            Toast.makeText(getContext(), "删除成功!", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "删除成功!");
         } catch (Throwable e) {
             e.printStackTrace();
         }

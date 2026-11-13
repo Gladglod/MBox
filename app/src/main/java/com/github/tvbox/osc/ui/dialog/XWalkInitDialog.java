@@ -4,8 +4,6 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
@@ -21,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class XWalkInitDialog extends BaseDialog {
     private OnListener listener;
 
@@ -67,7 +66,7 @@ public class XWalkInitDialog extends BaseDialog {
                             dismiss();
                         } catch (Throwable e) {
                             e.printStackTrace();
-                            Toast.makeText(context, e.getMessage(), Toast.LENGTH_LONG).show();
+                            GlassTip.show(context, e.getMessage());
                             setTextEnable(true);
                         }
                     }
@@ -75,7 +74,7 @@ public class XWalkInitDialog extends BaseDialog {
                     @Override
                     public void onError(Response<File> response) {
                         super.onError(response);
-                        Toast.makeText(context, response.getException().getMessage(), Toast.LENGTH_LONG).show();
+                        GlassTip.show(context, response.getException().getMessage());
                         setTextEnable(true);
                     }
 

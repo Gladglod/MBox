@@ -15,8 +15,6 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.base.BaseActivity;
 import com.github.tvbox.osc.server.ControlManager;
@@ -39,6 +37,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 「数据源地址」页面：编辑点播 / 直播地址、扫码导入、本地配置文件导入，以及历史配置列表。
  * 历史配置记录在 {@link HawkConfig#API_HISTORY} 与 {@link HawkConfig#LIVE_API_HISTORY}，
@@ -156,7 +155,7 @@ public class ApiSettingActivity extends BaseActivity {
         String api = inputApi.getText().toString().trim();
         String live = inputLive.getText().toString().trim();
         if (TextUtils.isEmpty(api)) {
-            Toast.makeText(this, "点播地址不能为空", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "点播地址不能为空");
             return;
         }
         applyApi(api, live, true);
@@ -184,12 +183,12 @@ public class ApiSettingActivity extends BaseActivity {
         if (!oldApi.equals(api)) {
             restartAppAfterConfigChanged();
         } else {
-            Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "已保存");
         }
     }
 
     private void restartAppAfterConfigChanged() {
-        Toast.makeText(this, "配置已切换，即将重新加载", Toast.LENGTH_SHORT).show();
+        GlassTip.show(this, "配置已切换，即将重新加载");
         try {
             SourceViewModel.clearRuntimeCache();
         } catch (Throwable ignore) {
@@ -271,7 +270,7 @@ public class ApiSettingActivity extends BaseActivity {
     private void clearHistory() {
         ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
         if (history == null || history.isEmpty()) {
-            Toast.makeText(this, "历史配置为空", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "历史配置为空");
             return;
         }
         ConfirmClearDialog dialog = new ConfirmClearDialog(mContext, "ApiHistory");
@@ -318,7 +317,7 @@ public class ApiSettingActivity extends BaseActivity {
 
     private void requestStoragePermission() {
         if (XXPermissions.isGranted(this, Permission.Group.STORAGE)) {
-            Toast.makeText(this, "已获得存储权限", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "已获得存储权限");
             return;
         }
         XXPermissions.with(this)
@@ -326,16 +325,16 @@ public class ApiSettingActivity extends BaseActivity {
                 .request(new OnPermissionCallback() {
                     @Override
                     public void onGranted(List<String> permissions, boolean all) {
-                        Toast.makeText(ApiSettingActivity.this, "已获得存储权限", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(ApiSettingActivity.this, "已获得存储权限");
                     }
 
                     @Override
                     public void onDenied(List<String> permissions, boolean never) {
                         if (never) {
-                            Toast.makeText(ApiSettingActivity.this, "获取存储权限失败,请在系统设置中开启", Toast.LENGTH_SHORT).show();
+                            GlassTip.show(ApiSettingActivity.this, "获取存储权限失败,请在系统设置中开启");
                             XXPermissions.startPermissionActivity(ApiSettingActivity.this, permissions);
                         } else {
-                            Toast.makeText(ApiSettingActivity.this, "获取存储权限失败", Toast.LENGTH_SHORT).show();
+                            GlassTip.show(ApiSettingActivity.this, "获取存储权限失败");
                         }
                     }
                 });
@@ -344,7 +343,7 @@ public class ApiSettingActivity extends BaseActivity {
     private void openLocalConfig(boolean live) {
         selectLocalLive = live;
         if (!XXPermissions.isGranted(this, Permission.Group.STORAGE)) {
-            Toast.makeText(this, "请选择文件前需要先授予存储权限", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "请选择文件前需要先授予存储权限");
             XXPermissions.with(this)
                     .permission(Permission.Group.STORAGE)
                     .request(new OnPermissionCallback() {
@@ -356,10 +355,10 @@ public class ApiSettingActivity extends BaseActivity {
                         @Override
                         public void onDenied(List<String> permissions, boolean never) {
                             if (never) {
-                                Toast.makeText(ApiSettingActivity.this, "获取存储权限失败,请在系统设置中开启", Toast.LENGTH_SHORT).show();
+                                GlassTip.show(ApiSettingActivity.this, "获取存储权限失败,请在系统设置中开启");
                                 XXPermissions.startPermissionActivity(ApiSettingActivity.this, permissions);
                             } else {
-                                Toast.makeText(ApiSettingActivity.this, "获取存储权限失败", Toast.LENGTH_SHORT).show();
+                                GlassTip.show(ApiSettingActivity.this, "获取存储权限失败");
                             }
                         }
                     });
@@ -383,7 +382,7 @@ public class ApiSettingActivity extends BaseActivity {
         }
         String api = localConfigToApi(data.getData());
         if (TextUtils.isEmpty(api)) {
-            Toast.makeText(this, "读取本地配置失败", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "读取本地配置失败");
             return;
         }
         if (selectLocalLive) {

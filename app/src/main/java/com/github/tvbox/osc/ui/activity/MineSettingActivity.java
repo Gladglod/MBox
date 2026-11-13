@@ -23,8 +23,6 @@ import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.dynamicanimation.animation.DynamicAnimation;
@@ -82,6 +80,7 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 「我的」页面各个横排菜单项的二级设置页。
  * 通过 {@link #EXTRA_SECTION} 决定展示哪一组设置，全部使用统一的手机端设置行样式。
@@ -315,10 +314,10 @@ public class MineSettingActivity extends BaseActivity {
     private void changeWallpaperFromApi() {
         String wallpaper = ApiConfig.get().wallpaper;
         if (TextUtils.isEmpty(wallpaper)) {
-            Toast.makeText(this, "当前数据源没有提供壁纸", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "当前数据源没有提供壁纸");
             return;
         }
-        Toast.makeText(this, "正在下载壁纸…", Toast.LENGTH_SHORT).show();
+        GlassTip.show(this, "正在下载壁纸…");
         OkGo.<File>get(wallpaper).execute(new FileCallback(getFilesDir().getAbsolutePath(), "wp") {
             @Override
             public void onSuccess(Response<File> response) {
@@ -328,7 +327,7 @@ public class MineSettingActivity extends BaseActivity {
             @Override
             public void onError(Response<File> response) {
                 super.onError(response);
-                Toast.makeText(MineSettingActivity.this, "壁纸下载失败", Toast.LENGTH_SHORT).show();
+                GlassTip.show(MineSettingActivity.this, "壁纸下载失败");
             }
 
             @Override
@@ -341,13 +340,13 @@ public class MineSettingActivity extends BaseActivity {
     private void resetWallpaper() {
         File wp = new File(getFilesDir().getAbsolutePath() + "/wp");
         if (wp.exists() && !wp.delete()) {
-            Toast.makeText(this, "壁纸重置失败", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "壁纸重置失败");
             return;
         }
         Hawk.put(HawkConfig.WALLPAPER_COLOR, 0);
         applyWallpaperNow();
         updateSwatches();
-        Toast.makeText(this, "已恢复默认背景", Toast.LENGTH_SHORT).show();
+        GlassTip.show(this, "已恢复默认背景");
     }
 
     /* ------------------------- 纯色背景 ------------------------- */
@@ -445,7 +444,7 @@ public class MineSettingActivity extends BaseActivity {
         try {
             startActivityForResult(Intent.createChooser(intent, "选择背景图片"), REQUEST_PICK_WALLPAPER);
         } catch (Throwable th) {
-            Toast.makeText(this, "没有找到可用的图片选择器", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "没有找到可用的图片选择器");
         }
     }
 
@@ -478,7 +477,7 @@ public class MineSettingActivity extends BaseActivity {
             bounds.inJustDecodeBounds = true;
             input = getContentResolver().openInputStream(uri);
             if (input == null) {
-                Toast.makeText(this, "读取图片失败", Toast.LENGTH_SHORT).show();
+                GlassTip.show(this, "读取图片失败");
                 return;
             }
             BitmapFactory.decodeStream(input, null, bounds);
@@ -496,7 +495,7 @@ public class MineSettingActivity extends BaseActivity {
             input = getContentResolver().openInputStream(uri);
             Bitmap bitmap = BitmapFactory.decodeStream(input, null, opts);
             if (bitmap == null) {
-                Toast.makeText(this, "图片解码失败", Toast.LENGTH_SHORT).show();
+                GlassTip.show(this, "图片解码失败");
                 return;
             }
 
@@ -509,9 +508,9 @@ public class MineSettingActivity extends BaseActivity {
             Hawk.put(HawkConfig.WALLPAPER_COLOR, 0);
             applyWallpaperNow();
             updateSwatches();
-            Toast.makeText(this, "背景已更新", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "背景已更新");
         } catch (Throwable th) {
-            Toast.makeText(this, "设置背景失败：" + th.getMessage(), Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "设置背景失败：" + th.getMessage());
         } finally {
             try {
                 if (output != null) output.close();
@@ -760,8 +759,7 @@ public class MineSettingActivity extends BaseActivity {
                     @Override
                     public void run() {
                         if (!Hawk.get(HawkConfig.PARSE_WEBVIEW, true)) {
-                            Toast.makeText(MineSettingActivity.this,
-                                    "XWalkView 仅适用于部分低版本系统", Toast.LENGTH_LONG).show();
+                            GlassTip.show(MineSettingActivity.this, "XWalkView 仅适用于部分低版本系统");
                             XWalkInitDialog dialog = new XWalkInitDialog(mContext);
                             dialog.setOnListener(new XWalkInitDialog.OnListener() {
                                 @Override
@@ -1111,21 +1109,21 @@ public class MineSettingActivity extends BaseActivity {
 
     private void testDanmuApi() {
         // 未自定义时 getApiUrl() 会回退到内置接口，这里不需要额外校验
-        Toast.makeText(this, "正在测试弹幕接口…", Toast.LENGTH_SHORT).show();
+        GlassTip.show(this, "正在测试弹幕接口…");
         DanmakuApi.searchList("庆余年", "1", new DanmakuApi.SearchListCallback() {
             @Override
             public void onSuccess(List<DanmuSearchResult> results) {
                 int count = results == null ? 0 : results.size();
                 if (count > 0) {
-                    Toast.makeText(mContext, "接口正常，匹配到 " + count + " 条弹幕", Toast.LENGTH_LONG).show();
+                    GlassTip.show(mContext, "接口正常，匹配到 " + count + " 条弹幕");
                 } else {
-                    Toast.makeText(mContext, "接口可访问，但没有匹配到弹幕", Toast.LENGTH_LONG).show();
+                    GlassTip.show(mContext, "接口可访问，但没有匹配到弹幕");
                 }
             }
 
             @Override
             public void onError(String message) {
-                Toast.makeText(mContext, "接口异常：" + message, Toast.LENGTH_LONG).show();
+                GlassTip.show(mContext, "接口异常：" + message);
             }
         });
     }
@@ -1164,7 +1162,7 @@ public class MineSettingActivity extends BaseActivity {
 
     private void startBackupExport() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
-            Toast.makeText(this, "当前系统版本太低，不支持选择保存位置", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "当前系统版本太低，不支持选择保存位置");
             return;
         }
         Calendar c = Calendar.getInstance();
@@ -1181,13 +1179,13 @@ public class MineSettingActivity extends BaseActivity {
             startActivityForResult(Intent.createChooser(intent, "选择备份的保存位置"),
                     REQUEST_BACKUP_EXPORT);
         } catch (Throwable th) {
-            Toast.makeText(this, "没有找到可用的文件选择器", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "没有找到可用的文件选择器");
         }
     }
 
     private void startBackupImport() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
-            Toast.makeText(this, "当前系统版本太低，不支持选择备份文件", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "当前系统版本太低，不支持选择备份文件");
             return;
         }
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -1197,7 +1195,7 @@ public class MineSettingActivity extends BaseActivity {
             startActivityForResult(Intent.createChooser(intent, "选择备份文件"),
                     REQUEST_BACKUP_IMPORT);
         } catch (Throwable th) {
-            Toast.makeText(this, "没有找到可用的文件选择器", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "没有找到可用的文件选择器");
         }
     }
 
@@ -1207,14 +1205,14 @@ public class MineSettingActivity extends BaseActivity {
             byte[] data = BackupUtil.buildJson().getBytes(StandardCharsets.UTF_8);
             output = getContentResolver().openOutputStream(uri);
             if (output == null) {
-                Toast.makeText(this, "保存位置无法写入", Toast.LENGTH_SHORT).show();
+                GlassTip.show(this, "保存位置无法写入");
                 return;
             }
             output.write(data);
             output.flush();
-            Toast.makeText(this, "备份成功（" + data.length / 1024 + " KB）", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "备份成功（" + data.length / 1024 + " KB）");
         } catch (Throwable th) {
-            Toast.makeText(this, "备份失败：" + th.getMessage(), Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "备份失败：" + th.getMessage());
         } finally {
             try {
                 if (output != null) output.close();
@@ -1228,7 +1226,7 @@ public class MineSettingActivity extends BaseActivity {
         try {
             InputStream input = getContentResolver().openInputStream(uri);
             if (input == null) {
-                Toast.makeText(this, "读取备份失败", Toast.LENGTH_SHORT).show();
+                GlassTip.show(this, "读取备份失败");
                 return;
             }
             StringBuilder sb = new StringBuilder();
@@ -1252,13 +1250,12 @@ public class MineSettingActivity extends BaseActivity {
                 applyWallpaperNow();
             }
             refreshRows();
-            Toast.makeText(this, "已同步 " + result.count + " 项配置"
-                    + (isApiConfigIncluded(sb.toString()) ? "；数据源配置重启应用后生效" : ""),
-                    Toast.LENGTH_LONG).show();
+            GlassTip.show(this, "已同步 " + result.count + " 项配置"
+                    + (isApiConfigIncluded(sb.toString()) ? "；数据源配置重启应用后生效" : ""));
         } catch (org.json.JSONException je) {
-            Toast.makeText(this, "这不是有效的备份文件", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "这不是有效的备份文件");
         } catch (Throwable th) {
-            Toast.makeText(this, "读取备份失败：" + th.getMessage(), Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "读取备份失败：" + th.getMessage());
         } finally {
             try {
                 if (reader != null) reader.close();
@@ -1390,7 +1387,7 @@ public class MineSettingActivity extends BaseActivity {
      */
     private void checkUpdateManually() {
         if (checkingUpdate) {
-            Toast.makeText(this, "正在检查，请稍候", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "正在检查，请稍候");
             return;
         }
         checkingUpdate = true;
@@ -1411,7 +1408,7 @@ public class MineSettingActivity extends BaseActivity {
                 checkingUpdate = false;
                 updateStatus = "已是最新";
                 refreshRows();
-                Toast.makeText(MineSettingActivity.this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
+                GlassTip.show(MineSettingActivity.this, "当前已是最新版本");
             }
 
             @Override

@@ -3,8 +3,6 @@ package com.github.tvbox.osc.ui.activity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -28,6 +26,7 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 收藏：与「播放历史」一致的条状列表。
  * 支持左滑「置顶 / 删除」，以及右上角「编辑」进入多选批量删除。
@@ -127,7 +126,7 @@ public class CollectActivity extends BaseActivity {
             public void onPin(VodCollect item) {
                 RoomDataManger.pinVodCollect(item.getId());
                 initData();
-                Toast.makeText(mContext, "已置顶", Toast.LENGTH_SHORT).show();
+                GlassTip.show(mContext, "已置顶");
             }
 
             @Override
@@ -203,7 +202,7 @@ public class CollectActivity extends BaseActivity {
     private void deleteSelected() {
         List<VodCollect> selected = collectAdapter.getSelectedItems();
         if (selected.isEmpty()) {
-            Toast.makeText(mContext, "请先选择要删除的收藏", Toast.LENGTH_SHORT).show();
+            GlassTip.show(mContext, "请先选择要删除的收藏");
             return;
         }
         for (VodCollect item : selected) {
@@ -214,7 +213,7 @@ public class CollectActivity extends BaseActivity {
         bottomBar.setVisibility(View.GONE);
         tvEdit.setText("编辑");
         initData();
-        Toast.makeText(mContext, "已删除 " + selected.size() + " 条", Toast.LENGTH_SHORT).show();
+        GlassTip.show(mContext, "已删除 " + selected.size() + " 条");
     }
 
     private void initData() {

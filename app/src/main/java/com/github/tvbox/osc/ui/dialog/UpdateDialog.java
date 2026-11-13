@@ -7,8 +7,6 @@ import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 
 import com.github.tvbox.osc.BuildConfig;
@@ -25,6 +23,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.File;
 import java.util.Locale;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 检查更新弹窗：展示新版本号与更新说明，就地下载并拉起系统安装器。
  *
@@ -113,8 +112,7 @@ public class UpdateDialog extends BaseDialog {
                 FastClickCheckUtil.check(v);
                 Hawk.put(HawkConfig.UPDATE_IGNORE_TAG,
                         TextUtils.isEmpty(release.tagName) ? "" : release.tagName);
-                Toast.makeText(getContext(),
-                        "已忽略 " + release.tagName + "，自动检查不再提示", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "已忽略 " + release.tagName + "，自动检查不再提示");
                 dismiss();
             }
         });
@@ -227,14 +225,14 @@ public class UpdateDialog extends BaseDialog {
                 btnLater.setText(laterLabel());
                 btnUpdate.setEnabled(true);
                 btnUpdate.setText("重新下载");
-                Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), msg);
             }
         });
     }
 
     private void install() {
         if (downloadedApk == null || !downloadedApk.exists()) {
-            Toast.makeText(getContext(), "安装包不存在，请重新下载", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "安装包不存在，请重新下载");
             return;
         }
         boolean launched = UpdateChecker.installApk(getContext(), downloadedApk);

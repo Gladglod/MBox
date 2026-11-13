@@ -39,7 +39,6 @@ import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
@@ -105,6 +104,7 @@ import xyz.doikki.videoplayer.util.PlayerUtils;
 import static xyz.doikki.videoplayer.util.PlayerUtils.stringForTime;
 import static xyz.doikki.videoplayer.util.PlayerUtils.safeTimeMs;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class VodController extends BaseController {
     private static final float PORTRAIT_EPISODE_SWIPE_DP = 80f;
     private static final long PORTRAIT_EPISODE_TITLE_SHOW_MS = 3000L;
@@ -1363,7 +1363,7 @@ public class VodController extends BaseController {
                 mLyricView.clearSubtitleCache();
                 mExoSubtitleView.setVisibility(View.GONE);
                 hideBottom();
-                Toast.makeText(getContext(), "字幕已关闭", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), "字幕已关闭");
                 return true;
             }
         });
@@ -1396,7 +1396,7 @@ public class VodController extends BaseController {
                 FastClickCheckUtil.check(view);
                 boolean opened = listener.toggleDanmu();
                 hideBottom();
-                Toast.makeText(getContext(), opened ? "弹幕已开启" : "弹幕已临时关闭", Toast.LENGTH_SHORT).show();
+                GlassTip.show(getContext(), opened ? "弹幕已开启" : "弹幕已临时关闭");
                 return true;
             }
         });
@@ -2570,7 +2570,7 @@ public class VodController extends BaseController {
 
     private void toast(String text) {
         Context ctx = getContext();
-        if (ctx != null) Toast.makeText(ctx, text, Toast.LENGTH_SHORT).show();
+        if (ctx != null) GlassTip.show(ctx, text);
     }
 
     /**
@@ -4108,7 +4108,7 @@ public class VodController extends BaseController {
             int p_type = (playerType == 1) ? playerType + 1 : (playerType == 2) ? playerType - 1 : playerType;
             if (p_type != playerType) {
                 LOG.i("echo-switchPlayer: " + playerType + " -> " + p_type);
-//                Toast.makeText(getContext(), "切换到"+(p_type==1?"IJK":"EXO"), Toast.LENGTH_SHORT).show();
+//                GlassTip.show(getContext(), "切换到"+(p_type==1?"IJK":"EXO"));
                 mPlayerConfig.put("pl", p_type);
                 updatePlayerCfgView();
                 listener.updatePlayerCfg();
@@ -4202,7 +4202,7 @@ public class VodController extends BaseController {
             String proxyUrl = ControlManager.get().getAddress(true) + "proxyM3u8";
             listener.onM3u8ProxyUrl(proxyUrl, url);
             listener.startPlayUrl(proxyUrl, headers);
-            Toast.makeText(getContext(), "已移除视频广告 "+M3u8.currentAdCount+" 条", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "已移除视频广告 "+M3u8.currentAdCount+" 条");
         }
     }
 

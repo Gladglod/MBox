@@ -7,8 +7,6 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.Observer;
@@ -30,6 +28,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.github.tvbox.osc.util.GlassTip;
 public class SearchSubtitleDialog extends BaseDialog {
 
     private Context mContext;
@@ -130,7 +129,7 @@ public class SearchSubtitleDialog extends BaseDialog {
             searchWord = wd;
             subtitleViewModel.searchResult(wd, page = 1);
         } else {
-            Toast.makeText(getContext(), "输入内容不能为空", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "输入内容不能为空");
         }
     }
 
@@ -146,7 +145,7 @@ public class SearchSubtitleDialog extends BaseDialog {
                     mGridView.post(new Runnable() {
                         @Override
                         public void run() {
-                            Toast.makeText(getContext(), "未查询到匹配字幕", Toast.LENGTH_SHORT).show();
+                            GlassTip.show(getContext(), "未查询到匹配字幕");
                         }
                     });
                     return;

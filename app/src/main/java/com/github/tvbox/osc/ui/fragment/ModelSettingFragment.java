@@ -12,8 +12,6 @@ import android.os.Handler;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 
@@ -67,6 +65,7 @@ import java.util.List;
 import okhttp3.HttpUrl;
 import tv.danmaku.ijk.media.player.IjkMediaPlayer;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * @author pj567
  * @date :2020/12/23
@@ -184,7 +183,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
                 Hawk.put(HawkConfig.PARSE_WEBVIEW, useSystem);
                 tvParseWebView.setText(Hawk.get(HawkConfig.PARSE_WEBVIEW, true) ? "系统自带" : "XWalkView");
                 if (!useSystem) {
-                    Toast.makeText(mContext, "注意: XWalkView只适用于部分低Android版本，Android5.0以上推荐使用系统自带", Toast.LENGTH_LONG).show();
+                    GlassTip.show(mContext, "注意: XWalkView只适用于部分低Android版本，Android5.0以上推荐使用系统自带");
                     XWalkInitDialog dialog = new XWalkInitDialog(mContext);
                     dialog.setOnListener(new XWalkInitDialog.OnListener() {
                         @Override
@@ -402,7 +401,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
             public void onClick(View v) {
                 ArrayList<String> apiLines = Hawk.get(HawkConfig.API_LINE_LIST, new ArrayList<String>());
                 if (apiLines.isEmpty()) {
-                    Toast.makeText(mContext, "线路列表为空", Toast.LENGTH_SHORT).show();
+                    GlassTip.show(mContext, "线路列表为空");
                     return;
                 }
                 String current = Hawk.get(HawkConfig.API_URL, "");
@@ -813,7 +812,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
     }
 
     private void restartAppAfterConfigChanged() {
-        Toast.makeText(mContext, "配置已切换,即将重新加载!", Toast.LENGTH_SHORT).show();
+        GlassTip.show(mContext, "配置已切换,即将重新加载!");
         clearConfigSwitchCache();
         new Handler().postDelayed(new Runnable() {
             @Override
@@ -837,7 +836,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
     }
 
     private void restartAppAfterCacheCleared() {
-        Toast.makeText(mContext, "缓存已清空,即将回到主页!", Toast.LENGTH_LONG).show();
+        GlassTip.show(mContext, "缓存已清空,即将回到主页!");
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -915,14 +914,14 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private void openLocalConfig(boolean live) {
         selectLocalLive = live;
         if (!XXPermissions.isGranted(mContext, Permission.Group.STORAGE)) {
-            Toast.makeText(getContext(), "请选择文件前需要先授予存储权限", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "请选择文件前需要先授予存储权限");
             XXPermissions.with(mActivity)
                     .permission(Permission.Group.STORAGE)
                     .request(new OnPermissionCallback() {
                         @Override
                         public void onGranted(List<String> permissions, boolean all) {
                             if (all) {
-                                Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
+                                GlassTip.show(getContext(), "已获得存储权限");
                                 openLocalFileActivity(selectLocalLive);
                             }
                         }
@@ -930,10 +929,10 @@ public class ModelSettingFragment extends BaseLazyFragment {
                         @Override
                         public void onDenied(List<String> permissions, boolean never) {
                             if (never) {
-                                Toast.makeText(getContext(), "获取存储权限失败,请在系统设置中开启", Toast.LENGTH_SHORT).show();
+                                GlassTip.show(getContext(), "获取存储权限失败,请在系统设置中开启");
                                 XXPermissions.startPermissionActivity(mActivity, permissions);
                             } else {
-                                Toast.makeText(getContext(), "获取存储权限失败", Toast.LENGTH_SHORT).show();
+                                GlassTip.show(getContext(), "获取存储权限失败");
                             }
                         }
                     });
@@ -956,7 +955,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
         }
         String api = localConfigToApi(data.getData());
         if (api == null || api.isEmpty()) {
-            Toast.makeText(getContext(), "读取本地配置失败", Toast.LENGTH_SHORT).show();
+            GlassTip.show(getContext(), "读取本地配置失败");
             return;
         }
         if (apiDialog != null) {

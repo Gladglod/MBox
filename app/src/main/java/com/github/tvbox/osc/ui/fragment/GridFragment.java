@@ -20,7 +20,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.chad.library.adapter.base.BaseQuickAdapter;
 
 import android.widget.TextView;
-import android.widget.Toast;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.BaseLazyFragment;
@@ -52,6 +51,7 @@ import org.greenrobot.eventbus.EventBus;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * @author pj567
  * @date :2020/12/21
@@ -402,7 +402,7 @@ public class GridFragment extends BaseLazyFragment {
                     if (maxPage > 0 && page > maxPage) {
                         gridAdapter.loadMoreEnd();
                         gridAdapter.setEnableLoadMore(false);
-                        if (page > 2) Toast.makeText(getContext(), "没有更多了", Toast.LENGTH_SHORT).show();
+                        if (page > 2) GlassTip.show(getContext(), "没有更多了");
                     } else {
                         gridAdapter.loadMoreComplete();
                         gridAdapter.setEnableLoadMore(true);
@@ -412,7 +412,7 @@ public class GridFragment extends BaseLazyFragment {
                         hasActionItems = false;
                         showEmpty();
                     } else if (page > 2) {
-                        Toast.makeText(getContext(), "没有更多了", Toast.LENGTH_SHORT).show();
+                        GlassTip.show(getContext(), "没有更多了");
                     }
                     gridAdapter.loadMoreEnd();
                     gridAdapter.setEnableLoadMore(false);
@@ -425,7 +425,7 @@ public class GridFragment extends BaseLazyFragment {
                 if (jsonObject == null) return;
                 String msg = jsonObject.optString("msg");
                 if (!msg.isEmpty()) {
-                    Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
+                    GlassTip.show(getContext(), msg);
                     forceRefresh();
                 }
             }

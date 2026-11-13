@@ -2,8 +2,6 @@ package com.github.tvbox.osc.ui.activity;
 
 import android.view.View;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -19,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.github.tvbox.osc.util.GlassTip;
 /**
  * 「首页标签」编辑页：勾选决定哪些分类出现在首页，长按拖动调整顺序。
  *
@@ -74,7 +73,7 @@ public class HomeTabSettingActivity extends BaseActivity {
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
                 HomeTabConfig.reset();
-                Toast.makeText(HomeTabSettingActivity.this, "已恢复默认", Toast.LENGTH_SHORT).show();
+                GlassTip.show(HomeTabSettingActivity.this, "已恢复默认");
                 finish();
             }
         });
@@ -143,12 +142,12 @@ public class HomeTabSettingActivity extends BaseActivity {
 
     private void save() {
         if (adapter.getData().isEmpty()) {
-            Toast.makeText(this, "没有可保存的分类", Toast.LENGTH_SHORT).show();
+            GlassTip.show(this, "没有可保存的分类");
             finish();
             return;
         }
         HomeTabConfig.save(adapter.getData());
-        Toast.makeText(this, "首页标签已更新", Toast.LENGTH_SHORT).show();
+        GlassTip.show(this, "首页标签已更新");
         finish();
     }
 }
