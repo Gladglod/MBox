@@ -106,6 +106,10 @@
     <color name="ui_link">#FF2A6BE0</color>
     <!-- 弱化文字（灰色说明） -->
     <color name="ui_muted">#FF8A8F99</color>
+    <!-- 换源测速延迟分级：快 / 一般 / 慢 -->
+    <color name="ui_speed_good">#FF1E9E6A</color>
+    <color name="ui_speed_mid">#FFC77700</color>
+    <color name="ui_speed_bad">#FFD9343C</color>
     <!-- 危险操作（删除） -->
     <color name="ui_danger">#FFD9343C</color>
     <!-- 强调色的浅底（选中态胶囊、标签底色） -->

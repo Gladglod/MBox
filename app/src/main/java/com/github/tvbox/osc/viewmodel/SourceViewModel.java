@@ -88,6 +88,8 @@ public class SourceViewModel extends ViewModel {
     public MutableLiveData<AbsXml> searchResult;
     public MutableLiveData<AbsXml> quickSearchResult;
     public MutableLiveData<AbsXml> detailFallbackSearchResult;
+    /** 手动换源：用户在换源面板点选某个源后，单源搜索同名片源的结果 */
+    public MutableLiveData<AbsXml> switchSourceSearchResult;
     public MutableLiveData<AbsXml> detailResult;
     public MutableLiveData<JSONObject> actionResult;
     public MutableLiveData<JSONObject> playResult;
@@ -101,6 +103,7 @@ public class SourceViewModel extends ViewModel {
         searchResult = new MutableLiveData<>();
         quickSearchResult = new MutableLiveData<>();
         detailFallbackSearchResult = new MutableLiveData<>();
+        switchSourceSearchResult = new MutableLiveData<>();
         detailResult = new MutableLiveData<>();
         actionResult = new MutableLiveData<>();
         playResult = new MutableLiveData<>();
@@ -926,6 +929,11 @@ public class SourceViewModel extends ViewModel {
 
     public void getDetailFallbackSearch(String sourceKey, String wd, String searchToken) {
         getSearch(sourceKey, wd, searchToken, detailFallbackSearchResult, "detail_fallback_search");
+    }
+
+    /** 手动换源：只在用户点选的单个源里搜索片名（调用方需要自己放到工作线程，Spider 源是同步调用） */
+    public void getSwitchSourceSearch(String sourceKey, String wd, String searchToken) {
+        getSearch(sourceKey, wd, searchToken, switchSourceSearchResult, "switch_source_search");
     }
 
     private void getSearch(String sourceKey, String wd, String searchToken, MutableLiveData<AbsXml> result, String requestTag) {
