@@ -321,7 +321,9 @@ public class SearchDanmuDialog extends BaseDialog {
             @Override
             public void onSuccess(String danmu) {
                 if (danmuLoader != null) danmuLoader.loadDanmu(danmu, DanmuTitleUtil.displayTitle(result.getName()));
-                GlassTip.show(getContext(), "弹幕已加载");
+                // 富版玻璃提示：交代加载的是哪一条弹幕（提示挂在 Activity 上，关窗后仍能看完）
+                GlassTip.showRich(getContext(), R.drawable.ic_mine_danmu,
+                        "弹幕已加载", DanmuTitleUtil.displayTitle(result.getName()));
                 dismiss();
             }
 

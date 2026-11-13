@@ -44,6 +44,8 @@ public class DanmuLoadController {
     private boolean temporarilyClosed;
     private long lastPrepareAt;
     private LoadCallback loadCallback;
+    /** 自动加载成功的一次性通知（挂载成功即触发并清空，null 表示不通知） */
+    private Runnable successNotify;
     private volatile int seekGeneration;
     private volatile long pendingSeekPosition = -1;
     /** seek 复用路径的重同步待执行标记（与 resyncIfReady 配对，新 seek 会重新置位） */
@@ -98,8 +100,19 @@ public class DanmuLoadController {
     }
 
     public void check(String danmu, String title, String episode, String displayName, LoadCallback callback) {
+        check(danmu, title, episode, displayName, callback, null);
+    }
+
+    /**
+     * 完整入口。
+     * @param onSuccess 真正挂载成功（applyPrepared）时的一次性回调，供「自动加载成功」的富提示使用；
+     *                  手动搜索路径不需要（SearchDanmuDialog 自己会提示）
+     */
+    public void check(String danmu, String title, String episode, String displayName,
+                      LoadCallback callback, Runnable onSuccess) {
         DanmakuApi.cancel();
         loadCallback = callback;
+        successNotify = onSuccess;
         seekGeneration++;
         pendingSeekPosition = -1;
         temporarilyClosed = false;
@@ -166,6 +179,7 @@ public class DanmuLoadController {
         danmuDisplayName = "";
         pendingPrepare = false;
         loadCallback = null;
+        successNotify = null;
         loadSeq.incrementAndGet();
         startedSeq = -1;
         if (controller != null) controller.setHasDanmu(false);
@@ -285,6 +299,12 @@ public class DanmuLoadController {
             // 到这里才算真正挂载成功，状态条的「当前弹幕：xxx」以此为准
             danmuLoaded = true;
             clearLoadCallback(seq);
+            // 自动加载成功通知（一次性，触发即清空）
+            if (successNotify != null) {
+                Runnable notify = successNotify;
+                successNotify = null;
+                notify.run();
+            }
             danmuView.setVisibility(DanmuHelper.isOpen() ? View.VISIBLE : View.GONE);
             startIfReady(seq);
             danmuView.postDelayed(() -> startIfReady(seq), 300);

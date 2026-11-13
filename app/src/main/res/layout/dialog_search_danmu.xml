@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/dialog_root"
     android:layout_width="match_parent"
@@ -37,12 +38,13 @@
                 android:id="@+id/iv_back"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:background="@drawable/bg_player_chip"
+                android:background="@drawable/bg_glass_card_chip"
                 android:clickable="true"
                 android:focusable="false"
                 android:padding="5dp"
                 android:rotation="90"
                 android:src="@drawable/ic_player_arrow_down"
+                app:tint="@color/ui_text_secondary"
                 android:visibility="gone"
                 tools:ignore="ContentDescription" />
 
@@ -56,7 +58,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:text="搜索弹幕"
-                android:textColor="#FFFFFFFF"
+                android:textColor="@color/ui_text_primary"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -64,11 +66,12 @@
                 android:id="@+id/iv_close"
                 android:layout_width="26dp"
                 android:layout_height="26dp"
-                android:background="@drawable/bg_player_chip"
+                android:background="@drawable/bg_glass_card_chip"
                 android:clickable="true"
                 android:focusable="false"
                 android:padding="6dp"
-                android:src="@drawable/ic_player_close" />
+                android:src="@drawable/ic_player_close"
+                app:tint="@color/ui_text_primary" />
         </LinearLayout>
 
         <!-- 状态条：显示当前已挂载的弹幕（可卸载）；搜索中/加载中时同一个条切换为进度状态 -->
@@ -77,7 +80,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="@drawable/bg_player_chip"
+            android:background="@drawable/bg_glass_card_chip"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingLeft="12dp"
@@ -102,21 +105,21 @@
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:singleLine="true"
-                android:textColor="#CCFFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="13sp" />
 
             <TextView
                 android:id="@+id/statusCancel"
                 android:layout_width="wrap_content"
                 android:layout_height="28dp"
-                android:background="@drawable/bg_player_chip"
+                android:background="@drawable/bg_glass_card_chip"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:paddingLeft="12dp"
                 android:paddingRight="12dp"
                 android:text="卸载"
-                android:textColor="#FF02F8E1"
+                android:textColor="@color/ui_accent"
                 android:textSize="13sp"
                 android:visibility="gone" />
         </LinearLayout>
@@ -134,7 +137,7 @@
                 android:layout_width="0dp"
                 android:layout_height="38dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_player_chip"
+                android:background="@drawable/bg_glass_card_chip"
                 android:hint="请输入弹幕名称"
                 android:imeOptions="actionSearch"
                 android:inputType="text"
@@ -142,8 +145,8 @@
                 android:paddingLeft="12dp"
                 android:paddingRight="8dp"
                 android:singleLine="true"
-                android:textColor="#FFFFFFFF"
-                android:textColorHint="#80FFFFFF"
+                android:textColor="@color/ui_text_primary"
+                android:textColorHint="@color/ui_text_hint"
                 android:textSize="13sp" />
 
             <TextView
@@ -158,7 +161,7 @@
                 android:paddingLeft="16dp"
                 android:paddingRight="16dp"
                 android:text="搜索"
-                android:textColor="#FF02F8E1"
+                android:textColor="@color/ui_accent"
                 android:textSize="13sp" />
         </LinearLayout>
 

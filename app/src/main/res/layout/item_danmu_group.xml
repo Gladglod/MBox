@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 搜索弹幕第一层：一部剧 + 一个来源 -->
+<!-- 搜索弹幕第一层：一部剧 + 一个来源（自适应玻璃行条 + 主题字色） -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -9,7 +9,7 @@
         android:id="@+id/groupItem"
         android:layout_width="match_parent"
         android:layout_height="46dp"
-        android:background="@drawable/bg_player_chip"
+        android:background="@drawable/bg_glass_card_chip"
         android:clickable="true"
         android:focusable="false"
         android:gravity="center_vertical"
@@ -29,7 +29,7 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:singleLine="true"
-                android:textColor="#F2FFFFFF"
+                android:textColor="@color/ui_text_primary"
                 android:textSize="13sp" />
 
             <TextView
@@ -39,7 +39,7 @@
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:singleLine="true"
-                android:textColor="#99FFFFFF"
+                android:textColor="@color/ui_text_secondary"
                 android:textSize="10sp" />
         </LinearLayout>
 
@@ -50,7 +50,7 @@
             android:layout_marginLeft="6dp"
             android:includeFontPadding="false"
             android:text="›"
-            android:textColor="#80FFFFFF"
+            android:textColor="@color/ui_text_tertiary"
             android:textSize="16sp" />
     </LinearLayout>
 </FrameLayout>

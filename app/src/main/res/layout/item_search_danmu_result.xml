@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 搜索弹幕第二层：某一集 -->
+<!-- 搜索弹幕第二层：某一集（自适应玻璃行条 + 主题字色） -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -9,7 +9,7 @@
         android:id="@+id/danmuItem"
         android:layout_width="match_parent"
         android:layout_height="40dp"
-        android:background="@drawable/bg_player_chip"
+        android:background="@drawable/bg_glass_card_chip"
         android:clickable="true"
         android:focusable="false"
         android:gravity="center_vertical"
@@ -24,7 +24,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="#F2FFFFFF"
+            android:textColor="@color/ui_text_primary"
             android:textSize="12sp" />
 
         <!-- 与当前播放集数一致时标记为「疑似此集」 -->
@@ -33,13 +33,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginLeft="6dp"
-            android:background="@drawable/bg_player_chip"
+            android:background="@drawable/bg_chip_selected"
             android:paddingLeft="6dp"
             android:paddingRight="6dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
             android:text="疑似此集"
-            android:textColor="#FF02F8E1"
+            android:textColor="@color/ui_accent"
             android:textSize="10sp"
             android:visibility="gone" />
     </LinearLayout>

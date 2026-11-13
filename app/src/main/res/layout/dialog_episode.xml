@@ -1,16 +1,27 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  长按「下一集」弹出的选集面板：
+  面板整体落在右下角（宽约屏宽 45%、高约屏高 58%），一排固定 5 个，
+  自适应玻璃底（bg_episode_glass 引用 glass_card_* 主题色，日 / 夜间自动变色）。
+  面板外的左侧 / 顶部空白区域点击即关闭。-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 面板只占右侧 1/4（原来是一半），左侧空白区域点击即关闭 -->
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/episode_half"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        app:layout_constraintGuide_percent="0.75" />
+        app:layout_constraintGuide_percent="0.55" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/episode_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.42" />
 
     <View
         android:id="@+id/episode_dismiss"
@@ -22,10 +33,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <View
+        android:id="@+id/episode_dismiss_top"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clickable="true"
+        app:layout_constraintBottom_toTopOf="@id/episode_top"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/episode_half"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="@dimen/vs_10"
         android:layout_marginEnd="@dimen/vs_10"
         android:layout_marginRight="@dimen/vs_10"
         android:layout_marginBottom="@dimen/vs_10"
@@ -38,7 +58,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/episode_half"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="@id/episode_top">
 
         <TextView
             android:id="@+id/episode_title"
@@ -47,7 +67,7 @@
             android:ellipsize="marquee"
             android:gravity="center_vertical"
             android:singleLine="true"
-            android:textColor="#F2FFFFFF"
+            android:textColor="@color/ui_text_primary"
             android:textSize="@dimen/ts_22" />
 
         <com.owen.tvrecyclerview.widget.TvRecyclerView

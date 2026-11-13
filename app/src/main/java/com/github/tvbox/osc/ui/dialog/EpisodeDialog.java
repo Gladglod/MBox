@@ -3,8 +3,6 @@ package com.github.tvbox.osc.ui.dialog;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Rect;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -57,18 +55,13 @@ public class EpisodeDialog extends BaseDialog {
         TvRecyclerView episodeList = findViewById(R.id.episode_list);
         EpisodeAdapter adapter = new EpisodeAdapter(selectedPosition);
         episodeList.setHasFixedSize(true);
-        V7GridLayoutManager layoutManager = new V7GridLayoutManager(getContext(), 1);
+        // 一排固定 5 个（需求约定），纵向滚动
+        V7GridLayoutManager layoutManager = new V7GridLayoutManager(getContext(), 5);
         episodeList.setLayoutManager(layoutManager);
         episodeList.setAdapter(adapter);
         adapter.setNewData(episodes);
-        // 面板只占屏幕右侧 1/4（原为 1/2），这里同步收窄，避免列数算多把条目挤成省略号
-        int initialGridWidth = getContext().getResources().getDisplayMetrics().widthPixels / 4
-                - getContext().getResources().getDimensionPixelSize(R.dimen.vs_16) * 2;
-        if (initialGridWidth > 0) {
-            layoutManager.setSpanCount(getSpanCount(initialGridWidth));
-            scrollToSelectedPosition(layoutManager);
-            episodeList.setSelectedPosition(selectedPosition);
-        }
+        scrollToSelectedPosition(layoutManager);
+        episodeList.setSelectedPosition(selectedPosition);
         adapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
@@ -80,15 +73,6 @@ public class EpisodeDialog extends BaseDialog {
         episodeList.post(new Runnable() {
             @Override
             public void run() {
-                if (episodeList.getWidth() <= 0) {
-                    episodeList.postDelayed(this, 50);
-                    return;
-                }
-                int spanCount = getSpanCount(episodeList.getWidth());
-                if (layoutManager.getSpanCount() != spanCount) {
-                    layoutManager.setSpanCount(spanCount);
-                    scrollToSelectedPosition(layoutManager);
-                }
                 episodeList.setSelectedPosition(selectedPosition);
                 requestSelectedEpisodeFocus(episodeList, layoutManager, 0);
             }
@@ -119,22 +103,6 @@ public class EpisodeDialog extends BaseDialog {
         }, 50);
     }
 
-    private int getSpanCount(int gridWidth) {
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setTextSize(getContext().getResources().getDimension(R.dimen.ts_20));
-        Rect bounds = new Rect();
-        int maxTextWidth = 1;
-        for (VodInfo.VodSeries episode : episodes) {
-            String name = episode == null || episode.name == null ? "" : episode.name;
-            paint.getTextBounds(name, 0, name.length(), bounds);
-            maxTextWidth = Math.max(maxTextWidth, bounds.width());
-        }
-        int itemPadding = getContext().getResources().getDimensionPixelSize(R.dimen.vs_12) * 2;
-        int itemMargin = getContext().getResources().getDimensionPixelSize(R.dimen.vs_5) * 2;
-        int itemWidth = maxTextWidth + itemPadding + itemMargin;
-        return Math.max(1, Math.min(4, gridWidth / Math.max(1, itemWidth)));
-    }
-
     @Override
     public void show() {
         super.show();
@@ -149,7 +117,7 @@ public class EpisodeDialog extends BaseDialog {
         private final int selectedPosition;
 
         EpisodeAdapter(int selectedPosition) {
-            // 玻璃面板是深色底，条目改用播放器那套半透明白胶囊 + 白字
+            // 面板是自适应玻璃底，条目用同一套玻璃行（日 / 夜间跟随主题变色）
             super(R.layout.item_series_compact, new ArrayList<VodInfo.VodSeries>());
             this.selectedPosition = selectedPosition;
         }
@@ -162,8 +130,8 @@ public class EpisodeDialog extends BaseDialog {
                 series.setTextColor(mContext.getResources().getColor(R.color.ui_accent));
                 helper.itemView.setBackgroundResource(R.drawable.bg_chip_selected);
             } else {
-                series.setTextColor(0xF2FFFFFF);
-                helper.itemView.setBackgroundResource(R.drawable.bg_player_chip);
+                series.setTextColor(mContext.getResources().getColor(R.color.ui_text_primary));
+                helper.itemView.setBackgroundResource(R.drawable.bg_glass_card_chip);
             }
         }
     }

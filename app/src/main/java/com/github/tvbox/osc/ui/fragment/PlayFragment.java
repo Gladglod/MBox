@@ -83,6 +83,7 @@ import com.github.tvbox.osc.ui.dialog.SubtitleDialog;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FileUtils;
+import com.github.tvbox.osc.util.GlassTip;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.ImgUtil;
 import com.github.tvbox.osc.util.LOG;
@@ -273,8 +274,24 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
     private void checkDanmu(String danmu, DanmuLoadController.LoadCallback callback) {
         if (danmuLoadController != null) {
             VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);
-            danmuLoadController.check(danmu, mVodInfo == null ? "" : mVodInfo.name, series == null ? "" : series.name, callback);
+            // 自动加载（片源 danmaku 字段 / 自动搜索命中）成功后弹富玻璃提示；
+            // 空串是「清空弹幕」，不算成功也不提示
+            danmuLoadController.check(danmu, mVodInfo == null ? "" : mVodInfo.name, series == null ? "" : series.name, "",
+                    callback, TextUtils.isEmpty(danmu) ? null : this::showDanmuAutoLoadedTip);
         }
+    }
+
+    /** 自动加载弹幕挂载成功后的富玻璃提示：图标 + 「弹幕加载成功」+ 剧名·集名 */
+    private void showDanmuAutoLoadedTip() {
+        if (!isAdded()) return;
+        VodInfo.VodSeries series = mVodInfo == null ? null : getCurrentSeries(mVodInfo.playFlag, mVodInfo.playIndex);
+        StringBuilder subtitle = new StringBuilder();
+        if (mVodInfo != null && !TextUtils.isEmpty(mVodInfo.name)) subtitle.append(mVodInfo.name);
+        if (series != null && !TextUtils.isEmpty(series.name)) {
+            if (subtitle.length() > 0) subtitle.append(" · ");
+            subtitle.append(series.name);
+        }
+        GlassTip.showRich(requireContext(), R.drawable.ic_mine_danmu, "弹幕加载成功", subtitle);
     }
 
     private void startDanmuIfReady() {

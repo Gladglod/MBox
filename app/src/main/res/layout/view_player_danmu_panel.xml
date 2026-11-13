@@ -3,7 +3,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_glass_menu"
+    android:background="@drawable/bg_menu_fan_panel"
     android:orientation="vertical"
     android:paddingStart="14dp"
     android:paddingLeft="14dp"
@@ -16,7 +16,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="弹幕设置"
-        android:textColor="@color/ui_text_secondary"
+        android:textColor="#B3FFFFFF"
         android:textSize="11sp" />
 
     <!-- 颜色 -->
@@ -32,7 +32,7 @@
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="颜色"
-            android:textColor="@color/ui_text_secondary"
+            android:textColor="#B3FFFFFF"
             android:textSize="11sp" />
 
         <TextView
@@ -78,7 +78,7 @@
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="速度"
-            android:textColor="@color/ui_text_secondary"
+            android:textColor="#B3FFFFFF"
             android:textSize="11sp" />
 
         <SeekBar
@@ -119,7 +119,7 @@
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="大小"
-            android:textColor="@color/ui_text_secondary"
+            android:textColor="#B3FFFFFF"
             android:textSize="11sp" />
 
         <SeekBar
@@ -160,7 +160,7 @@
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="行数"
-            android:textColor="@color/ui_text_secondary"
+            android:textColor="#B3FFFFFF"
             android:textSize="11sp" />
 
         <SeekBar
@@ -201,7 +201,7 @@
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="透明"
-            android:textColor="@color/ui_text_secondary"
+            android:textColor="#B3FFFFFF"
             android:textSize="11sp" />
 
         <SeekBar

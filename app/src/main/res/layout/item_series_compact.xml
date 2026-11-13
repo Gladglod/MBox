@@ -1,13 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 选集条目（播放器内的窄玻璃面板用）：比 item_series 更紧凑，窄面板里也能放得下 -->
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  选集条目（长按「下一集」的选集面板用）：
+  自适应玻璃行条底（bg_glass_card_chip：日间白玻璃、夜间深玻璃）+ 主题字色。-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="wrap_content"
+    android:layout_width="match_parent"
     android:layout_height="34dp"
     android:layout_marginLeft="3dp"
     android:layout_marginRight="3dp"
     android:layout_marginTop="3dp"
     android:layout_marginBottom="3dp"
-    android:background="@drawable/bg_player_chip"
+    android:background="@drawable/bg_glass_card_chip"
     android:clickable="true"
     android:focusable="true"
     android:gravity="center"
@@ -23,6 +25,6 @@
         android:gravity="center"
         android:maxLines="1"
         android:singleLine="true"
-        android:textColor="#F2FFFFFF"
+        android:textColor="@color/ui_text_primary"
         android:textSize="12sp" />
 </LinearLayout>

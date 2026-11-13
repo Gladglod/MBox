@@ -1187,14 +1187,8 @@ public class VodController extends BaseController {
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
                 FastClickCheckUtil.check(view);
-                try {
-                    mPlayerConfig.put("sc", 0);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                    mControlWrapper.setScreenScaleType(0);
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
+                // 长按直接弹出比例菜单（与右上角「设置」长按弹菜单同一逻辑）
+                showScalePicker(view);
                 return true;
             }
         });
@@ -1214,19 +1208,8 @@ public class VodController extends BaseController {
                 myHandle.removeCallbacks(myRunnable);
                 myHandle.postDelayed(myRunnable, myHandleSeconds);
                 FastClickCheckUtil.check(view);
-                try {
-                    mPlayerConfig.put("sp", 1.0f);
-                    updatePlayerCfgView();
-                    listener.updatePlayerCfg();
-                    speed_old = 1.0f;
-                    mControlWrapper.setSpeed(1.0f);
-                    // 长按重置倍速到 1.0x 时，同步清掉长按手势的滑动基准与固定态
-                    speedBoostLocked = false;
-                    speedBoostBaseSpeed = 1.0f;
-                    speedBoostSpeed = 1.0f;
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
+                // 长按直接弹出倍速菜单（与右上角「设置」长按弹菜单同一逻辑）
+                showSpeedPicker(view);
                 return true;
             }
         });
@@ -1671,33 +1654,55 @@ public class VodController extends BaseController {
     }
 
     /**
-     * 在锚点正上方弹出的窄列表（一行一项），供播放条上的「画面比例 / 倍速」使用。
-     * 与抽屉里的下拉列表同一套视觉，只是定位改到按钮上方；条目多时最高只占屏幕一半并滚动。
+     * 在锚点正上方弹出一排玻璃圆泡选项（一行一项横向排开），供播放条上的「画面比例 / 倍速」使用。
+     * 视觉与右上角「设置」扇形菜单同款：bg_menu_fan_item 毛玻璃气泡 + 果冻入场，
+     * 支持长按按钮直接弹出（单击同样可用）。
      */
     private void showOptionListAbove(View anchor, final List<String> options, int checkedIndex,
                                      final OnOptionPicked callback, int minWidthPx) {
         if (anchor == null || options == null || options.isEmpty()) return;
         try {
             final Context ctx = getContext();
-            final int pad = dp(5);
+            final int bubble = dp(MENU_FAN_ITEM_DP);
 
             LinearLayout list = new LinearLayout(ctx);
-            list.setOrientation(LinearLayout.VERTICAL);
+            list.setOrientation(LinearLayout.HORIZONTAL);
+            list.setGravity(Gravity.CENTER);
+            list.setPadding(dp(6), 0, dp(6), 0);
+            list.setClipChildren(false);
 
-            // 列表放进 ScrollView：词条超过半屏时滚动，面板本身不会顶到画面顶端
-            ScrollView scroll = new ScrollView(ctx);
-            scroll.setBackgroundResource(R.drawable.bg_glass_menu);
-            scroll.setPadding(pad, pad, pad, pad);
-            scroll.setClipToPadding(false);
-            scroll.setVerticalScrollBarEnabled(true);
-            scroll.setScrollbarFadingEnabled(false);
-            scroll.addView(list, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            int popupWidth = Math.max(anchor.getWidth(), minWidthPx);
-            if (popupWidth <= 0) popupWidth = dp(80);
-            final PopupWindow popup = new PopupWindow(scroll, popupWidth,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            for (int i = 0; i < options.size(); i++) {
+                TextView tv = new TextView(ctx);
+                tv.setText(options.get(i));
+                // 气泡很小：全部单行，短词 10sp、长词 9sp（"1.25x" 这类不宜折行）
+                String label = options.get(i) == null ? "" : options.get(i);
+                int len = label.length();
+                tv.setSingleLine(true);
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, len <= 3 ? 10 : 9);
+                tv.setTextColor(i == checkedIndex ? 0xFFFFFFFF : 0xF2FFFFFF);
+                tv.setGravity(Gravity.CENTER);
+                tv.setIncludeFontPadding(false);
+                tv.setBackgroundResource(i == checkedIndex
+                        ? R.drawable.bg_menu_fan_item_selected : R.drawable.bg_menu_fan_item);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(bubble, bubble);
+                lp.rightMargin = i == options.size() - 1 ? 0 : dp(6);
+                tv.setLayoutParams(lp);
+                list.addView(tv);
+            }
+            final PopupWindow popup = new PopupWindow(list,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            // 选项点击：收起菜单并回调（popup 声明在后，这里统一补挂监听器）
+            for (int i = 0; i < list.getChildCount(); i++) {
+                final int index = i;
+                list.getChildAt(i).setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (!allowGlassClick(v)) return;
+                        popup.dismiss();
+                        if (callback != null) callback.onPicked(index);
+                    }
+                });
+            }
             popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
             popup.setOutsideTouchable(true);
             popup.setFocusable(true);
@@ -1714,49 +1719,51 @@ public class VodController extends BaseController {
                 }
             });
 
-            for (int i = 0; i < options.size(); i++) {
-                TextView tv = new TextView(ctx);
-                tv.setText(options.get(i));
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ts_22));
-                // 主题语义色：日间深色字（强调项用 ui_accent），夜间自动回到白/青
-                tv.setTextColor(i == checkedIndex
-                        ? getResources().getColor(R.color.ui_accent) : getResources().getColor(R.color.ui_text_primary));
-                tv.setGravity(Gravity.CENTER);
-                tv.setSingleLine(true);
-                tv.setEllipsize(TextUtils.TruncateAt.END);
-                tv.setPadding(dp(8), 0, dp(8), 0);
-                tv.setBackgroundResource(i == checkedIndex
-                        ? R.drawable.bg_glass_chip_selected : R.drawable.bg_glass_chip);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
-                lp.topMargin = i == 0 ? 0 : dp(3);
-                tv.setLayoutParams(lp);
-                final int index = i;
-                tv.setOnClickListener(new OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        popup.dismiss();
-                        if (callback != null) callback.onPicked(index);
-                    }
-                });
-                list.addView(tv);
-            }
-
-            // 先量一次内容高度：最多占屏幕一半，超出就交给 ScrollView 滚动
-            int widthSpec = View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY);
+            // 先量出整排气泡的真实宽度，居中顶到按钮上方
+            int widthSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
             int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
             list.measure(widthSpec, heightSpec);
-            int contentHeight = list.getMeasuredHeight() + pad * 2;
-            int maxHeight = getResources().getDisplayMetrics().heightPixels / 2;
-            int popupHeight = Math.max(dp(36), Math.min(contentHeight, maxHeight));
+            int popupWidth = list.getMeasuredHeight() > 0 ? list.getMeasuredWidth() : bubble * options.size();
+            int popupHeight = list.getMeasuredHeight();
+            popup.setWidth(popupWidth);
             popup.setHeight(popupHeight);
 
             int xoff = (anchor.getWidth() - popupWidth) / 2;
             popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
             reApplyImmersiveToPopup(popup);
+
+            // 果冻入场：从锚点中心弹出，逐个错峰，与扇形菜单同一套手感
+            list.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (!popup.isShowing()) return;
+                    for (int i = 0; i < list.getChildCount(); i++) {
+                        jellyBubbleIn(list.getChildAt(i), i * 26L);
+                    }
+                }
+            });
         } catch (Throwable th) {
             th.printStackTrace();
         }
+    }
+
+    /** 玻璃气泡的果冻入场：原地从 0.32 弹到 1（带过冲），错峰依次出现 */
+    private void jellyBubbleIn(final View item, long delay) {
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setStartDelay(delay);
+        animator.setDuration(360);
+        final OvershootInterpolator scaleInterp = new OvershootInterpolator(3.4f);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float t = (float) animation.getAnimatedValue();
+                float s = 0.32f + 0.68f * scaleInterp.getInterpolation(t);
+                item.setScaleX(s);
+                item.setScaleY(s);
+                item.setAlpha(Math.min(1f, t * 2.4f));
+            }
+        });
+        animator.start();
     }
 
     /** 应用一个播放倍速并同步各处 UI / 配置（预置选项与自定义输入共用） */
@@ -2106,6 +2113,15 @@ public class VodController extends BaseController {
                     showDanmuSettingPanel(v);
                 }
             });
+            // 长按同样弹出设置面板（与倍速 / 画面比例「长按弹菜单」一致）
+            mDanmuCfgBtn.setOnLongClickListener(new OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    showDanmuSettingPanel(v);
+                    return true;
+                }
+            });
             bindGlassPressEffect(mDanmuCfgBtn);
         }
         if (mFullScreenBtn != null) {
@@ -2385,13 +2401,13 @@ public class VodController extends BaseController {
     private static final int MENU_FAN_SUB_ITEM_DP = 28;
     private static final float MENU_FAN_SUB_START_DEG = 100f;
     private static final float MENU_FAN_SUB_SWEEP_DEG = 70f;
-    /** 一级里「片头片尾」的下标：跟手滑到它上面就自动展开二级 */
-    private static final int MENU_FAN_SUB_PARENT = 0;
 
-    /** 一级功能：片头片尾 / 弹幕设置 / 刷新 / 屏显（+ 更多，保留解码、播放器、解析等入口） */
+    /** 一级功能：片头片尾 / 弹幕 / 刷新 / 屏显（+ 更多，保留解码、播放器、解析等入口） */
     private static final String[] MENU_FAN_LABELS = {"片头片尾", "弹幕", "刷新", "屏显", "更多"};
     /** 片头片尾展开的二级功能 */
-    private static final String[] MENU_FAN_SUB_LABELS = {"片头", "片尾", "重置"};
+    private static final String[] MENU_FAN_SUB_LABELS = {"片尾", "片头", "重置"};
+    /** 一级里「片头片尾」的下标：跟手滑到它上面就自动展开二级 */
+    private static final int MENU_FAN_SUB_PARENT = 0;
 
     /** 一级扇形（null 表示未展开） */
     private FanLayer menuFan;
@@ -2432,7 +2448,7 @@ public class VodController extends BaseController {
     /** 一级扇形选中 */
     private void onMenuFanPicked(int index) {
         switch (index) {
-            case MENU_FAN_SUB_PARENT: // 片头片尾：一级留着，从该项再扇开二级
+            case MENU_FAN_SUB_PARENT: // 片头片尾（第一颗）：一级留着，从该项再扇开二级
                 expandFanSub();
                 break;
             case 1:
@@ -2470,17 +2486,7 @@ public class VodController extends BaseController {
         dismissMenuFan();
         switch (index) {
             case 0: {
-                int before = getTimeCfg(true);
-                clickIfBound(mPlayerTimeStartBtn);
-                int after = getTimeCfg(true);
-                if (after > 0 && after != before) {
-                    toast("片头已设为 " + stringForTime(after * 1000));
-                } else if (after == 0) {
-                    toast("请在前半段设置片头");
-                }
-                break;
-            }
-            case 1: {
+                // 第一颗是「片尾」
                 int before = getTimeCfg(false);
                 clickIfBound(mPlayerTimeSkipBtn);
                 int after = getTimeCfg(false);
@@ -2488,6 +2494,18 @@ public class VodController extends BaseController {
                     toast("片尾已设为倒数 " + stringForTime(after * 1000));
                 } else if (after == 0) {
                     toast("请在后半段设置片尾");
+                }
+                break;
+            }
+            case 1: {
+                // 第二颗是「片头」
+                int before = getTimeCfg(true);
+                clickIfBound(mPlayerTimeStartBtn);
+                int after = getTimeCfg(true);
+                if (after > 0 && after != before) {
+                    toast("片头已设为 " + stringForTime(after * 1000));
+                } else if (after == 0) {
+                    toast("请在前半段设置片头");
                 }
                 break;
             }
