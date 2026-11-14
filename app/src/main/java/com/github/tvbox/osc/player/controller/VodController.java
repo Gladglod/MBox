@@ -1528,6 +1528,10 @@ public class VodController extends BaseController {
         void onPicked(int index);
     }
 
+    /** 播放条竖排玻璃菜单（画面比例 / 倍速）当前的浮层面板与遮罩，null 表示未打开 */
+    private View optionListPanel;
+    private View optionListScrim;
+
     /**
      * 沉浸式全屏（系统栏隐藏）时，弹窗是一个会抢焦点的独立窗口，
      * 系统栏会按弹窗窗口自己的系统 UI 标志重新渲染，于是一弹窗状态栏就冒出来。
@@ -1654,116 +1658,152 @@ public class VodController extends BaseController {
     }
 
     /**
-     * 在锚点正上方弹出一排玻璃圆泡选项（一行一项横向排开），供播放条上的「画面比例 / 倍速」使用。
-     * 视觉与右上角「设置」扇形菜单同款：bg_menu_fan_item 毛玻璃气泡 + 果冻入场，
-     * 支持长按按钮直接弹出（单击同样可用）。
+     * 在锚点正上方弹出竖排玻璃菜单（一行一项），供播放条上的「画面比例 / 倍速」使用。
+     *
+     * <p>刻意不用 PopupWindow：弹窗是独立窗口、会抢焦点，各 ROM 都会按弹窗自己的
+     * 系统栏标志重新渲染状态栏（补标志、双保险都压不住）。这里把菜单做成
+     * 控制器视图树内的浮层（同抽屉的做法）——没有新窗口，打开菜单时系统栏
+     * 保持播放器当前的状态（全屏沉浸下状态栏依旧是透明/隐藏的，不会冒出来）。</p>
+     *
+     * <p>视觉：bg_menu_fan_panel 深玻璃面板（与右上角「设置」扇形菜单同一套配色，
+     * 浮在画面上不随主题）+ bg_menu_row 行条，选中项强调色实底；支持长按按钮直接弹出。</p>
      */
     private void showOptionListAbove(View anchor, final List<String> options, int checkedIndex,
                                      final OnOptionPicked callback, int minWidthPx) {
         if (anchor == null || options == null || options.isEmpty()) return;
+        dismissOptionList();
         try {
             final Context ctx = getContext();
-            final int bubble = dp(MENU_FAN_ITEM_DP);
+            final int pad = dp(5);
 
             LinearLayout list = new LinearLayout(ctx);
-            list.setOrientation(LinearLayout.HORIZONTAL);
-            list.setGravity(Gravity.CENTER);
-            list.setPadding(dp(6), 0, dp(6), 0);
-            list.setClipChildren(false);
+            list.setOrientation(LinearLayout.VERTICAL);
+
+            // 竖排玻璃面板：条目多（倍速档位多）时限高内部滚动，保证永远能待在按钮上方
+            final ScrollView scroll = new ScrollView(ctx);
+            scroll.setBackgroundResource(R.drawable.bg_menu_fan_panel);
+            scroll.setPadding(pad, pad, pad, pad);
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.addView(list, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             for (int i = 0; i < options.size(); i++) {
                 TextView tv = new TextView(ctx);
                 tv.setText(options.get(i));
-                // 气泡很小：全部单行，短词 10sp、长词 9sp（"1.25x" 这类不宜折行）
-                String label = options.get(i) == null ? "" : options.get(i);
-                int len = label.length();
-                tv.setSingleLine(true);
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, len <= 3 ? 10 : 9);
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
                 tv.setTextColor(i == checkedIndex ? 0xFFFFFFFF : 0xF2FFFFFF);
                 tv.setGravity(Gravity.CENTER);
-                tv.setIncludeFontPadding(false);
+                tv.setSingleLine(true);
+                tv.setEllipsize(TextUtils.TruncateAt.END);
+                tv.setPadding(dp(12), 0, dp(12), 0);
                 tv.setBackgroundResource(i == checkedIndex
-                        ? R.drawable.bg_menu_fan_item_selected : R.drawable.bg_menu_fan_item);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(bubble, bubble);
-                lp.rightMargin = i == options.size() - 1 ? 0 : dp(6);
+                        ? R.drawable.bg_menu_row_selected : R.drawable.bg_menu_row);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(34));
+                lp.topMargin = i == 0 ? 0 : dp(3);
                 tv.setLayoutParams(lp);
-                list.addView(tv);
-            }
-            final PopupWindow popup = new PopupWindow(list,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
-            // 选项点击：收起菜单并回调（popup 声明在后，这里统一补挂监听器）
-            for (int i = 0; i < list.getChildCount(); i++) {
                 final int index = i;
-                list.getChildAt(i).setOnClickListener(new OnClickListener() {
+                tv.setOnClickListener(new OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         if (!allowGlassClick(v)) return;
-                        popup.dismiss();
+                        dismissOptionList();
                         if (callback != null) callback.onPicked(index);
                     }
                 });
+                list.addView(tv);
             }
-            popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
-            popup.setOutsideTouchable(true);
-            popup.setFocusable(true);
-            applyImmersiveToPopup(popup);
+
+            // 宽度至少盖住锚点；倍速按钮这种小锚点给个兜底最小宽
+            int panelWidth = (int) Math.max(anchor.getWidth(), minWidthPx);
+            if (panelWidth <= 0) panelWidth = dp(88);
+
+            // 先量出面板真实高度
+            int widthSpec = View.MeasureSpec.makeMeasureSpec(panelWidth, View.MeasureSpec.EXACTLY);
+            int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+            scroll.measure(widthSpec, heightSpec);
+            int contentHeight = scroll.getMeasuredHeight();
+
+            // 定位到锚点正上方；上方放不下整个面板时限高滚动，而不是掉到按钮下方
+            int[] anchorLoc = new int[2];
+            anchor.getLocationOnScreen(anchorLoc);
+            int[] selfLoc = new int[2];
+            getLocationOnScreen(selfLoc);
+            int anchorTop = anchorLoc[1] - selfLoc[1];
+            int availableAbove = anchorTop - dp(14);
+            // 面板最多占到控制器总高的一半，倍速档位多时不至于遮掉大半个画面
+            int maxHalf = getHeight() / 2;
+            int top = anchorTop - contentHeight - dp(6);
+            int panelHeight = contentHeight;
+            if (contentHeight > maxHalf) {
+                panelHeight = maxHalf;
+                top = anchorTop - panelHeight - dp(6);
+            }
+            if (panelHeight > availableAbove) {
+                if (availableAbove >= dp(150)) {
+                    // 上方还有一屏内可观高度：裁短面板（内部滚动），仍然贴着按钮上方
+                    panelHeight = availableAbove;
+                    top = anchorTop - panelHeight - dp(6);
+                } else {
+                    // 极矮屏幕上方放不下：才掉到按钮下方，并同样限高滚动
+                    top = anchorTop + anchor.getHeight() + dp(6);
+                    int availableBelow = getHeight() - top - dp(8);
+                    panelHeight = Math.min(panelHeight, Math.max(dp(150), availableBelow));
+                }
+            }
+
+            // 点空白收起的全屏遮罩：盖住控制条与画面，避免菜单打开期间误触
+            final View scrim = new View(ctx);
+            scrim.setClickable(true);
+            scrim.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dismissOptionList();
+                }
+            });
+            optionListScrim = scrim;
+            addView(scrim, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+            optionListPanel = scroll;
+            addView(scroll, new LayoutParams(panelWidth, panelHeight));
+
             // 菜单打开期间不要自动收起控制条，否则锚点跟着消失、菜单会悬在半空
             if (myHandle != null) myHandle.removeCallbacks(myRunnable);
-            popup.setOnDismissListener(new PopupWindow.OnDismissListener() {
-                @Override
-                public void onDismiss() {
-                    if (myHandle != null && myRunnable != null) {
-                        myHandle.removeCallbacks(myRunnable);
-                        myHandle.postDelayed(myRunnable, myHandleSeconds);
-                    }
-                }
-            });
 
-            // 先量出整排气泡的真实宽度，居中顶到按钮上方
-            int widthSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
-            int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
-            list.measure(widthSpec, heightSpec);
-            int popupWidth = list.getMeasuredHeight() > 0 ? list.getMeasuredWidth() : bubble * options.size();
-            int popupHeight = list.getMeasuredHeight();
-            popup.setWidth(popupWidth);
-            popup.setHeight(popupHeight);
-
-            int xoff = (anchor.getWidth() - popupWidth) / 2;
-            popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
-            reApplyImmersiveToPopup(popup);
-
-            // 果冻入场：从锚点中心弹出，逐个错峰，与扇形菜单同一套手感
-            list.post(new Runnable() {
+            int left = anchorLoc[0] - selfLoc[0] + (anchor.getWidth() - panelWidth) / 2;
+            left = Math.max(dp(8), Math.min(left, getWidth() - panelWidth - dp(8)));
+            scroll.post(new Runnable() {
                 @Override
                 public void run() {
-                    if (!popup.isShowing()) return;
-                    for (int i = 0; i < list.getChildCount(); i++) {
-                        jellyBubbleIn(list.getChildAt(i), i * 26L);
-                    }
+                    if (optionListPanel != scroll) return;
+                    // 轻量入场：整体上浮淡入（竖排菜单不再做逐颗气泡果冻）
+                    scroll.setAlpha(0f);
+                    scroll.setTranslationY(scroll.getTranslationY() + dp(8));
+                    scroll.animate().alpha(1f).translationYBy(-dp(8)).setDuration(180).start();
                 }
             });
+            scroll.setTranslationX(left);
+            scroll.setTranslationY(top);
         } catch (Throwable th) {
             th.printStackTrace();
         }
     }
 
-    /** 玻璃气泡的果冻入场：原地从 0.32 弹到 1（带过冲），错峰依次出现 */
-    private void jellyBubbleIn(final View item, long delay) {
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setStartDelay(delay);
-        animator.setDuration(360);
-        final OvershootInterpolator scaleInterp = new OvershootInterpolator(3.4f);
-        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator animation) {
-                float t = (float) animation.getAnimatedValue();
-                float s = 0.32f + 0.68f * scaleInterp.getInterpolation(t);
-                item.setScaleX(s);
-                item.setScaleY(s);
-                item.setAlpha(Math.min(1f, t * 2.4f));
-            }
-        });
-        animator.start();
+    /** 收起播放条上的竖排玻璃菜单（浮层是视图内 child，直接摘掉即可） */
+    private void dismissOptionList() {
+        if (optionListPanel != null) {
+            optionListPanel.animate().cancel();
+            removeView(optionListPanel);
+            optionListPanel = null;
+        }
+        if (optionListScrim != null) {
+            removeView(optionListScrim);
+            optionListScrim = null;
+        }
+        if (myHandle != null && myRunnable != null) {
+            myHandle.removeCallbacks(myRunnable);
+            myHandle.postDelayed(myRunnable, myHandleSeconds);
+        }
     }
 
     /** 应用一个播放倍速并同步各处 UI / 配置（预置选项与自定义输入共用） */
@@ -3728,6 +3768,7 @@ public class VodController extends BaseController {
     void hideBottom() {
         mHandler.removeMessages(1002);
         hideDrawer();
+        dismissOptionList();
         mHandler.sendEmptyMessage(1003);
     }
 
