@@ -90,6 +90,8 @@ public class SourceViewModel extends ViewModel {
     public MutableLiveData<AbsXml> detailFallbackSearchResult;
     /** 手动换源：用户在换源面板点选某个源后，单源搜索同名片源的结果 */
     public MutableLiveData<AbsXml> switchSourceSearchResult;
+    /** 换源面板：打开时后台全源预搜索（标记每个源是否有本片） */
+    public MutableLiveData<AbsXml> panelSourceSearchResult;
     public MutableLiveData<AbsXml> detailResult;
     public MutableLiveData<JSONObject> actionResult;
     public MutableLiveData<JSONObject> playResult;
@@ -104,6 +106,7 @@ public class SourceViewModel extends ViewModel {
         quickSearchResult = new MutableLiveData<>();
         detailFallbackSearchResult = new MutableLiveData<>();
         switchSourceSearchResult = new MutableLiveData<>();
+        panelSourceSearchResult = new MutableLiveData<>();
         detailResult = new MutableLiveData<>();
         actionResult = new MutableLiveData<>();
         playResult = new MutableLiveData<>();
@@ -934,6 +937,11 @@ public class SourceViewModel extends ViewModel {
     /** 手动换源：只在用户点选的单个源里搜索片名（调用方需要自己放到工作线程，Spider 源是同步调用） */
     public void getSwitchSourceSearch(String sourceKey, String wd, String searchToken) {
         getSearch(sourceKey, wd, searchToken, switchSourceSearchResult, "switch_source_search");
+    }
+
+    /** 换源面板预搜索：token 建议用 baseToken + "|" + sourceKey，便于逐源校验 */
+    public void getPanelSourceSearch(String sourceKey, String wd, String searchToken) {
+        getSearch(sourceKey, wd, searchToken, panelSourceSearchResult, "panel_source_search");
     }
 
     private void getSearch(String sourceKey, String wd, String searchToken, MutableLiveData<AbsXml> result, String requestTag) {

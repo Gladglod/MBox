@@ -97,11 +97,13 @@ public class DetailActivity extends BaseActivity {
     private static final String STATE_FULL_WINDOWS = "detail_full_windows";
     private static final String DETAIL_FALLBACK_SEARCH_TAG = "detail_fallback_search";
     private static final String SWITCH_SOURCE_SEARCH_TAG = "switch_source_search";
+    private static final String PANEL_SOURCE_SEARCH_TAG = "panel_source_search";
     public static final String EXTRA_DETAIL_FALLBACK_CANDIDATES = "detailFallbackCandidates";
     private static final int DETAIL_FALLBACK_MAX_SEARCH = 20;
     private static final long DETAIL_FALLBACK_SEARCH_TIMEOUT_MS = 8000L;
     private static final long DETAIL_FALLBACK_DETAIL_TIMEOUT_MS = 6000L;
     private static final long SWITCH_SOURCE_SEARCH_TIMEOUT_MS = 10000L;
+    private static final long PANEL_SOURCE_SEARCH_TIMEOUT_MS = 15000L;
     private View llLayout;
     private androidx.core.widget.NestedScrollView scrollView;
     private FragmentContainerView llPlayerFragmentContainer;
@@ -159,6 +161,26 @@ public class DetailActivity extends BaseActivity {
                 sourceSpeedDialog.setRowSearching(switchSourceTargetKey, false);
             }
             GlassTip.show(DetailActivity.this, "搜索片源超时，请稍后再试");
+        }
+    };
+    /** 换源面板后台预搜索：面板打开时并发搜全部源，标记「有片源/无片源」 */
+    private ExecutorService panelSearchExecutor;
+    private boolean panelSearchActive = false;
+    private String panelSearchBaseToken = "";
+    private String panelSearchTitle = "";
+    private int panelSearchRequestIndex = 0;
+    private final Runnable panelSearchTimeout = new Runnable() {
+        @Override
+        public void run() {
+            if (!panelSearchActive) {
+                return;
+            }
+            panelSearchActive = false;
+            stopPanelSearchExecutor();
+            OkGo.getInstance().cancelTag(PANEL_SOURCE_SEARCH_TAG);
+            if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
+                sourceSpeedDialog.finishSearchPhase();
+            }
         }
     };
     /** 收藏星标：★ = 已收藏，☆ = 未收藏 */
@@ -1008,18 +1030,27 @@ public class DetailActivity extends BaseActivity {
                     GlassTip.show(DetailActivity.this, "「" + switchSourceTargetName + "」未找到同名片源");
                     return;
                 }
-                // 记入换源历史，后续自动换源（线路耗尽兜底）不会再走这个源
-                detailFallbackTitle = switchSourceTitle;
-                detailFallbackTriedKeys.add(getDetailFallbackKey(matched.sourceKey, matched.id));
-                addDetailFallbackUsedSource(matched.sourceKey);
-                manualSwitchSourceName = switchSourceTargetName;
-                vod_name = matched.name == null ? "" : matched.name;
-                vod_picture = matched.pic == null ? "" : matched.pic;
-                if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
-                    sourceSpeedDialog.dismiss();
+                switchToMatchedVideo(matched, switchSourceTargetName);
+            }
+        });
+        // 换源面板预搜索：逐源回包，标记「有片源/无片源」，命中的带上候选影片供直接切换
+        sourceViewModel.panelSourceSearchResult.observe(this, new Observer<AbsXml>() {
+            @Override
+            public void onChanged(AbsXml absXml) {
+                if (!panelSearchActive || absXml == null
+                        || sourceSpeedDialog == null || !sourceSpeedDialog.isShowing()) {
+                    return;
                 }
-                showLoading();
-                loadDetail(matched.id, matched.sourceKey, true);
+                String token = absXml.searchToken;
+                String prefix = panelSearchBaseToken + "|";
+                if (TextUtils.isEmpty(token) || !token.startsWith(prefix)) {
+                    return;
+                }
+                if (!TextUtils.equals(absXml.sourceKey, token.substring(prefix.length()))) {
+                    return;
+                }
+                Movie.Video matched = findExactTitleVideo(absXml, panelSearchTitle);
+                sourceSpeedDialog.markSearchResult(absXml.sourceKey, matched != null, matched);
             }
         });
         sourceViewModel.detailResult.observe(this, new Observer<AbsXml>() {
@@ -1281,8 +1312,8 @@ public class DetailActivity extends BaseActivity {
         }
         sourceSpeedDialog = new SourceSpeedDialog(this, sources, title.trim(), new SourceSpeedDialog.OnSourcePickListener() {
             @Override
-            public void onSourcePick(SourceBean source) {
-                searchSourceAndSwitch(source);
+            public void onSourcePick(SourceBean source, Movie.Video matchedVideo) {
+                onSourcePicked(source, matchedVideo);
             }
         });
         sourceSpeedDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
@@ -1292,11 +1323,18 @@ public class DetailActivity extends BaseActivity {
             }
         });
         sourceSpeedDialog.show();
+        // 面板打开的同时后台预搜索全部源，标记「有片源/无片源」
+        startPanelSourceSearch(sources, title.trim());
     }
 
-    /** 用户点选了某个源：只在该源里搜索同名片源，找到即切换过去。 */
-    private void searchSourceAndSwitch(SourceBean source) {
+    /** 预搜索命中候选的源直接切换；否则先在该源里搜同名片源。 */
+    private void onSourcePicked(SourceBean source, Movie.Video matchedVideo) {
         if (switchSourceSearching) {
+            GlassTip.show(this, "正在搜索片源，请稍候");
+            return;
+        }
+        if (matchedVideo != null) {
+            switchToMatchedVideo(matchedVideo, source.getName());
             return;
         }
         String title = mVideo != null && !TextUtils.isEmpty(mVideo.name) ? mVideo.name : vod_name;
@@ -1327,6 +1365,24 @@ public class DetailActivity extends BaseActivity {
         });
     }
 
+    /** 用预搜索/单源搜索命中的候选影片直接切换过去（点选搜索成功时也走这里）。 */
+    private void switchToMatchedVideo(Movie.Video video, String sourceName) {
+        // 记入换源历史，后续自动换源（线路耗尽兜底）不会再走这个源
+        detailFallbackTitle = switchSourceTitle != null && !TextUtils.isEmpty(switchSourceTitle)
+                ? switchSourceTitle : (vod_name == null ? "" : vod_name.trim());
+        switchSourceTitle = detailFallbackTitle;
+        detailFallbackTriedKeys.add(getDetailFallbackKey(video.sourceKey, video.id));
+        addDetailFallbackUsedSource(video.sourceKey);
+        manualSwitchSourceName = sourceName == null ? "" : sourceName;
+        vod_name = video.name == null ? "" : video.name;
+        vod_picture = video.pic == null ? "" : video.pic;
+        if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
+            sourceSpeedDialog.dismiss();
+        }
+        showLoading();
+        loadDetail(video.id, video.sourceKey, true);
+    }
+
     private void cancelSwitchSourceSearchTask() {
         if (switchSourceSearchFuture != null) {
             switchSourceSearchFuture.cancel(true);
@@ -1346,10 +1402,70 @@ public class DetailActivity extends BaseActivity {
         }
     }
 
+    /** 面板预搜索：并发搜全部可换源，结果经 panelSourceSearchResult 回来逐源标记。 */
+    private void startPanelSourceSearch(List<SourceBean> sources, String title) {
+        stopPanelSearchExecutor();
+        panelSearchActive = true;
+        panelSearchTitle = title;
+        panelSearchBaseToken = "panel_source_" + (++panelSearchRequestIndex);
+        panelSearchExecutor = Executors.newFixedThreadPool(8);
+        for (SourceBean bean : sources) {
+            final String searchKey = bean.getKey();
+            final String searchToken = panelSearchBaseToken + "|" + searchKey;
+            panelSearchExecutor.submit(new Runnable() {
+                @Override
+                public void run() {
+                    sourceViewModel.getPanelSourceSearch(searchKey, panelSearchTitle, searchToken);
+                }
+            });
+        }
+        llLayout.removeCallbacks(panelSearchTimeout);
+        llLayout.postDelayed(panelSearchTimeout, PANEL_SOURCE_SEARCH_TIMEOUT_MS);
+    }
+
+    private void stopPanelSearchExecutor() {
+        if (panelSearchExecutor != null) {
+            try {
+                panelSearchExecutor.shutdownNow();
+            } catch (Throwable th) {
+                th.printStackTrace();
+            }
+            panelSearchExecutor = null;
+        }
+    }
+
+    /** 预搜索整体收尾：停任务、超时回调、剩余未回包的源按「无片源」收尾。 */
+    private void stopPanelSourceSearch() {
+        llLayout.removeCallbacks(panelSearchTimeout);
+        panelSearchActive = false;
+        stopPanelSearchExecutor();
+        OkGo.getInstance().cancelTag(PANEL_SOURCE_SEARCH_TAG);
+        if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
+            sourceSpeedDialog.finishSearchPhase();
+        }
+    }
+
+    /** 从搜索结果里找片名完全一致的条目（与自动换源口径相同）。 */
+    private Movie.Video findExactTitleVideo(AbsXml absXml, String title) {
+        if (absXml == null || absXml.movie == null || absXml.movie.videoList == null || TextUtils.isEmpty(title)) {
+            return null;
+        }
+        for (Movie.Video video : absXml.movie.videoList) {
+            if (video == null || TextUtils.isEmpty(video.id)) {
+                continue;
+            }
+            if (TextUtils.equals(title, video.name == null ? "" : video.name.trim())) {
+                return video;
+            }
+        }
+        return null;
+    }
+
     /** 面板关闭（用户关闭 / 切换成功 / 页面销毁）后的清理。 */
     private void releaseSourceSpeedDialog() {
         sourceSpeedDialog = null;
         SourceSpeedTester.cancelAll();
+        stopPanelSourceSearch();
         if (switchSourceSearching) {
             llLayout.removeCallbacks(switchSourceSearchTimeout);
             switchSourceSearching = false;
@@ -1768,16 +1884,20 @@ public class DetailActivity extends BaseActivity {
         detailFallbackEpisodeIndex = -1;
         switchSourceSearching = false;
         manualSwitchSourceName = "";
+        panelSearchActive = false;
         if (llLayout != null) {
             llLayout.removeCallbacks(detailFallbackTimeout);
             llLayout.removeCallbacks(detailFallbackDetailTimeout);
             llLayout.removeCallbacks(switchSourceSearchTimeout);
+            llLayout.removeCallbacks(panelSearchTimeout);
         }
         stopSwitchSourceSearchExecutor();
+        stopPanelSearchExecutor();
         if (sourceSpeedDialog != null && sourceSpeedDialog.isShowing()) {
             sourceSpeedDialog.dismiss();
         }
         OkGo.getInstance().cancelTag(DETAIL_FALLBACK_SEARCH_TAG);
+        OkGo.getInstance().cancelTag(PANEL_SOURCE_SEARCH_TAG);
     }
 
     private void stopDetailFallbackSearchExecutor() {
@@ -2185,6 +2305,7 @@ public class DetailActivity extends BaseActivity {
         OkGo.getInstance().cancelTag("detail");
         OkGo.getInstance().cancelTag("quick_search");
         OkGo.getInstance().cancelTag(SWITCH_SOURCE_SEARCH_TAG);
+        OkGo.getInstance().cancelTag(PANEL_SOURCE_SEARCH_TAG);
         releasePlayFragment();
         EventBus.getDefault().unregister(this);
     }

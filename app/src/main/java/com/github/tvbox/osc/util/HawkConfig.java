@@ -145,5 +145,8 @@ public class HawkConfig {
     /** 被用户「忽略此版本」的 tag，自动检查时跳过 */
     public static final String UPDATE_IGNORE_TAG = "update_ignore_tag";
 
+    /** 换源测速延迟缓存（json：{sourceKey: [latencyMs, timestamp]}） */
+    public static final String SOURCE_SPEED_CACHE = "source_speed_cache";
+
     public static boolean hotVodDelete;
 }

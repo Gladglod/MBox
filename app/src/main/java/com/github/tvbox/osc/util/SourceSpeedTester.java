@@ -8,6 +8,10 @@ import com.github.catvod.crawler.Spider;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.util.OkGoHelper;
+import com.orhanobut.hawk.Hawk;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +36,12 @@ public class SourceSpeedTester {
 
     public static final int FAIL = -1;
 
+    /** 测速结果缓存有效期：10 分钟 */
+    private static final long CACHE_TTL_MS = 10 * 60 * 1000L;
+    /** 内存缓存：sourceKey -> [latencyMs, timestamp] */
+    private static final java.util.concurrent.ConcurrentHashMap<String, long[]> CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static boolean cacheLoaded = false;
+
     public interface SpeedCallback {
         void onResult(String sourceKey, int latencyMs);
     }
@@ -55,6 +65,7 @@ public class SourceSpeedTester {
                 @Override
                 public void run() {
                     int latency = doTest(bean);
+                    cacheLatency(bean.getKey(), latency);
                     postResult(bean.getKey(), latency, callback);
                 }
             });
@@ -77,6 +88,73 @@ public class SourceSpeedTester {
             return testSpider(bean);
         }
         return testHttp(bean);
+    }
+
+    /**
+     * 取缓存的测速延迟（TTL 内有效），无缓存或已过期返回 null。
+     */
+    public static Integer getCachedLatency(String sourceKey) {
+        ensureCacheLoaded();
+        long[] entry = CACHE.get(sourceKey);
+        if (entry == null) {
+            return null;
+        }
+        if (System.currentTimeMillis() - entry[1] > CACHE_TTL_MS) {
+            CACHE.remove(sourceKey);
+            return null;
+        }
+        return (int) entry[0];
+    }
+
+    private static void cacheLatency(String sourceKey, int latencyMs) {
+        if (latencyMs <= 0) {
+            return; // 超时/失败不缓存，下次重新测
+        }
+        ensureCacheLoaded();
+        CACHE.put(sourceKey, new long[]{latencyMs, System.currentTimeMillis()});
+        saveCache();
+    }
+
+    private static void ensureCacheLoaded() {
+        if (cacheLoaded) {
+            return;
+        }
+        cacheLoaded = true;
+        try {
+            String json = Hawk.get(HawkConfig.SOURCE_SPEED_CACHE, "");
+            if (!TextUtils.isEmpty(json)) {
+                JSONObject root = new JSONObject(json);
+                java.util.Iterator<String> keys = root.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    JSONArray arr = root.optJSONArray(key);
+                    if (arr != null && arr.length() >= 2) {
+                        CACHE.put(key, new long[]{arr.optLong(0), arr.optLong(1)});
+                    }
+                }
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    private static void saveCache() {
+        try {
+            JSONObject root = new JSONObject();
+            long now = System.currentTimeMillis();
+            for (java.util.Map.Entry<String, long[]> entry : CACHE.entrySet()) {
+                if (now - entry.getValue()[1] > CACHE_TTL_MS) {
+                    continue;
+                }
+                JSONArray arr = new JSONArray();
+                arr.put(entry.getValue()[0]);
+                arr.put(entry.getValue()[1]);
+                root.put(entry.getKey(), arr);
+            }
+            Hawk.put(HawkConfig.SOURCE_SPEED_CACHE, root.toString());
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
     }
 
     private static void postResult(final String sourceKey, final int latency, final SpeedCallback callback) {

@@ -11,7 +11,9 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
+import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.ui.adapter.SourceSpeedAdapter;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
@@ -24,13 +26,13 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 换源面板：列出所有可切换的源，后台测速显示延迟，用户点选某个源后
- * 由页面去该源搜索同名片源并切换。
+ * 换源面板：列出所有可切换的源，后台测速显示延迟（带缓存，10 分钟内直接复用），
+ * 同时后台全源预搜索本片，标记每个源「有片源/无片源」，命中的源点选可直接切换。
  */
 public class SourceSpeedDialog extends BaseDialog {
 
     public interface OnSourcePickListener {
-        void onSourcePick(SourceBean source);
+        void onSourcePick(SourceBean source, Movie.Video matchedVideo);
     }
 
     private RecyclerView mRecyclerView;
@@ -38,6 +40,10 @@ public class SourceSpeedDialog extends BaseDialog {
     private final List<SourceSpeedAdapter.Item> items = new java.util.ArrayList<>();
     private OnSourcePickListener pickListener;
     private boolean released = false;
+    /** 两个后台阶段都结束后做一次「有片源优先 + 延迟升序」的最终排序 */
+    private boolean latencyDone = false;
+    private boolean searchDone = false;
+    private int resolvedSearchCount = 0;
 
     public SourceSpeedDialog(@NonNull @NotNull Context context, List<SourceBean> sources, String title, OnSourcePickListener listener) {
         super(context);
@@ -48,10 +54,16 @@ public class SourceSpeedDialog extends BaseDialog {
         setCancelable(true);
         pickListener = listener;
         for (SourceBean source : sources) {
-            items.add(new SourceSpeedAdapter.Item(source));
+            SourceSpeedAdapter.Item item = new SourceSpeedAdapter.Item(source);
+            Integer cached = SourceSpeedTester.getCachedLatency(source.getKey());
+            if (cached != null) {
+                item.latency = cached;
+            }
+            items.add(item);
         }
         setContentView(R.layout.dialog_source_speed);
         initView(title);
+        sortInitialByLatency();
         startSpeedTests();
     }
 
@@ -72,15 +84,15 @@ public class SourceSpeedDialog extends BaseDialog {
         mRecyclerView.setHasFixedSize(true);
         mRecyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
         speedAdapter = new SourceSpeedAdapter();
-        speedAdapter.setOnItemClickListener(new com.chad.library.adapter.base.BaseQuickAdapter.OnItemClickListener() {
+        speedAdapter.setOnItemClickListener(new BaseQuickAdapter.OnItemClickListener() {
             @Override
-            public void onItemClick(com.chad.library.adapter.base.BaseQuickAdapter adapter, View view, int position) {
+            public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 SourceSpeedAdapter.Item item = speedAdapter.getItem(position);
-                if (item == null || item.searching) {
+                if (item == null) {
                     return;
                 }
                 if (pickListener != null) {
-                    pickListener.onSourcePick(item.source);
+                    pickListener.onSourcePick(item.source, item.matchedVideo);
                 }
             }
         });
@@ -90,8 +102,37 @@ public class SourceSpeedDialog extends BaseDialog {
         resizePanel();
     }
 
+    /** 打开时的初始排序：有缓存延迟的按延迟升序排前面，没有的保持原顺序排后面。 */
+    private void sortInitialByLatency() {
+        boolean anyCached = false;
+        for (SourceSpeedAdapter.Item item : items) {
+            if (item.latency > 0) {
+                anyCached = true;
+                break;
+            }
+        }
+        if (!anyCached) {
+            return;
+        }
+        Collections.sort(items, new Comparator<SourceSpeedAdapter.Item>() {
+            @Override
+            public int compare(SourceSpeedAdapter.Item a, SourceSpeedAdapter.Item b) {
+                int la = a.latency <= 0 ? Integer.MAX_VALUE : a.latency;
+                int lb = b.latency <= 0 ? Integer.MAX_VALUE : b.latency;
+                if (la != lb) {
+                    return Integer.compare(la, lb);
+                }
+                return 0;
+            }
+        });
+        speedAdapter.notifyDataSetChanged();
+    }
+
     private void startSpeedTests() {
         for (final SourceSpeedAdapter.Item item : items) {
+            if (item.latency != 0) {
+                continue; // 缓存命中，无需重测
+            }
             SourceSpeedTester.test(item.source, new SourceSpeedTester.SpeedCallback() {
                 @Override
                 public void onResult(String sourceKey, int latencyMs) {
@@ -99,22 +140,64 @@ public class SourceSpeedDialog extends BaseDialog {
                         return;
                     }
                     speedAdapter.updateLatency(sourceKey, latencyMs);
-                    checkAllTested();
+                    checkLatencyDone();
                 }
             });
         }
+        checkLatencyDone(); // 全部走缓存的情况
     }
 
-    /** 全部测完后按延迟升序重排，超时/失败的沉底。 */
-    private void checkAllTested() {
+    private void checkLatencyDone() {
         for (SourceSpeedAdapter.Item item : items) {
             if (item.latency == 0) {
                 return;
             }
         }
+        latencyDone = true;
+        maybeFinalSort();
+    }
+
+    /**
+     * 面板预搜索：某源的搜索结果回来了。
+     * Activity 保证每个源恰好回调一次（成功或失败），全部到齐后做最终排序。
+     */
+    public void markSearchResult(String sourceKey, boolean hasMovie, Movie.Video matchedVideo) {
+        speedAdapter.markSearchResult(sourceKey, hasMovie, matchedVideo);
+        resolvedSearchCount++;
+        if (resolvedSearchCount >= items.size()) {
+            finishSearchPhase();
+        }
+    }
+
+    /** 预搜索阶段结束（全部源已回包或整体超时），未回包的源按「无片源」收尾。 */
+    public void finishSearchPhase() {
+        if (searchDone || released) {
+            return;
+        }
+        searchDone = true;
+        for (SourceSpeedAdapter.Item item : items) {
+            if (item.searching) {
+                item.searching = false;
+                item.hasMovie = false;
+            }
+        }
+        speedAdapter.notifyDataSetChanged();
+        maybeFinalSort();
+    }
+
+    /** 最终排序：有片源的源优先（内部按延迟升序），无片源/未知的沉底。 */
+    private void maybeFinalSort() {
+        if (!latencyDone || !searchDone) {
+            return;
+        }
         Collections.sort(items, new Comparator<SourceSpeedAdapter.Item>() {
             @Override
             public int compare(SourceSpeedAdapter.Item a, SourceSpeedAdapter.Item b) {
+                int ra = a.hasMovie == null ? 1 : Boolean.TRUE.equals(a.hasMovie) ? 0 : 2;
+                int rb = b.hasMovie == null ? 1 : Boolean.TRUE.equals(b.hasMovie) ? 0 : 2;
+                if (ra != rb) {
+                    return Integer.compare(ra, rb);
+                }
                 int la = a.latency <= 0 ? Integer.MAX_VALUE : a.latency;
                 int lb = b.latency <= 0 ? Integer.MAX_VALUE : b.latency;
                 if (la != lb) {

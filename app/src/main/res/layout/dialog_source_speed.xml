@@ -73,7 +73,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="延迟为接口响应耗时，越低越快；点击站点即切换到该源"
+            android:text="延迟为接口响应耗时，越低越快；「有片源」表示该站搜到本片，点击即切换"
             android:textColor="@color/ui_muted"
             android:textSize="11sp" />
 

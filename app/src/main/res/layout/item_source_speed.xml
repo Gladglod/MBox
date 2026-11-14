@@ -26,6 +26,18 @@
         android:textSize="14sp" />
 
     <TextView
+        android:id="@+id/tvSourceStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_marginLeft="6dp"
+        android:includeFontPadding="false"
+        android:minWidth="52dp"
+        android:gravity="center"
+        android:textColor="@color/ui_muted"
+        android:textSize="12sp" />
+
+    <TextView
         android:id="@+id/tvSourceLatency"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
