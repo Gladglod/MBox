@@ -50,6 +50,19 @@ public class AppDataManager {
             } catch (SQLiteException e) {
                 e.printStackTrace();
             }
+            // 新增「离线缓存」任务表（列定义必须与 DownloadRecord 实体保持一致）
+            try {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `downloadRecord` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`sourceKey` TEXT, `vodId` TEXT, `vodName` TEXT, `vodPic` TEXT, " +
+                        "`playFlag` TEXT, `playIndex` INTEGER NOT NULL, `episodeName` TEXT, " +
+                        "`url` TEXT, `headersJson` TEXT, `saveDir` TEXT, `filePath` TEXT, " +
+                        "`type` INTEGER NOT NULL, `state` INTEGER NOT NULL, `progress` INTEGER NOT NULL, " +
+                        "`currentLen` INTEGER NOT NULL, `totalLen` INTEGER NOT NULL, " +
+                        "`errorMsg` TEXT, `createTime` INTEGER NOT NULL, `updateTime` INTEGER NOT NULL)");
+            } catch (SQLiteException e) {
+                e.printStackTrace();
+            }
         }
     };
 
@@ -119,7 +132,7 @@ public class AppDataManager {
         if (dbInstance == null)
             dbInstance = Room.databaseBuilder(App.getInstance(), AppDataBase.class, dbPath())
                     .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
-                    //.addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2)
                     //.addMigrations(MIGRATION_2_3)
                     //.addMigrations(MIGRATION_3_4)
                     //.addMigrations(MIGRATION_4_5)

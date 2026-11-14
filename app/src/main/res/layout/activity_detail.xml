@@ -109,6 +109,23 @@
                             android:text="换源"
                             android:textColor="@color/ui_text_secondary"
                             android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/tvCache"
+                            android:layout_width="wrap_content"
+                            android:layout_height="30dp"
+                            android:layout_marginLeft="6dp"
+                            android:background="@drawable/bg_chip"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:minWidth="44dp"
+                            android:paddingLeft="10dp"
+                            android:paddingRight="10dp"
+                            android:singleLine="true"
+                            android:text="缓存"
+                            android:textColor="@color/ui_text_secondary"
+                            android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>

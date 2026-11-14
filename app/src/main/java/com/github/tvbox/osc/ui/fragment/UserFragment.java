@@ -27,6 +27,7 @@ import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.ui.activity.ApiSettingActivity;
 import com.github.tvbox.osc.ui.activity.CollectActivity;
 import com.github.tvbox.osc.ui.activity.DetailActivity;
+import com.github.tvbox.osc.ui.activity.DownloadActivity;
 import com.github.tvbox.osc.ui.activity.HistoryActivity;
 import com.github.tvbox.osc.ui.activity.MineSettingActivity;
 import com.github.tvbox.osc.ui.adapter.ContinueSquareAdapter;
@@ -50,6 +51,7 @@ public class UserFragment extends BaseLazyFragment {
     private static final int ACTION_HISTORY = 2;  // 播放历史
     private static final int ACTION_COLLECT = 3;  // 收藏
     private static final int ACTION_BACKUP = 4;   // 备份与同步
+    private static final int ACTION_DOWNLOAD = 5; // 离线缓存
 
     private static final class MenuEntry {
         final String title;
@@ -69,6 +71,7 @@ public class UserFragment extends BaseLazyFragment {
     private static final MenuEntry E_THEME = new MenuEntry("外观主题", R.drawable.ic_mine_theme, ACTION_SECTION, MineSettingActivity.SECTION_APPEARANCE);
     private static final MenuEntry E_HISTORY = new MenuEntry("播放历史", R.drawable.ic_mine_history, ACTION_HISTORY, null);
     private static final MenuEntry E_COLLECT = new MenuEntry("收藏", R.drawable.icon_collect, ACTION_COLLECT, null);
+    private static final MenuEntry E_DOWNLOAD = new MenuEntry("离线缓存", R.drawable.ic_mine_download, ACTION_DOWNLOAD, null);
     private static final MenuEntry E_PLAY = new MenuEntry("播放设定", R.drawable.ic_mine_play, ACTION_SECTION, MineSettingActivity.SECTION_PLAY);
     private static final MenuEntry E_UI = new MenuEntry("界面偏好", R.drawable.ic_mine_ui, ACTION_SECTION, MineSettingActivity.SECTION_UI);
     private static final MenuEntry E_GESTURE = new MenuEntry("播放手势", R.drawable.ic_mine_gesture, ACTION_SECTION, MineSettingActivity.SECTION_GESTURE);
@@ -82,7 +85,7 @@ public class UserFragment extends BaseLazyFragment {
      */
     private static final MenuEntry[][] MENU_GROUPS = {
             {E_SOURCE, E_THEME},
-            {E_HISTORY, E_COLLECT},
+            {E_HISTORY, E_COLLECT, E_DOWNLOAD},
             {E_PLAY, E_UI, E_GESTURE, E_DANMU, E_BACKUP},
             {E_ABOUT}
     };
@@ -276,6 +279,9 @@ public class UserFragment extends BaseLazyFragment {
                 break;
             case ACTION_COLLECT:
                 jumpSharedAxis(CollectActivity.class);
+                break;
+            case ACTION_DOWNLOAD:
+                jumpSharedAxis(DownloadActivity.class);
                 break;
             case ACTION_SECTION:
             default:

@@ -92,9 +92,20 @@
         <activity
             android:name=".ui.activity.LocalFileActivity"
             />
+        <activity
+            android:name=".ui.activity.DownloadActivity"
+            />
+        <activity
+            android:name=".ui.activity.LocalPlayActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
+            />
 
         <service
             android:name=".dlna.DLNACastService"
+            android:exported="false" />
+
+        <service
+            android:name=".download.DownloadService"
             android:exported="false" />
 
         <service

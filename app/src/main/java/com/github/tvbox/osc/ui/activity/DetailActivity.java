@@ -45,6 +45,7 @@ import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.adapter.SeriesAdapter;
 import com.github.tvbox.osc.ui.adapter.SeriesFlagAdapter;
+import com.github.tvbox.osc.ui.dialog.DownloadSelectDialog;
 import com.github.tvbox.osc.ui.dialog.SourceSpeedDialog;
 import com.github.tvbox.osc.ui.fragment.PlayFragment;
 import com.github.tvbox.osc.util.DefaultConfig;
@@ -185,6 +186,8 @@ public class DetailActivity extends BaseActivity {
     };
     /** 收藏星标：★ = 已收藏，☆ = 未收藏 */
     private TextView tvCollect;
+    /** 缓存入口：弹出「缓存选集」弹窗 */
+    private TextView tvCache;
     private RecyclerView mGridViewFlag;
     private RecyclerView mGridViewQuality;
     private RecyclerView mGridView;
@@ -311,6 +314,17 @@ public class DetailActivity extends BaseActivity {
                 }).start();
     }
 
+    /** 打开「缓存选集」弹窗：把当前线路的分集加入离线缓存队列 */
+    private void showDownloadDialog() {
+        if (vodInfo == null || vodInfo.seriesMap == null
+                || vodInfo.seriesMap.get(vodInfo.playFlag) == null
+                || vodInfo.seriesMap.get(vodInfo.playFlag).isEmpty()) {
+            GlassTip.show(DetailActivity.this, "暂无可缓存的选集");
+            return;
+        }
+        new DownloadSelectDialog(DetailActivity.this, sourceKey, vodInfo).show();
+    }
+
     /** 绑定「其他信息」折叠开关：默认收起，只露出来源/年份，展开后显示全部 */
     private void setupInfoToggle() {
         infoExpanded = false;
@@ -389,6 +403,7 @@ public class DetailActivity extends BaseActivity {
         tvSeriesSort = findViewById(R.id.mSeriesSortTv);
         tvCollect = findViewById(R.id.tvCollect);
         tvChangeSource = findViewById(R.id.tvChangeSource);
+        tvCache = findViewById(R.id.tvCache);
         mEmptyPlayList = findViewById(R.id.mEmptyPlaylist);
         mGridView = findViewById(R.id.mGridView);
         mGridView.setHasFixedSize(false);
@@ -488,6 +503,13 @@ public class DetailActivity extends BaseActivity {
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
                 showSourceSpeedDialog();
+            }
+        });
+        tvCache.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                showDownloadDialog();
             }
         });
         tvCollect.setOnClickListener(new View.OnClickListener() {
