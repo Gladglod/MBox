@@ -2,26 +2,32 @@ package com.github.tvbox.osc.ui.activity;
 
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.content.res.Configuration;
 import android.text.TextUtils;
 import android.view.WindowManager;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.base.BaseActivity;
+import com.github.tvbox.osc.bean.ParseBean;
 import com.github.tvbox.osc.cache.CacheManager;
 import com.github.tvbox.osc.player.MyVideoView;
-import com.github.tvbox.osc.player.controller.LocalVideoController;
+import com.github.tvbox.osc.player.controller.VodController;
+import com.github.tvbox.osc.util.GlassTip;
+import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.orhanobut.hawk.Hawk;
+
+import org.json.JSONObject;
+
+import java.util.HashMap;
 
 import xyz.doikki.videoplayer.player.ProgressManager;
-import xyz.doikki.videoplayer.player.VideoView;
 
 /**
  * 离线视频播放器：播放已缓存到本地的文件，支持同剧多集连播。
- * 控制条复用 BaseController 手势框架（滑动进度/亮度/音量、单击显隐、双击暂停），
- * 支持进度记忆、倍速、全屏切换、错误重试、播完自动下一集。
- * 播放器内核跟随用户「播放设定」的选择（IJK / EXO）。
+ * 直接复用项目自带的 VodController（与在线播放同一套控制条：
+ * 手势进度/亮度/音量、倍速、选集/上一集下一集、播放设定、错误重试等），
+ * 内核跟随用户「播放设定」的选择（IJK / EXO / 渲染方式 / 画面比例）。
  *
  * @author MBox
  */
@@ -36,17 +42,15 @@ public class LocalPlayActivity extends BaseActivity {
     /** 多集连播：起始下标 */
     public static final String EXTRA_INDEX = "index";
 
-    /** 倍速档位，循环切换 */
-    private static final float[] SPEEDS = {1.0f, 1.25f, 1.5f, 2.0f, 0.5f};
-
     private MyVideoView mVideoView;
-    private LocalVideoController mController;
+    private VodController mController;
 
     private String[] paths = new String[0];
     private String[] titles = new String[0];
     private int index = 0;
     private String currentPath;
-    private int speedIndex = 0;
+    /** 自动重试次数（播放失败时最多静默重试 1 次，避免坏文件无限循环） */
+    private int errorRetry = 0;
 
     @Override
     protected int getLayoutResID() {
@@ -59,35 +63,108 @@ public class LocalPlayActivity extends BaseActivity {
         mVideoView = findViewById(R.id.mVideoView);
 
         resolvePlaylist();
+        if (paths.length == 0) {
+            finish();
+            return;
+        }
+        index = Math.max(0, Math.min(index, paths.length - 1));
 
-        mController = new LocalVideoController(this);
+        mController = new VodController(mContext);
         mController.setCanChangePosition(true);
         mController.setEnableInNormal(true);
         mController.setGestureEnabled(true);
-        mController.setListener(new LocalVideoController.LocalControlListener() {
+        // 本地文件不需要「解析线路」入口
+        mController.showParse(false);
+        mController.setListener(new VodController.VodControlListener() {
             @Override
-            public void onBack() {
-                finish();
+            public void playNext(boolean rmProgress) {
+                if (!LocalPlayActivity.this.playNext()) {
+                    finish();
+                }
             }
 
             @Override
-            public void onRetry() {
-                startPlay(currentPath);
+            public void playPre() {
+                LocalPlayActivity.this.playPrevious();
             }
 
             @Override
-            public void onNext() {
-                playNext();
+            public void showEpisodeDialog() {
             }
 
             @Override
-            public void onSpeed() {
-                switchSpeed();
+            public void prepared() {
+                errorRetry = 0;
+                rotateIfWideVideo();
             }
 
             @Override
-            public void onToggleFullScreen() {
-                toggleFullScreen();
+            public void changeParse(ParseBean pb) {
+            }
+
+            @Override
+            public void updatePlayerCfg() {
+            }
+
+            @Override
+            public void replay(boolean replay) {
+                guardedRetry();
+            }
+
+            @Override
+            public void errReplay() {
+                guardedRetry();
+            }
+
+            @Override
+            public void selectSubtitle() {
+            }
+
+            @Override
+            public void selectAudioTrack() {
+            }
+
+            @Override
+            public void selectVideoTrack() {
+            }
+
+            @Override
+            public void showDanmuSetting() {
+            }
+
+            @Override
+            public boolean toggleDanmu() {
+                return false;
+            }
+
+            @Override
+            public void searchDanmuUi(boolean longClick) {
+            }
+
+            @Override
+            public void startPlayUrl(String url, HashMap<String, String> headers) {
+            }
+
+            @Override
+            public void onM3u8ProxyUrl(String proxyUrl, String sourceUrl) {
+            }
+
+            @Override
+            public void clickCast() {
+            }
+
+            @Override
+            public void setAllowSwitchPlayer(boolean isAllow) {
+            }
+
+            @Override
+            public void enterFullScreen() {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            }
+
+            @Override
+            public void exitFullScreen() {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
             }
         });
         mVideoView.setVideoController(mController);
@@ -109,38 +186,30 @@ public class LocalPlayActivity extends BaseActivity {
                 return 0;
             }
         });
-        mVideoView.addOnStateChangeListener(new VideoView.SimpleOnStateChangeListener() {
-            @Override
-            public void onPlayStateChanged(int playState) {
-                switch (playState) {
-                    case VideoView.STATE_PREPARED:
-                        int[] size = mVideoView.getVideoSize();
-                        if (size != null && size[0] > 0 && size[1] > 0
-                                && size[0] > size[1]
-                                && getRequestedOrientation() != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
-                            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-                        }
-                        break;
-                    case VideoView.STATE_ERROR:
-                        // 错误条由控制器展示，用户点击重试
-                        break;
-                    case VideoView.STATE_PLAYBACK_COMPLETED:
-                        if (!playNext()) {
-                            finish();
-                        }
-                        break;
-                }
-            }
-        });
 
-        if (paths.length == 0) {
-            finish();
-            return;
-        }
-        index = Math.max(0, Math.min(index, paths.length - 1));
+        // 播放器配置与在线播放一致（IJK/EXO、解码方式、渲染、画面比例、倍速等）
+        JSONObject cfg = buildPlayerCfg();
+        mController.setPlayerConfig(cfg);
+        PlayerHelper.updateCfg(mVideoView, cfg);
+
         updateTitle();
-        mController.setNextEnabled(paths.length > 1);
         startPlay(paths[index]);
+    }
+
+    /** 与 PlayFragment.initPlayerCfg 对齐的播放器配置（本地播放无站点级覆盖，取全局设定） */
+    private JSONObject buildPlayerCfg() {
+        JSONObject cfg = new JSONObject();
+        try {
+            cfg.put("pl", (int) Hawk.get(HawkConfig.PLAY_TYPE, 2));
+            cfg.put("pr", Hawk.get(HawkConfig.PLAY_RENDER, 0));
+            cfg.put("ijk", Hawk.get(HawkConfig.IJK_CODEC, "硬解码"));
+            cfg.put("sc", Hawk.get(HawkConfig.PLAY_SCALE, 0));
+            cfg.put("sp", 1.0f);
+            cfg.put("st", 0);
+            cfg.put("et", 0);
+        } catch (Throwable ignored) {
+        }
+        return cfg;
     }
 
     private void resolvePlaylist() {
@@ -175,7 +244,6 @@ public class LocalPlayActivity extends BaseActivity {
         currentPath = path;
         mVideoView.release();
         mVideoView.setUrl("file://" + path);
-        mVideoView.setSpeed(SPEEDS[speedIndex]);
         mVideoView.start();
     }
 
@@ -189,17 +257,42 @@ public class LocalPlayActivity extends BaseActivity {
         return false;
     }
 
-    private void switchSpeed() {
-        speedIndex = (speedIndex + 1) % SPEEDS.length;
-        mVideoView.setSpeed(SPEEDS[speedIndex]);
+    private boolean playPrevious() {
+        if (index > 0) {
+            index--;
+            updateTitle();
+            startPlay(paths[index]);
+            return true;
+        }
+        return false;
     }
 
-    private void toggleFullScreen() {
-        boolean landscape = getResources().getConfiguration().orientation
-                == Configuration.ORIENTATION_LANDSCAPE;
-        setRequestedOrientation(landscape
-                ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    /** 播放失败自动重试：最多静默重试 1 次，之后提示文件可能损坏，避免坏文件无限循环 */
+    private void guardedRetry() {
+        if (errorRetry < 1) {
+            errorRetry++;
+            startPlay(currentPath);
+        } else {
+            GlassTip.show(mContext, "文件无法播放，可能不完整或已损坏");
+        }
+    }
+
+    /** 宽>高的本地视频自动进横屏 */
+    private void rotateIfWideVideo() {
+        int[] size = mVideoView.getVideoSize();
+        if (size != null && size[0] > 0 && size[1] > 0
+                && size[0] > size[1]
+                && getRequestedOrientation() != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (mController != null && mController.onBackPressed()) {
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override

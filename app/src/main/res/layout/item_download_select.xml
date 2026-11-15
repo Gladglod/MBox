@@ -1,42 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/contentRoot"
+<!--
+  缓存选集网格小方块（一行 5 个）：
+  数字铺满整个方块（按钮 = 方块本身），选中 = 品牌色填充，
+  已缓存 = 半透明置灰 + 右上角内部小勾（不额外占空间）。
+  配色随主题翻色（日间浅玻璃深字 / 夜间深玻璃白字），
+  高度由代码与宽度同步成正方形。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="?android:attr/selectableItemBackground"
-    android:clickable="true"
-    android:focusable="true"
-    android:gravity="center_vertical"
-    android:minHeight="40dp"
-    android:orientation="horizontal"
-    android:paddingLeft="@dimen/vs_10"
-    android:paddingRight="@dimen/vs_10">
+    android:layout_margin="3dp">
 
     <TextView
-        android:id="@+id/tvName"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
+        android:id="@+id/tvIndex"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_glass_chip"
         android:ellipsize="end"
+        android:gravity="center"
         android:maxLines="1"
+        android:text="1"
         android:textColor="@color/dialog_text_primary"
-        android:textSize="@dimen/ts_18" />
+        android:textSize="@dimen/ts_22" />
 
     <TextView
-        android:id="@+id/tvCached"
+        android:id="@+id/tvCachedTag"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginLeft="@dimen/vs_10"
-        android:text="已缓存"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="3dp"
+        android:layout_marginEnd="4dp"
+        android:alpha="0.9"
+        android:text="✓"
         android:textColor="@color/dialog_text_hint"
         android:textSize="@dimen/ts_16"
         android:visibility="gone" />
-
-    <ImageView
-        android:id="@+id/ivCheck"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
-        android:layout_marginLeft="@dimen/vs_10"
-        android:background="@drawable/bg_item_check"
-        android:contentDescription="@null" />
-</LinearLayout>
+</FrameLayout>

@@ -2,6 +2,8 @@ package com.github.tvbox.osc.ui.dialog;
 
 import android.content.Context;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -38,8 +40,24 @@ public class ConfirmClearDialog extends BaseDialog {
         super(context);
         setContentView(R.layout.dialog_confirm);
         setCanceledOnTouchOutside(true);
+        // 窗口铺满全屏：蒙层才能盖住整个页面（floating 窗口默认按内容收缩，会左右露空隙）
+        Window window = getWindow();
+        if (window != null) {
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+            lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+            window.setAttributes(lp);
+        }
         tvYes = findViewById(R.id.btnConfirm);
         tvNo = findViewById(R.id.btnCancel);
+
+        // 蒙层点击 = 关闭（根布局铺满窗口，系统的「点外关闭」不再触发）
+        findViewById(R.id.scrim).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ConfirmClearDialog.this.dismiss();
+            }
+        });
 
         tvYes.setOnClickListener(new View.OnClickListener() {
             @Override

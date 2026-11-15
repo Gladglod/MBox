@@ -1,99 +1,138 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  缓存选集：iOS 玻璃质感半屏底部抽屉。
+  根布局铺满（半透明蒙层收点击关闭），抽屉面板贴底、顶部 22dp 大圆角、
+  主题自适应玻璃填充（bg_drawer_sheet：日间白玻璃 / 夜间深玻璃），
+  高度由代码按屏幕 45% 设定，上半屏保持可见，不遮挡详情页播放预览区。
+  文字用主题自适应弹窗调色板（日间深字 / 夜间白字）；
+  选集列表为小方块（圆角）网格，一行 5 个（GridLayoutManager span 5）。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <View
+        android:id="@+id/scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#40000000" />
+
     <LinearLayout
-        android:layout_width="@dimen/vs_480"
+        android:id="@+id/drawerPanel"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:background="@drawable/shape_danmu_setting_bg"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_drawer_sheet"
+        android:clickable="true"
+        android:focusable="true"
         android:orientation="vertical"
-        android:paddingLeft="@dimen/vs_30"
-        android:paddingTop="@dimen/vs_20"
-        android:paddingRight="@dimen/vs_30"
-        android:paddingBottom="@dimen/vs_20">
+        android:paddingLeft="@dimen/vs_16"
+        android:paddingTop="@dimen/vs_10"
+        android:paddingRight="@dimen/vs_16"
+        android:paddingBottom="@dimen/vs_14">
 
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:singleLine="true"
-            android:text="缓存选集"
-            android:textColor="@color/dialog_text_primary"
-            android:textSize="@dimen/ts_26"
-            android:textStyle="bold" />
+        <!-- 抽屉顶部抓手 -->
+        <View
+            android:layout_width="36dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="@dimen/vs_10"
+            android:background="@drawable/bg_glass_pill" />
 
-        <TextView
-            android:id="@+id/tvSubtitle"
-            android:layout_width="wrap_content"
+        <!-- 标题行：缓存选集 · 线路 | 完成 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginTop="@dimen/vs_4"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/dialog_text_hint"
-            android:textSize="@dimen/ts_16" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="缓存选集"
+                    android:textColor="@color/dialog_text_primary"
+                    android:textSize="@dimen/ts_26"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/vs_2"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/dialog_text_hint"
+                    android:textSize="@dimen/ts_16" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btnCancel"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:layout_marginStart="@dimen/vs_10"
+                android:background="@drawable/bg_glass_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="64dp"
+                android:paddingLeft="@dimen/vs_12"
+                android:paddingRight="@dimen/vs_12"
+                android:text="完成"
+                android:textColor="@color/dialog_text_primary"
+                android:textSize="@dimen/ts_18" />
+        </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/mList"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="@dimen/vs_10"
+            android:layout_marginTop="@dimen/vs_8"
             android:layout_weight="1"
-            android:minHeight="160dp"
             android:overScrollMode="never" />
 
+        <!-- 底部操作行：全选 | 开始缓存 -->
         <TableRow
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="50dp"
             android:layout_marginTop="@dimen/vs_10">
 
             <TextView
                 android:id="@+id/btnAll"
-                android:layout_width="@dimen/vs_50"
-                android:layout_height="@dimen/vs_50"
-                android:layout_margin="@dimen/vs_10"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="@dimen/vs_10"
                 android:layout_weight="1"
-                android:background="@drawable/button_danmu_setting"
+                android:background="@drawable/bg_glass_chip"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:maxLines="1"
                 android:text="全选"
                 android:textColor="@color/dialog_text_primary"
-                android:textSize="@dimen/ts_20" />
+                android:textSize="@dimen/ts_22" />
 
             <TextView
                 android:id="@+id/btnConfirm"
-                android:layout_width="@dimen/vs_50"
-                android:layout_height="@dimen/vs_50"
-                android:layout_margin="@dimen/vs_10"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="@drawable/button_danmu_setting"
+                android:background="@drawable/bg_chip_selected"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:maxLines="1"
                 android:text="开始缓存"
                 android:textColor="@color/dialog_text_primary"
-                android:textSize="@dimen/ts_20" />
-
-            <TextView
-                android:id="@+id/btnCancel"
-                android:layout_width="@dimen/vs_50"
-                android:layout_height="@dimen/vs_50"
-                android:layout_margin="@dimen/vs_10"
-                android:layout_weight="1"
-                android:background="@drawable/button_danmu_setting"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:maxLines="1"
-                android:text="取消"
-                android:textColor="@color/dialog_text_primary"
-                android:textSize="@dimen/ts_20" />
+                android:textSize="@dimen/ts_22" />
         </TableRow>
     </LinearLayout>
 </FrameLayout>

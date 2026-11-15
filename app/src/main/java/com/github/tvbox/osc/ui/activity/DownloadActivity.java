@@ -29,9 +29,10 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 离线缓存任务列表：
- * 展示所有缓存任务（排队 / 下载中 / 暂停 / 已完成 / 失败），
- * 支持 暂停 / 继续 / 删除（长按，含文件）/ 清空已完成，已完成任务点击即可离线播放。
+ * 离线缓存任务列表（iOS 玻璃卡片 + 左滑交互，对齐播放历史页）：
+ * 展示所有缓存任务（排队 / 下载中 / 暂停 / 已完成 / 失败）与实时大小 / 速度；
+ * 点击 = 播放（已完成）/ 暂停·继续（未完成）；长按 = 进入批量编辑；左滑 = 删除单个（含文件）；
+ * 编辑模式支持全选 / 批量删除；右上角「清空已完成」保留。
  *
  * @author MBox
  */
@@ -39,7 +40,12 @@ public class DownloadActivity extends BaseActivity {
 
     private RecyclerView mGridView;
     private TextView tvEmpty;
+    private TextView tvEdit;
+    private TextView tvDeleteSelected;
+    private View bottomBar;
     private DownloadBarAdapter adapter;
+
+    private boolean editMode = false;
 
     @Override
     protected int getLayoutResID() {
@@ -60,6 +66,9 @@ public class DownloadActivity extends BaseActivity {
     protected void init() {
         EventBus.getDefault().register(this);
         tvEmpty = findViewById(R.id.tvEmpty);
+        tvEdit = findViewById(R.id.tvEdit);
+        tvDeleteSelected = findViewById(R.id.tvDeleteSelected);
+        bottomBar = findViewById(R.id.bottomBar);
         mGridView = findViewById(R.id.mGridView);
         mGridView.setLayoutManager(new LinearLayoutManager(mContext, LinearLayoutManager.VERTICAL, false));
         adapter = new DownloadBarAdapter();
@@ -72,19 +81,46 @@ public class DownloadActivity extends BaseActivity {
                 onBackPressed();
             }
         });
-        findViewById(R.id.tvClean).setOnClickListener(new View.OnClickListener() {
+        tvEdit.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
-                DownloadManager.get().clearFinished(true);
-                GlassTip.show(mContext, "已清空已完成任务");
+                toggleEditMode();
+            }
+        });
+        findViewById(R.id.tvDone).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                toggleEditMode();
+            }
+        });
+        findViewById(R.id.tvSelectAll).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                adapter.selectAll();
+                updateDeleteLabel();
+            }
+        });
+        tvDeleteSelected.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                deleteSelected();
             }
         });
 
         adapter.setOnItemActionListener(new DownloadBarAdapter.OnItemActionListener() {
             @Override
-            public void onAction(DownloadRecord item) {
+            public void onItemClick(DownloadRecord item) {
                 if (item == null) return;
+                if (editMode) {
+                    // 编辑模式下点条目 = 勾选 / 取消勾选
+                    adapter.toggleSelection(item);
+                    updateDeleteLabel();
+                    return;
+                }
                 if (item.isDone()) {
                     playCached(item);
                 } else if (item.state == DownloadRecord.STATE_PAUSE || item.state == DownloadRecord.STATE_ERROR) {
@@ -97,7 +133,17 @@ public class DownloadActivity extends BaseActivity {
             }
 
             @Override
-            public void onItemLongClick(final DownloadRecord item) {
+            public void onItemLongClick(DownloadRecord item) {
+                if (item == null) return;
+                // 长按 = 直接进入编辑模式，并顺手把这条勾选上
+                if (!editMode) toggleEditMode();
+                adapter.toggleSelection(item);
+                updateDeleteLabel();
+            }
+        });
+        adapter.setOnItemDeleteListener(new DownloadBarAdapter.OnItemDeleteListener() {
+            @Override
+            public void onDelete(final DownloadRecord item) {
                 if (item == null) return;
                 new ConfirmClearDialog(DownloadActivity.this, "")
                         .setMessage("删除该缓存并清除文件?")
@@ -113,6 +159,50 @@ public class DownloadActivity extends BaseActivity {
         });
 
         initData();
+    }
+
+    /* ============================ 编辑模式 ============================ */
+
+    private void toggleEditMode() {
+        editMode = !editMode;
+        adapter.setEditMode(editMode);
+        bottomBar.setVisibility(editMode ? View.VISIBLE : View.GONE);
+        tvEdit.setText(editMode ? "取消" : "编辑");
+        updateDeleteLabel();
+    }
+
+    private void updateDeleteLabel() {
+        int count = adapter == null ? 0 : adapter.getSelectedCount();
+        tvDeleteSelected.setText(count > 0 ? "删除(" + count + ")" : "删除");
+    }
+
+    private void deleteSelected() {
+        List<DownloadRecord> selected = adapter.getSelectedItems();
+        if (selected.isEmpty()) {
+            GlassTip.show(mContext, "请先选择要删除的任务");
+            return;
+        }
+        final int count = selected.size();
+        new ConfirmClearDialog(DownloadActivity.this, "")
+                .setMessage("删除选中的 " + count + " 个缓存并清除文件?")
+                .setOnConfirm(new Runnable() {
+                    @Override
+                    public void run() {
+                        for (DownloadRecord record : selected) {
+                            DownloadManager.get().delete(record);
+                        }
+                        exitEditMode();
+                        GlassTip.show(mContext, "已删除 " + count + " 个");
+                    }
+                })
+                .show();
+    }
+
+    private void exitEditMode() {
+        editMode = false;
+        adapter.setEditMode(false);
+        bottomBar.setVisibility(View.GONE);
+        tvEdit.setText("编辑");
     }
 
     private void playCached(DownloadRecord item) {
@@ -179,6 +269,7 @@ public class DownloadActivity extends BaseActivity {
         List<DownloadRecord> records = DownloadManager.get().getAll();
         adapter.setNewData(records);
         tvEmpty.setVisibility(records == null || records.isEmpty() ? View.VISIBLE : View.GONE);
+        updateDeleteLabel();
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -214,6 +305,7 @@ public class DownloadActivity extends BaseActivity {
                 item.totalLen = record.totalLen;
                 item.errorMsg = record.errorMsg;
                 item.filePath = record.filePath;
+                item.speed = record.speed;
                 adapter.notifyItemChanged(i);
                 return;
             }

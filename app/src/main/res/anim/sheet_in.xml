@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 玻璃底部抽屉入场：自下方浮起 + 淡入，减速曲线收住，像从屏幕底部"升"上来的玻璃面板。
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:anim/decelerate_interpolator">
+
+    <translate
+        android:fromYDelta="45%p"
+        android:toYDelta="0"
+        android:duration="280" />
+
+    <alpha
+        android:fromAlpha="0.5"
+        android:toAlpha="1"
+        android:duration="240" />
+</set>

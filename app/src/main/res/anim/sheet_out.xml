@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 玻璃底部抽屉出场：向下沉回 + 淡出，比入场更短促，干脆收走。
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:anim/accelerate_interpolator">
+
+    <translate
+        android:fromYDelta="0"
+        android:toYDelta="35%p"
+        android:duration="200" />
+
+    <alpha
+        android:fromAlpha="1"
+        android:toAlpha="0"
+        android:duration="200" />
+</set>

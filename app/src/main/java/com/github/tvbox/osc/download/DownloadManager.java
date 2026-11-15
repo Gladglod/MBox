@@ -302,6 +302,11 @@ public class DownloadManager {
         boolean success = false;
         String error = null;
         try {
+            // 0. 进入「下载中」状态（UI 立即从「排队等待中」切换为带进度的下载态）
+            record.state = DownloadRecord.STATE_RUNNING;
+            record.errorMsg = null;
+            persist(record);
+            post(DownloadEvent.TYPE_UPDATE, record);
             // 1. 解析真实播放地址
             PlayInfo info = resolvePlayUrl(record);
             if (info == null || TextUtils.isEmpty(info.url)) {
@@ -330,6 +335,7 @@ public class DownloadManager {
             synchronized (this) {
                 runningIds.remove(record.getId());
             }
+            clearSpeed(record);
             if (deleteIds.remove(record.getId())) {
                 // 已被删除：不写状态，交给删除逻辑收尾
             } else if (pauseIds.remove(record.getId())) {
@@ -836,18 +842,22 @@ public class DownloadManager {
                         checkAbort(record);
                         if (segError[0] != null) break;
                         long done = 0;
+                        long bytes = 0;
                         for (Segment s : segments) {
                             File f = segFile(tmpDir, s);
-                            if (f.exists() && f.length() > 0) done++;
-                        }
-                        if (done >= segIndex + 1) {
-                            if (completed < done) {
-                                completed = (int) done;
-                                record.progress = (int) (done * 100 / segments.size());
-                                notifyProgress(record);
+                            if (f.exists() && f.length() > 0) {
+                                done++;
+                                bytes += f.length();
                             }
-                            break;
                         }
+                        // 进度与已落盘字节实时刷新（供 UI 显示百分比 / 大小 / 速度）
+                        if (done > completed) {
+                            completed = (int) done;
+                            record.progress = (int) (done * 100 / segments.size());
+                            record.currentLen = bytes;
+                            notifyProgress(record);
+                        }
+                        if (done >= segIndex + 1) break;
                         Thread.sleep(150);
                     }
                     if (segError[0] != null) break;
@@ -1219,12 +1229,32 @@ public class DownloadManager {
     private void notifyProgress(DownloadRecord record) {
         long now = System.currentTimeMillis();
         record.updateTime = now;
+        // 瞬时速度：按两次节流通知间的字节增量估算（节流 500ms，足够平滑）
+        long[] track = speedTrack.get(record.getId());
+        long lastTime = track == null ? 0 : track[0];
+        long lastBytes = track == null ? 0 : track[1];
+        if (lastTime > 0 && now > lastTime && record.currentLen >= lastBytes) {
+            record.speed = (record.currentLen - lastBytes) * 1000L / (now - lastTime);
+        } else {
+            record.speed = 0;
+        }
+        long[] next = new long[]{now, record.currentLen};
+        speedTrack.put(record.getId(), next);
         long last = lastNotify.get(record.getId()) == null ? 0 : lastNotify.get(record.getId());
         if (now - last >= EVENT_THROTTLE) {
             lastNotify.put(record.getId(), now);
             persist(record);
             post(DownloadEvent.TYPE_UPDATE, record);
         }
+    }
+
+    private final Map<Integer, long[]> speedTrack = new HashMap<>();
+
+    /** 任务结束（完成 / 失败 / 暂停）时清掉速度与追踪记录 */
+    private void clearSpeed(DownloadRecord record) {
+        record.speed = 0;
+        speedTrack.remove(record.getId());
+        lastNotify.remove(record.getId());
     }
 
     private final Map<Integer, Long> lastNotify = new HashMap<>();

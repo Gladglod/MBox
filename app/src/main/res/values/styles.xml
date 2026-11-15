@@ -62,6 +62,12 @@
         <item name="android:windowExitAnimation">@anim/dropdown_out</item>
     </style>
 
+    <!-- iOS 玻璃底部抽屉（半屏选择面板）的窗口进出动效 -->
+    <style name="BottomSheetDialogAnim">
+        <item name="android:windowEnterAnimation">@anim/sheet_in</item>
+        <item name="android:windowExitAnimation">@anim/sheet_out</item>
+    </style>
+
     <style name="epg_window_btn">
         <item name="android:gravity">center</item>
         <item name="android:background">@drawable/item_bg_selector_right</item>

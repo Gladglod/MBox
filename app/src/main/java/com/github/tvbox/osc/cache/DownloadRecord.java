@@ -101,6 +101,10 @@ public class DownloadRecord implements Serializable {
     @ColumnInfo(name = "updateTime")
     public long updateTime;
 
+    /** 瞬时下载速度（字节/秒），仅运行时展示用，不入库 */
+    @androidx.room.Ignore
+    public transient long speed;
+
     public int getId() {
         return id;
     }
