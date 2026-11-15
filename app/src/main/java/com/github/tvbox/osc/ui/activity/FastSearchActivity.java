@@ -5,15 +5,25 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.BounceInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.lifecycle.ViewModelProvider;
@@ -35,6 +45,7 @@ import com.github.tvbox.osc.ui.adapter.FastListAdapter;
 import com.github.tvbox.osc.ui.adapter.FastSearchAdapter;
 import com.github.tvbox.osc.ui.adapter.SearchWordAdapter;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.GlassTip;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.SearchHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
@@ -99,6 +110,23 @@ public class FastSearchActivity extends BaseActivity {
     private String selectedWordName = "";
     private HashMap<String, String> mCheckSources = null;
 
+    // 顶部玻璃钮：返回 / 筛选
+    private ImageView ivFastSearchBack;
+    private ImageView ivFastSearchFilter;
+    /** 筛选菜单浮层（挂在 android.R.id.content 的玻璃浮层，不用 PopupWindow） */
+    private View filterMenuScrim;
+    private View filterMenuPanel;
+    /** 网盘源显示开关：false 时隐藏 tag==folder 的网盘条目 */
+    private boolean showPanSource = true;
+    /** 名字带网盘特征的源（夸父/嘟嘟等），判定结果按 sourceKey 缓存 */
+    private final Set<String> panSourceKeys = new HashSet<>();
+    /** 主结果列表的未过滤镜像：切网盘开关时按它重筛，顺序不变 */
+    private final List<Movie.Video> mainShownVods = new ArrayList<>();
+    /** 按搜索发起顺序排列的源名（spNames 是 HashMap 无序，菜单需要有序表） */
+    private final List<String> orderedSourceNames = new ArrayList<>();
+    private long mLastGlassClickAt = 0;
+    private int mLastGlassClickId = 0;
+
     @Override
     protected int getLayoutResID() {
         return R.layout.activity_fast_search;
@@ -128,6 +156,28 @@ public class FastSearchActivity extends BaseActivity {
         mGridView = findViewById(R.id.mGridView);
         mGridViewWord = findViewById(R.id.mGridViewWord);
         mGridViewFilter = findViewById(R.id.mGridViewFilter);
+
+        // 顶部玻璃钮：返回 / 筛选（按压缩小回弹 + 时间戳防连点，与播放器玻璃钮同一套手感）
+        ivFastSearchBack = findViewById(R.id.ivFastSearchBack);
+        ivFastSearchFilter = findViewById(R.id.ivFastSearchFilter);
+        bindFastGlassPressEffect(ivFastSearchBack);
+        bindFastGlassPressEffect(ivFastSearchFilter);
+        ivFastSearchBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!allowFastGlassClick(v)) return;
+                dismissFilterMenu(true);
+                onBackPressed();
+            }
+        });
+        ivFastSearchFilter.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!allowFastGlassClick(v)) return;
+                if (filterMenuPanel != null) dismissFilterMenu(true);
+                else showFilterMenu();
+            }
+        });
 
         mGridViewWord.setHasFixedSize(true);
         mGridViewWord.setLayoutManager(new LinearLayoutManager(this.mContext, LinearLayoutManager.HORIZONTAL, false));
@@ -188,6 +238,302 @@ public class FastSearchActivity extends BaseActivity {
             }
         });
         searchWordAdapter.setNewData(new ArrayList<>());
+    }
+
+    // ===== 顶部玻璃钮手感（与 VodController 同一套：按压缩小、松开平滑回弹、时间戳防连点） =====
+
+    private void bindFastGlassPressEffect(final View view) {
+        if (view == null) return;
+        view.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        v.animate().cancel();
+                        v.animate().scaleX(0.86f).scaleY(0.86f).setDuration(90).start();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.animate().cancel();
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(180)
+                                .setInterpolator(new DecelerateInterpolator()).start();
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
+    /** @return true 放行本次点击；false 忽略（同一钮 0.45s 内的连击） */
+    private boolean allowFastGlassClick(View v) {
+        if (v == null) return false;
+        long now = SystemClock.uptimeMillis();
+        int id = v.getId();
+        if (id == mLastGlassClickId && now - mLastGlassClickAt < 450) {
+            return false;
+        }
+        mLastGlassClickAt = now;
+        mLastGlassClickId = id;
+        return true;
+    }
+
+    private int dp2px(float value) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics());
+    }
+
+    // ===== 筛选玻璃菜单：竖排「全部 + 各源」+ 网盘源开关 =====
+
+    /**
+     * 从筛选键右上角下拉出的玻璃菜单（进 android.R.id.content 的浮层，
+     * 主题玻璃面板 bg_glass_menu，日浅玻璃/夜深玻璃；不用 PopupWindow——
+     * 独立窗口会抢焦点并按弹窗自己的标志重渲状态栏）。
+     */
+    private void showFilterMenu() {
+        if (filterMenuPanel != null || isFinishing() || ivFastSearchFilter == null) return;
+        final ViewGroup content = (ViewGroup) findViewById(android.R.id.content);
+        if (content == null) return;
+
+        final int pad = dp2px(5);
+        final int rowH = dp2px(34);
+        final int panelWidth = dp2px(232);
+
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+
+        // ---- 「全部」行：主题玻璃行（日浅玻璃/夜深玻璃），选中走强调色 ----
+        list.addView(newFilterMenuRow(SEARCH_ALL_NAME, TextUtils.isEmpty(selectedWordName),
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (!allowFastGlassClick(v)) return;
+                        dismissFilterMenu(true);
+                        selectWord(SEARCH_ALL_NAME);
+                    }
+                }));
+
+        // ---- 网盘源开关行：紧跟「全部」便于选择，右侧对勾实时反映当前状态 ----
+        LinearLayout panRow = new LinearLayout(this);
+        panRow.setOrientation(LinearLayout.HORIZONTAL);
+        panRow.setGravity(Gravity.CENTER_VERTICAL);
+        panRow.setBackgroundResource(R.drawable.bg_glass_chip);
+        panRow.setPadding(dp2px(12), 0, dp2px(12), 0);
+        TextView panLabel = new TextView(this);
+        panLabel.setText("\u5305\u542b\u7f51\u76d8\u6e90");
+        panLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        panLabel.setTextColor(getResources().getColor(R.color.ui_text_primary));
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        panLabel.setLayoutParams(plp);
+        panRow.addView(panLabel);
+        ImageView panIcon = new ImageView(this);
+        panIcon.setBackgroundResource(showPanSource
+                ? R.drawable.bg_check_circle_on : R.drawable.bg_check_circle_off);
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp2px(18), dp2px(18));
+        ilp.leftMargin = dp2px(8);
+        panIcon.setLayoutParams(ilp);
+        panRow.addView(panIcon);
+        LinearLayout.LayoutParams panRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, rowH);
+        panRowLp.topMargin = dp2px(3);
+        panRow.setLayoutParams(panRowLp);
+        panRow.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!allowFastGlassClick(v)) return;
+                boolean shown = !showPanSource;
+                panIcon.setBackgroundResource(shown
+                        ? R.drawable.bg_check_circle_on : R.drawable.bg_check_circle_off);
+                setPanSourceShown(shown);
+                GlassTip.show(FastSearchActivity.this,
+                        shown ? "\u5df2\u663e\u793a\u7f51\u76d8\u6e90" : "\u5df2\u9690\u85cf\u7f51\u76d8\u6e90");
+            }
+        });
+        list.addView(panRow);
+
+        // ---- 分隔线（主题色） ----
+        View divider = new View(this);
+        divider.setBackgroundColor(getResources().getColor(R.color.ui_divider));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp2px(1));
+        dlp.topMargin = dp2px(6);
+        dlp.bottomMargin = dp2px(6);
+        divider.setLayoutParams(dlp);
+        list.addView(divider);
+
+        // ---- 各源行：与底部筛选条同一套数据与选中态 ----
+        for (int i = 0; i < orderedSourceNames.size(); i++) {
+            final String name = orderedSourceNames.get(i);
+            boolean checked = TextUtils.equals(selectedWordName, name);
+            list.addView(newFilterMenuRow(name, checked, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (!allowFastGlassClick(v)) return;
+                    dismissFilterMenu(true);
+                    selectWord(name);
+                }
+            }));
+        }
+
+        // ---- 面板：竖排主题玻璃菜单（glass_menu_* 日夜自动），条目多时限高内部滚动 ----
+        final ScrollView panel = new ScrollView(this);
+        panel.setBackgroundResource(R.drawable.bg_glass_menu);
+        panel.setPadding(pad, pad, pad, pad);
+        panel.setVerticalScrollBarEnabled(false);
+        panel.addView(list, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.measure(
+                View.MeasureSpec.makeMeasureSpec(panelWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int panelHeight = Math.min(panel.getMeasuredHeight(),
+                (int) (content.getHeight() * 0.62f));
+
+        // ---- 点空白收起的遮罩 ----
+        final View scrim = new View(this);
+        scrim.setBackgroundColor(0x59000000);
+        scrim.setClickable(true);
+        scrim.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dismissFilterMenu(true);
+            }
+        });
+        content.addView(scrim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        content.addView(panel, new FrameLayout.LayoutParams(panelWidth, panelHeight));
+
+        // 定位：右缘与筛选键对齐，挂在键的正下方
+        int[] anchorLoc = new int[2];
+        ivFastSearchFilter.getLocationOnScreen(anchorLoc);
+        int[] contentLoc = new int[2];
+        content.getLocationOnScreen(contentLoc);
+        int left = anchorLoc[0] - contentLoc[0] + ivFastSearchFilter.getWidth() - panelWidth;
+        left = Math.max(dp2px(8), left);
+        int top = anchorLoc[1] - contentLoc[1] + ivFastSearchFilter.getHeight() + dp2px(6);
+        FrameLayout.LayoutParams posLp = (FrameLayout.LayoutParams) panel.getLayoutParams();
+        posLp.leftMargin = left;
+        posLp.topMargin = top;
+        panel.setLayoutParams(posLp);
+
+        filterMenuScrim = scrim;
+        filterMenuPanel = panel;
+
+        // 入场：以右上角为原点轻缩放淡入（iOS 菜单手感）
+        panel.setPivotX(panelWidth);
+        panel.setPivotY(0f);
+        panel.setAlpha(0f);
+        panel.setScaleX(0.92f);
+        panel.setScaleY(0.92f);
+        panel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200)
+                .setInterpolator(new OvershootInterpolator(1.1f)).start();
+        scrim.setAlpha(0f);
+        scrim.animate().alpha(1f).setDuration(200).start();
+    }
+
+    /** 主题玻璃菜单行：未选中 = 浅玻璃行 + 主题字色；选中 = 强调色描边 + 强调色字 */
+    private TextView newFilterMenuRow(String name, boolean checked, View.OnClickListener listener) {
+        TextView tv = new TextView(this);
+        tv.setText(name);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tv.setTextColor(getResources().getColor(checked
+                ? R.color.ui_accent : R.color.ui_text_primary));
+        tv.setGravity(Gravity.CENTER);
+        tv.setSingleLine(true);
+        tv.setEllipsize(TextUtils.TruncateAt.END);
+        tv.setPadding(dp2px(12), 0, dp2px(12), 0);
+        tv.setBackgroundResource(checked
+                ? R.drawable.bg_glass_chip_selected : R.drawable.bg_glass_chip);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp2px(34)));
+        tv.setOnClickListener(listener);
+        return tv;
+    }
+
+    /** @param animate true 走淡出收场；false 直接撤（返回键等即时场景） */
+    private void dismissFilterMenu(final boolean animate) {        final View panel = filterMenuPanel;
+        final View scrim = filterMenuScrim;
+        if (panel == null && scrim == null) return;
+        filterMenuPanel = null;
+        filterMenuScrim = null;
+        if (panel == null || scrim == null || !animate || panel.getWidth() <= 0) {
+            removeFilterOverlay(panel, scrim);
+            return;
+        }
+        panel.animate().cancel();
+        scrim.animate().cancel();
+        panel.setPivotX(panel.getWidth());
+        panel.setPivotY(0f);
+        panel.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).setDuration(150)
+                .setInterpolator(new DecelerateInterpolator())
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        removeFilterOverlay(panel, scrim);
+                    }
+                }).start();
+        scrim.animate().alpha(0f).setDuration(150).start();
+    }
+
+    private void removeFilterOverlay(View panel, View scrim) {
+        if (panel != null) {
+            ViewGroup parent = (ViewGroup) panel.getParent();
+            if (parent != null) parent.removeView(panel);
+        }
+        if (scrim != null) {
+            ViewGroup parent = (ViewGroup) scrim.getParent();
+            if (parent != null) parent.removeView(scrim);
+        }
+    }
+
+    // ===== 网盘源过滤（tag == "folder" 的条目即网盘目录） =====
+
+    /** 网盘源开关过滤：false 时隐藏网盘条目（tag==folder 或源名带夸父/嘟嘟），其余原样保序 */
+    private List<Movie.Video> applyPanFilter(List<Movie.Video> src) {
+        if (src == null || src.isEmpty() || showPanSource) return src;
+        List<Movie.Video> out = new ArrayList<>();
+        for (Movie.Video video : src) {
+            if (video == null) continue;
+            boolean isPan = TextUtils.equals("folder", video.tag)
+                    || isPanSourceKey(video.sourceKey);
+            if (isPan) continue;
+            out.add(video);
+        }
+        return out;
+    }
+
+    /**
+     * 该源是否为网盘源：tag==folder 之外的补充判定——源名含「夸父 / 嘟嘟」
+     * 这类网盘聚合站也按网盘源对待；结果按 key 缓存避免反复解析源配置。
+     */
+    private boolean isPanSourceKey(String sourceKey) {
+        if (TextUtils.isEmpty(sourceKey)) return false;
+        if (panSourceKeys.contains(sourceKey)) return true;
+        SourceBean bean = ApiConfig.get().getSource(sourceKey);
+        if (bean != null && !TextUtils.isEmpty(bean.getName())) {
+            String name = bean.getName();
+            if (name.contains("\u5938\u7236") || name.contains("\u561f\u561f")) {
+                panSourceKeys.add(sourceKey);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 切换后重筛当前显示中的那个网格，不碰加载/空态 */
+    private void setPanSourceShown(boolean shown) {
+        if (showPanSource == shown) return;
+        showPanSource = shown;
+        // 正在浏览网盘目录（folder）时不重筛：目录列表不属于主结果链路，交给原逻辑
+        if (!folderHistory.isEmpty() || folderLoading) return;
+        if (mGridViewFilter.getVisibility() == View.VISIBLE
+                && mGridView.getVisibility() != View.VISIBLE) {
+            ArrayList<Movie.Video> list = TextUtils.isEmpty(searchFilterKey)
+                    ? null : resultVods.get(searchFilterKey);
+            searchAdapterFilter.setNewData(applyPanFilter(
+                    list == null ? new ArrayList<Movie.Video>() : list));
+        } else {
+            searchAdapter.setNewData(applyPanFilter(new ArrayList<>(mainShownVods)));
+        }
     }
 
     private void setPosterFocusScale(View itemView, boolean focused) {
@@ -252,6 +598,11 @@ public class FastSearchActivity extends BaseActivity {
 
     @Override
     public void onBackPressed() {
+        // 筛选菜单开着时，返回键只收菜单，不退出页面
+        if (filterMenuPanel != null) {
+            dismissFilterMenu(true);
+            return;
+        }
         if (!folderHistory.isEmpty()) {
             String currentSiteKey = getSelectedSearchSiteKey();
             String folderSiteKey = folderHistorySiteKeys.get(folderHistorySiteKeys.size() - 1);
@@ -312,7 +663,7 @@ public class FastSearchActivity extends BaseActivity {
         if (list == null) {
             list = new ArrayList<>();
         }
-        searchAdapterFilter.setNewData(list);
+        searchAdapterFilter.setNewData(applyPanFilter(list));
     }
 
     private void selectWord(String spName) {
@@ -494,6 +845,9 @@ public class FastSearchActivity extends BaseActivity {
         searchFilterKey = "";
         isFilterMode = false;
         spNames.clear();
+        orderedSourceNames.clear();
+        mainShownVods.clear();
+        panSourceKeys.clear();
         totalSearchCount.set(0);
         timedOutSearchCount.set(0);
         updateSearchStatus();
@@ -583,6 +937,7 @@ public class FastSearchActivity extends BaseActivity {
                 fastSearchTasks.add(task);
             }
             this.spNames.put(bean.getName(), bean.getKey());
+            orderedSourceNames.add(bean.getName());
         }
         ArrayList<SearchTask> searchTasks = new ArrayList<>();
         searchTasks.addAll(fastSearchTasks);
@@ -655,12 +1010,16 @@ public class FastSearchActivity extends BaseActivity {
 
     private void addMainSearchResults(List<Movie.Video> data) {
         if (data == null || data.isEmpty()) return;
+        // 镜像进未过滤主列表（切网盘开关时按它重筛、顺序不变），显示层再过一遍网盘开关
+        mainShownVods.addAll(data);
+        List<Movie.Video> shown = applyPanFilter(data);
+        if (shown.isEmpty()) return;
         if (searchAdapter.getData().size() > 0) {
-            searchAdapter.addData(data);
+            searchAdapter.addData(shown);
         } else {
             showSuccess();
             if (!isFilterMode) mGridView.setVisibility(View.VISIBLE);
-            searchAdapter.setNewData(data);
+            searchAdapter.setNewData(shown);
         }
     }
 

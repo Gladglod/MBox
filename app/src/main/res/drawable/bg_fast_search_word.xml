@@ -1,16 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  快搜页分词标签底（剧名拆词胶囊）：
+  主题玻璃（glass_row_* 随日/夜切换）——白天浅玻璃配深字、夜间深玻璃配白字。
+  原版写死 color_6C3D3D3D 深灰底，日间主题下深底压深字看不见。
+-->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape>
             <corners android:radius="10mm" />
-            <stroke android:width="2mm" android:color="@color/color_FFFFFF" />
-            <solid android:color="@color/color_6C3D3D3D" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/ui_accent" />
+            <solid android:color="@color/glass_row_fill" />
         </shape>
     </item>
     <item>
         <shape>
             <corners android:radius="10mm" />
-            <solid android:color="@color/color_6C3D3D3D" />
+            <solid android:color="@color/glass_row_fill" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/glass_row_stroke" />
         </shape>
     </item>
 </selector>
