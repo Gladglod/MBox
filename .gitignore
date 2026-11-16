@@ -97,8 +97,8 @@ lint/tmp/
 .idea/
 
 *.hprof
-*.md
 .temp/
 output-metadata.json
 .py/
 .opencode
+.workbuddy-ai
