@@ -3142,16 +3142,21 @@ public class VodController extends BaseController {
     private static final int DM_SEEK_LINE = 2;
     private static final int DM_SEEK_ALPHA = 3;
 
-    private PopupWindow danmuPanelPopup;
+    /** 弹幕设置面板的视图内浮层（面板 + 全屏遮罩），null 表示未打开 */
+    private View danmuPanelLayer;
+    private View danmuPanelScrim;
 
     /**
      * 在「弹」开关右侧的齿轮上弹出弹幕设置面板：与倍速菜单同一套透明玻璃视觉，
      * 颜色用两枚胶囊，其余（速度 / 大小 / 行数 / 透明度）改成进度条拖动。
+     *
+     * <p>与画面比例 / 倍速菜单一样，做成控制器视图树内的浮层（不用 PopupWindow）：
+     * 没有独立窗口，打开面板时状态栏不会被重新渲染，沉浸式下保持透明/隐藏。</p>
      */
     private void showDanmuSettingPanel(View anchor) {
         if (anchor == null) return;
-        if (danmuPanelPopup != null && danmuPanelPopup.isShowing()) {
-            danmuPanelPopup.dismiss();
+        if (danmuPanelLayer != null) {
+            dismissDanmuPanel();
             return;
         }
         try {
@@ -3160,25 +3165,8 @@ public class VodController extends BaseController {
             final View panel = LayoutInflater.from(ctx)
                     .inflate(R.layout.view_player_danmu_panel, null, false);
 
-            final PopupWindow popup = new PopupWindow(panel, width,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
-            popup.setBackgroundDrawable(new ColorDrawable(0x00000000));
-            popup.setOutsideTouchable(true);
-            popup.setFocusable(true);
-            applyImmersiveToPopup(popup);
             // 面板打开期间不要自动收起控制条，否则锚点跟着消失
             if (myHandle != null) myHandle.removeCallbacks(myRunnable);
-            popup.setOnDismissListener(new PopupWindow.OnDismissListener() {
-                @Override
-                public void onDismiss() {
-                    danmuPanelPopup = null;
-                    if (myHandle != null && myRunnable != null) {
-                        myHandle.removeCallbacks(myRunnable);
-                        myHandle.postDelayed(myRunnable, myHandleSeconds);
-                    }
-                }
-            });
-            danmuPanelPopup = popup;
 
             // 颜色：默认 / 随机
             final TextView chipDefault = panel.findViewById(R.id.dm_panel_default);
@@ -3217,25 +3205,54 @@ public class VodController extends BaseController {
             // 先量出真实高度，才能把面板整体顶到按钮上方
             panel.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-            int popupHeight = panel.getMeasuredHeight();
-            popup.setHeight(popupHeight);
+            int panelHeight = panel.getMeasuredHeight();
 
-            int xoff = (anchor.getWidth() - width) / 2;
-            // 面板贴着屏幕左边缘时会被切掉，往右推回来
-            int[] loc = new int[2];
-            anchor.getLocationOnScreen(loc);
-            int screenW = getResources().getDisplayMetrics().widthPixels;
-            int panelLeft = loc[0] + xoff;
-            int margin = dp(8);
-            if (panelLeft < margin) {
-                xoff += margin - panelLeft;
-            } else if (panelLeft + width > screenW - margin) {
-                xoff -= (panelLeft + width) - (screenW - margin);
+            // 点空白收起的全屏遮罩（盖住控制条，避免面板打开期间误触）
+            final View scrim = new View(ctx);
+            scrim.setClickable(true);
+            scrim.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dismissDanmuPanel();
+                }
+            });
+            danmuPanelScrim = scrim;
+            addView(scrim, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+            danmuPanelLayer = panel;
+            addView(panel, new LayoutParams(width, panelHeight));
+
+            // 定位到齿轮按钮上方（用屏幕坐标差算相对位置，左右贴边时推回来）
+            int[] anchorLoc = new int[2];
+            anchor.getLocationOnScreen(anchorLoc);
+            int[] selfLoc = new int[2];
+            getLocationOnScreen(selfLoc);
+            int left = anchorLoc[0] - selfLoc[0] + (anchor.getWidth() - width) / 2;
+            left = Math.max(dp(8), Math.min(left, getWidth() - width - dp(8)));
+            int top = anchorLoc[1] - selfLoc[1] - panelHeight - dp(6);
+            if (top < dp(8)) {
+                top = anchorLoc[1] - selfLoc[1] + anchor.getHeight() + dp(6);
             }
-            popup.showAsDropDown(anchor, xoff, -(anchor.getHeight() + popupHeight + dp(6)));
-            reApplyImmersiveToPopup(popup);
+            panel.setTranslationX(left);
+            panel.setTranslationY(top);
         } catch (Throwable th) {
             th.printStackTrace();
+        }
+    }
+
+    /** 收起弹幕设置面板（浮层是视图内 child，直接摘掉即可） */
+    private void dismissDanmuPanel() {
+        if (danmuPanelLayer != null) {
+            removeView(danmuPanelLayer);
+            danmuPanelLayer = null;
+        }
+        if (danmuPanelScrim != null) {
+            removeView(danmuPanelScrim);
+            danmuPanelScrim = null;
+        }
+        if (myHandle != null && myRunnable != null) {
+            myHandle.removeCallbacks(myRunnable);
+            myHandle.postDelayed(myRunnable, myHandleSeconds);
         }
     }
 
@@ -3338,10 +3355,7 @@ public class VodController extends BaseController {
         // 横竖屏切换 / 分屏尺寸变化后，扇形菜单与弹幕面板的落位已失效，直接收起避免错位
         if (w != oldw || h != oldh) {
             if (menuFan != null) dismissMenuFan();
-            if (danmuPanelPopup != null) {
-                danmuPanelPopup.dismiss();
-                danmuPanelPopup = null;
-            }
+            dismissDanmuPanel();
         }
     }
 
@@ -3769,6 +3783,7 @@ public class VodController extends BaseController {
         mHandler.removeMessages(1002);
         hideDrawer();
         dismissOptionList();
+        dismissDanmuPanel();
         mHandler.sendEmptyMessage(1003);
     }
 
@@ -4083,9 +4098,8 @@ public class VodController extends BaseController {
     @Override
     public boolean onBackPressed() {
         // 弹幕设置面板浮起时：返回键只收起面板
-        if (danmuPanelPopup != null) {
-            danmuPanelPopup.dismiss();
-            danmuPanelPopup = null;
+        if (danmuPanelLayer != null) {
+            dismissDanmuPanel();
             return true;
         }
         // 扇形菜单浮起时：返回键只收起菜单，不退出播放
@@ -4114,10 +4128,7 @@ public class VodController extends BaseController {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         mHandler.removeCallbacks(myRunnable2);
-        if (danmuPanelPopup != null) {
-            danmuPanelPopup.dismiss();
-            danmuPanelPopup = null;
-        }
+        dismissDanmuPanel();
     }
 
 

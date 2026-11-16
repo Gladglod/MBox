@@ -2,7 +2,10 @@ package com.github.tvbox.osc.ui.activity;
 
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.os.Build;
 import android.text.TextUtils;
+import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
 
 import com.github.tvbox.osc.R;
@@ -60,6 +63,9 @@ public class LocalPlayActivity extends BaseActivity {
     @Override
     protected void init() {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // 沉浸式全屏 + 刘海区短边延伸：横屏时状态栏/导航栏隐藏、视频铺进刘海区，
+        // 否则横屏播放上方会露出状态栏、刘海侧留一条黑边
+        applyImmersive();
         mVideoView = findViewById(R.id.mVideoView);
 
         resolvePlaylist();
@@ -284,6 +290,35 @@ public class LocalPlayActivity extends BaseActivity {
                 && size[0] > size[1]
                 && getRequestedOrientation() != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        }
+    }
+
+    /** 沉浸式全屏：隐藏状态栏/导航栏，刘海屏 shortEdges 模式让画面铺满整屏 */
+    private void applyImmersive() {
+        Window window = getWindow();
+        if (window == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            window.setAttributes(lp);
+        }
+        // 只用 SYSTEM_UI_FLAG_* 一套：targetSdk 28 下在 Android 11+ 依然有效（与 DetailActivity 同方案）
+        window.getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // 横竖屏切换 / 用户下拉唤出系统栏后，焦点回来时重新收起
+        if (hasFocus) {
+            applyImmersive();
         }
     }
 
