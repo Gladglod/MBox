@@ -46,6 +46,7 @@ import com.github.tvbox.osc.bean.GithubRelease;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.event.RefreshEvent;
+import com.github.tvbox.osc.ui.dialog.ConfirmClearDialog;
 import com.github.tvbox.osc.ui.dialog.NumberInputDialog;
 import com.github.tvbox.osc.ui.dialog.TextInputDialog;
 import com.github.tvbox.osc.ui.dialog.TipDialog;
@@ -713,8 +714,17 @@ public class MineSettingActivity extends BaseActivity {
 
         header("数据库接口");
         card();
-        for (final IntroDbApi.DbSource source : IntroDbApi.getSources()) {
-            addSourceRows(source);
+        final List<IntroDbApi.DbSource> sources = IntroDbApi.getSources();
+        if (sources.isEmpty()) {
+            // 一个接口都没添加时的默认占位文案
+            View empty = makeRow("尚未添加片头片尾数据库", "可从下方「公共服务」添加，或添加自定义接口");
+            empty.findViewById(R.id.tvRowValue).setVisibility(View.GONE);
+            empty.findViewById(R.id.tvRowArrow).setVisibility(View.GONE);
+            attachRow(empty);
+        } else {
+            for (int i = 0; i < sources.size(); i++) {
+                addSourceRows(sources.get(i), i);
+            }
         }
         addActionRow("添加自定义接口", "新增一个兼容 TheIntroDB v4 或 IntroDB 格式的数据库接口", new Action() {
             @Override
@@ -723,42 +733,82 @@ public class MineSettingActivity extends BaseActivity {
             }
         });
 
+        header("公共服务");
+        card();
+        addPublicServiceRow("TheIntroDB", "默认配置 · TheIntroDB v4（GET /media）",
+                IntroDbApi.FORMAT_THEINTRODB);
+        addPublicServiceRow("IntroDB", "默认配置 · IntroDB（GET /segments）",
+                IntroDbApi.FORMAT_INTRODB);
+
         addInfoRow("说明", new TextProvider() {
             @Override
             public String get() {
-                return "查询流程：片名 → IMDb 编号 → 按使用中的接口查询片头片尾区间。\n"
-                        + "两个默认接口的地址可改成镜像或代理；自定义接口需兼容 "
-                        + "TheIntroDB v4（GET /media）或 IntroDB（GET /segments）查询格式。";
+                return "查询流程：片名 → IMDb 编号 → 按列表顺序（即添加顺序）逐个查询接口，"
+                        + "某个接口查不到或失败时自动换下一个。开启开关的接口才参与查询；"
+                        + "一个都没启用时默认使用公共服务。";
             }
         });
     }
 
     /**
-     * 一个数据库来源的行：右侧 switch 决定是否启用（同一时刻只启用一个，互斥），
-     * 点击行在卡片内展开 / 折叠地址编辑区；自定义来源多一行格式选择
+     * 公共服务行：两个内置接口的默认配置。
+     * 未添加时点击弹出确认（是否同意添加服务）；已添加的显示「已添加」。
      */
-    private void addSourceRows(final IntroDbApi.DbSource source) {
-        final boolean active = IntroDbApi.getActiveSourceId().equals(source.id);
+    private void addPublicServiceRow(final String name, String sub, final int format) {
+        final boolean added = IntroDbApi.isPublicServiceAdded(format);
+        View row = makeRow(name, sub);
+        final TextView tvValue = row.findViewById(R.id.tvRowValue);
+        tvValue.setText(added ? "已添加" : "");
+        MotionCompat.attachPressScale(row);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                if (IntroDbApi.isPublicServiceAdded(format)) {
+                    GlassTip.show(MineSettingActivity.this, name + " 已在接口列表中");
+                    return;
+                }
+                new ConfirmClearDialog(MineSettingActivity.this, "")
+                        .setMessage("是否同意添加 " + name + " 服务？\n"
+                                + "将按默认地址加入查询队列末位，之后可在列表里修改。")
+                        .setOnConfirm(new Runnable() {
+                            @Override
+                            public void run() {
+                                IntroDbApi.addPublicService(format);
+                                GlassTip.show(MineSettingActivity.this, "已添加 " + name);
+                                rebuildSection();
+                            }
+                        })
+                        .show();
+            }
+        });
+        attachRow(row);
+    }
+
+    /**
+     * 已添加接口的行：左侧 switch = 是否参与查询，最右侧删除图标移出列表；
+     * 值显示查询顺位（= 添加顺序）；点击行展开 / 折叠地址编辑区。
+     */
+    private void addSourceRows(final IntroDbApi.DbSource source, final int orderIndex) {
         LinearLayout row = makeRow(source.name, source.url);
         final TextView tvSub = row.findViewById(R.id.tvRowSub);
         final TextView tvValue = row.findViewById(R.id.tvRowValue);
-        final View arrow = row.findViewById(R.id.tvRowArrow);
         Runnable refresher = new Runnable() {
             @Override
             public void run() {
                 IntroDbApi.DbSource cur = IntroDbApi.findSource(source.id);
                 String url = cur == null ? source.url : cur.url;
                 if (tvSub != null) tvSub.setText(url == null ? "" : url);
-                tvValue.setText(IntroDbApi.getActiveSourceId().equals(source.id) ? "使用中" : "");
+                tvValue.setText("顺位 " + (orderIndex + 1));
             }
         };
         refreshers.add(refresher);
         refresher.run();
 
-        // ---- 启用开关：开 = 该接口设为使用中；关 = 停用（全部关闭时不查询） ----
+        // ---- 左侧开关：开 = 参与查询；关 = 保留在列表但不参与 ----
         final SpringSwitch switchView = new SpringSwitch(this);
         switchView.setContentDescription(source.name);
-        switchView.setChecked(active, false);
+        switchView.setChecked(source.enabled, false);
         switchView.setClickable(true);
         switchView.setFocusable(true);
         switchView.setOnClickListener(new View.OnClickListener() {
@@ -767,17 +817,41 @@ public class MineSettingActivity extends BaseActivity {
                 FastClickCheckUtil.check(v);
                 boolean target = !switchView.isChecked();
                 switchView.setChecked(target);
-                if (target) {
-                    IntroDbApi.setActiveSource(source.id);
-                    GlassTip.show(MineSettingActivity.this, "已启用 " + source.name);
-                } else if (IntroDbApi.getActiveSourceId().equals(source.id)) {
-                    IntroDbApi.setActiveSource("");
-                    GlassTip.show(MineSettingActivity.this, "已停用 " + source.name);
-                }
+                IntroDbApi.setSourceEnabled(source.id, target);
+                GlassTip.show(MineSettingActivity.this,
+                        (target ? "已启用 " : "已停用 ") + source.name);
                 refreshRows();
             }
         });
-        row.addView(switchView, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams swLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        swLp.rightMargin = dp(8);
+        row.addView(switchView, 0, swLp);
+
+        // ---- 最右侧删除图标：把该接口移出列表（公共服务可从下方重新添加） ----
+        TextView del = new TextView(this);
+        del.setText("✕");
+        del.setTextColor(getResources().getColor(R.color.ui_danger));
+        del.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        del.setPadding(dp(8), dp(8), 0, dp(8));
+        del.setContentDescription("删除 " + source.name);
+        del.setClickable(true);
+        del.setFocusable(true);
+        del.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                if (introEditorSourceId != null && introEditorSourceId.equals(source.id)) {
+                    introEditorView = null;
+                    introEditorSourceId = null;
+                    introEditorRowView = null;
+                }
+                IntroDbApi.removeSource(source.id);
+                GlassTip.show(MineSettingActivity.this, "已删除 " + source.name);
+                rebuildSection();
+            }
+        });
+        row.addView(del, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // ---- 点击行 = 展开 / 折叠地址编辑区（与弹幕接口同一套内嵌交互） ----

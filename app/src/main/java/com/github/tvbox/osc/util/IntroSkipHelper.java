@@ -426,9 +426,9 @@ public class IntroSkipHelper {
     /* ============================ 辅助 ============================ */
 
     private boolean enabled() {
-        return IntroDbApi.isConfigured()
-                && (Hawk.get(HawkConfig.INTRO_SKIP_OPEN, true)
-                || Hawk.get(HawkConfig.INTRO_SKIP_CREDITS, false));
+        // 只看跳过开关：来源一个都没启用时，查询会回落到公共服务默认配置
+        return Hawk.get(HawkConfig.INTRO_SKIP_OPEN, true)
+                || Hawk.get(HawkConfig.INTRO_SKIP_CREDITS, false);
     }
 
     private long position() {

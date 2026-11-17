@@ -12,8 +12,15 @@
 
 ## 数据来源（`IntroDbApi.DbSource`）
 
-数据库来源是一个**可管理的列表**：两个内置接口的地址可编辑（改镜像 / 代理），也可添加自定义接口；
-设置行内的 switch 决定启用，同一时间只有一个来源生效（active source）。
+数据库来源是一个**可管理的列表**：列表顺序（= 添加顺序）即**查询顺序**；来源可**同时启用多个**
+（行内 switch 决定是否参与查询，不再单选 active），也可添加自定义接口。
+
+**查询采用多来源顺序兜底**（`IntroDbApi.querySegments` → `queryNext`）：
+按启用来源的添加顺序逐个尝试，某个来源失败或查不到数据就换下一个，全部落空才放弃；
+一个来源都没启用时，回落到两个**公共服务**的默认地址。
+
+**公共服务**：TheIntroDB / IntroDB 两个内置接口的默认配置（`ID_PUBLIC_THEINTRODB` / `ID_PUBLIC_INTRODB`），
+可从列表删除，之后在「公共服务」分组重新添加（确认弹窗，加入查询队列末位，默认启用）。
 
 查询格式分两种：
 
@@ -50,9 +57,13 @@
 | `INTRO_SKIP_OPEN` | 自动跳过片头开关（默认开） |
 | `INTRO_SKIP_CREDITS` | 自动跳过片尾开关（默认关） |
 | `INTRO_SKIP_CREDITS_DELAY` | 进入片尾多少秒后触发（0~60，默认 3 秒） |
-| `INTRO_DB_SOURCES` | 数据库来源列表（json 数组：`{id,name,url,format,builtIn}`） |
-| `INTRO_DB_ACTIVE` | 当前使用的来源 id |
+| `INTRO_DB_SOURCES` | 数据库来源列表（json 数组：`{id,name,url,format,builtIn,enabled}`；旧数据无 `enabled` 时公共服务默认启用、其余默认停用） |
+| `INTRO_DB_ACTIVE` | 已废弃（单选时代遗留，不再读取） |
 | `INTRO_DB_SOURCE` / `INTRO_DB_CUSTOM_URL` | 旧版单选配置，仅用于向来源列表迁移，不再读取 |
+
+## 其他
+
+- `IntroSkipHelper.enabled()` 只看两个跳过开关——来源一个都没启用时，查询会回落到公共服务默认配置，模块本身不用提前放弃。
 
 ## 自动画中画（`PipHelper`）
 

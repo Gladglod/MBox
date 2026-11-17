@@ -170,7 +170,13 @@ public class LocalPlayActivity extends BaseActivity {
 
             @Override
             public void exitFullScreen() {
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                // 独立播放页没有「详情页」可回：
+                // 横屏全屏中 → 先转回竖屏；已在竖屏 → 退出本页回到缓存列表
+                if (getRequestedOrientation() == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                } else {
+                    finish();
+                }
             }
         });
         mVideoView.setVideoController(mController);

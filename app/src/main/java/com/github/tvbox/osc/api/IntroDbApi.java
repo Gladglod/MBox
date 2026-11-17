@@ -33,8 +33,9 @@ import okhttp3.Response;
 /**
  * 片头片尾数据库远程接口。
  *
- * <p>数据库来源是一个可管理的列表（见 {@link #getSources()}）：两个内置接口的地址
- * 可编辑（改镜像/代理），也可添加自定义接口；查询格式分两种——</p>
+ * <p>数据库来源是一个可管理的列表（见 {@link #getSources()}）：两个内置接口属于
+ * 「公共服务」，可按需添加（地址可改成镜像/代理），也可添加自定义接口；
+ * 查询格式分两种——</p>
  *
  * <ul>
  *     <li><b>TheIntroDB v4</b> {@code GET {url}/media?imdb_id=tt…&season=&episode=}
@@ -49,6 +50,10 @@ import okhttp3.Response;
  *
  * <p>两个库都只能按 IMDb tt 号查询，不支持按片名搜索，所以这里额外提供
  * IMDb 官方建议接口（免密钥）做「片名 → tt 号」解析。</p>
+ *
+ * <p>查询采用<b>多来源顺序兜底</b>：按来源的添加顺序依次查询，
+ * 某个来源查不到（失败 / 无数据）就换下一个；一个都没结果才放弃。
+ * 一个来源都没启用时，默认回落到两个公共服务。</p>
  */
 public class IntroDbApi {
 
@@ -59,8 +64,11 @@ public class IntroDbApi {
 
     private static final String DEFAULT_URL_THEINTRODB = "https://api.theintrodb.org/v4";
     private static final String DEFAULT_URL_INTRODB = "https://api.introdb.app";
-    private static final String ID_BUILTIN_THEINTRODB = "builtin_theintrodb";
-    private static final String ID_BUILTIN_INTRODB = "builtin_introdb";
+    /** 公共服务（内置默认接口）的固定 id，用于判断是否已添加 */
+    public static final String ID_PUBLIC_THEINTRODB = "builtin_theintrodb";
+    public static final String ID_PUBLIC_INTRODB = "builtin_introdb";
+    private static final String ID_BUILTIN_THEINTRODB = ID_PUBLIC_THEINTRODB;
+    private static final String ID_BUILTIN_INTRODB = ID_PUBLIC_INTRODB;
 
     /** IMDb 官方片名建议接口（公开、免密钥），用于把片名解析成 tt 号 */
     private static final String IMDB_SUGGEST_API = "https://v2.sg.media-imdb.com/suggestion";
@@ -69,14 +77,17 @@ public class IntroDbApi {
 
     /* ============================ 数据库来源 ============================ */
 
-    /** 一个数据库接口来源：内置两个不可删除，地址可改；自定义的可增删 */
+    /** 一个数据库接口来源：列表顺序 = 查询顺序；可同时启用多个 */
     public static class DbSource {
         public String id;
         public String name;
         public String url;
         /** 查询格式：{@link #FORMAT_THEINTRODB} / {@link #FORMAT_INTRODB} */
         public int format;
+        /** true = 公共服务（两个内置接口），可删除后从「公共服务」重新添加 */
         public boolean builtIn;
+        /** 是否参与查询（列表里的开关状态） */
+        public boolean enabled;
     }
 
     public static String getDefaultUrl(int format) {
@@ -92,24 +103,26 @@ public class IntroDbApi {
         List<DbSource> list = parseSources(Hawk.get(HawkConfig.INTRO_DB_SOURCES, ""));
         if (list == null) {
             list = new ArrayList<>();
-            DbSource theIntroDb = new DbSource();
-            theIntroDb.id = ID_BUILTIN_THEINTRODB;
-            theIntroDb.name = "TheIntroDB";
-            theIntroDb.url = DEFAULT_URL_THEINTRODB;
-            theIntroDb.format = FORMAT_THEINTRODB;
-            theIntroDb.builtIn = true;
-            list.add(theIntroDb);
-            DbSource introDb = new DbSource();
-            introDb.id = ID_BUILTIN_INTRODB;
-            introDb.name = "IntroDB";
-            introDb.url = DEFAULT_URL_INTRODB;
-            introDb.format = FORMAT_INTRODB;
-            introDb.builtIn = true;
-            list.add(introDb);
+            list.add(buildPublicService(ID_BUILTIN_THEINTRODB, "TheIntroDB",
+                    DEFAULT_URL_THEINTRODB, FORMAT_THEINTRODB));
+            list.add(buildPublicService(ID_BUILTIN_INTRODB, "IntroDB",
+                    DEFAULT_URL_INTRODB, FORMAT_INTRODB));
             migrateLegacy(list);
             saveSources(list);
         }
         return list;
+    }
+
+    /** 造一个公共服务来源（默认地址 + 启用） */
+    private static DbSource buildPublicService(String id, String name, String url, int format) {
+        DbSource source = new DbSource();
+        source.id = id;
+        source.name = name;
+        source.url = url;
+        source.format = format;
+        source.builtIn = true;
+        source.enabled = true;
+        return source;
     }
 
     public static void saveSources(List<DbSource> sources) {
@@ -123,6 +136,7 @@ public class IntroDbApi {
                     obj.put("url", source.url);
                     obj.put("format", source.format);
                     obj.put("builtIn", source.builtIn);
+                    obj.put("enabled", source.enabled);
                     array.put(obj);
                 } catch (Throwable ignored) {
                 }
@@ -140,32 +154,30 @@ public class IntroDbApi {
         return null;
     }
 
-    /** 当前使用的来源（active 无效时退回第一个） */
-    public static DbSource getActiveSource() {
-        List<DbSource> sources = getSources();
-        if (sources.isEmpty()) return null;
-        String active = Hawk.get(HawkConfig.INTRO_DB_ACTIVE, ID_BUILTIN_THEINTRODB);
-        for (DbSource source : sources) {
-            if (active.equals(source.id)) return source;
+    /** 参与查询的来源（enabled 且地址非空），顺序 = 添加顺序 */
+    public static List<DbSource> getEnabledSources() {
+        List<DbSource> result = new ArrayList<>();
+        for (DbSource source : getSources()) {
+            if (source.enabled && !TextUtils.isEmpty(source.url)) result.add(source);
         }
-        // 所有接口的开关都关（或指向已删除的源）时不再兜底第一个——
-        // 视为未启用任何数据库，querySegments 会直接跳过查询
-        return null;
+        return result;
     }
 
-    public static String getActiveSourceId() {
-        DbSource source = getActiveSource();
-        return source == null ? "" : source.id;
-    }
-
-    public static void setActiveSource(String id) {
-        Hawk.put(HawkConfig.INTRO_DB_ACTIVE, id == null ? "" : id);
-    }
-
-    /** 当前选择是否可用（必须有可用来源且地址非空） */
+    /** 当前是否有任何可用的来源（一个都没有时查询回落到公共服务默认地址） */
     public static boolean isConfigured() {
-        DbSource source = getActiveSource();
-        return source != null && !TextUtils.isEmpty(source.url);
+        return !getEnabledSources().isEmpty();
+    }
+
+    public static boolean setSourceEnabled(String id, boolean enabled) {
+        List<DbSource> sources = getSources();
+        for (DbSource source : sources) {
+            if (source.id.equals(id)) {
+                source.enabled = enabled;
+                saveSources(sources);
+                return true;
+            }
+        }
+        return false;
     }
 
     public static DbSource addCustomSource(String name, String url, int format) {
@@ -175,10 +187,32 @@ public class IntroDbApi {
         source.url = url == null ? "" : url.trim();
         source.format = format;
         source.builtIn = false;
+        source.enabled = true;
         List<DbSource> sources = getSources();
         sources.add(source);
         saveSources(sources);
         return source;
+    }
+
+    /**
+     * 添加公共服务（两个内置接口的默认配置），追加到列表末位 = 查询顺序末位；
+     * 已添加过返回 false。
+     */
+    public static boolean addPublicService(int format) {
+        String id = format == FORMAT_INTRODB ? ID_BUILTIN_INTRODB : ID_BUILTIN_THEINTRODB;
+        if (findSource(id) != null) return false;
+        DbSource source = buildPublicService(id,
+                format == FORMAT_INTRODB ? "IntroDB" : "TheIntroDB",
+                getDefaultUrl(format), format);
+        List<DbSource> sources = getSources();
+        sources.add(source);
+        saveSources(sources);
+        return true;
+    }
+
+    /** 公共服务是否已添加 */
+    public static boolean isPublicServiceAdded(int format) {
+        return findSource(format == FORMAT_INTRODB ? ID_BUILTIN_INTRODB : ID_BUILTIN_THEINTRODB) != null;
     }
 
     /** 编辑地址；来源不存在返回 false */
@@ -219,17 +253,13 @@ public class IntroDbApi {
         return false;
     }
 
-    /** 只允许删除自定义来源 */
+    /** 删除来源（公共服务也可删，之后可从「公共服务」重新添加） */
     public static boolean removeSource(String id) {
         List<DbSource> sources = getSources();
         for (int i = 0; i < sources.size(); i++) {
-            DbSource source = sources.get(i);
-            if (source.id.equals(id) && !source.builtIn) {
+            if (sources.get(i).id.equals(id)) {
                 sources.remove(i);
                 saveSources(sources);
-                if (id.equals(Hawk.get(HawkConfig.INTRO_DB_ACTIVE, ""))) {
-                    setActiveSource(sources.isEmpty() ? "" : sources.get(0).id);
-                }
                 return true;
             }
         }
@@ -252,6 +282,8 @@ public class IntroDbApi {
                 source.url = obj.optString("url", "");
                 source.format = obj.optInt("format", FORMAT_THEINTRODB);
                 source.builtIn = obj.optBoolean("builtIn", false);
+                // 旧版数据没有 enabled 字段：公共服务默认启用，其余默认停用
+                source.enabled = obj.optBoolean("enabled", source.builtIn);
                 if (TextUtils.isEmpty(source.id) || TextUtils.isEmpty(source.name)) continue;
                 list.add(source);
             }
@@ -273,13 +305,11 @@ public class IntroDbApi {
                 custom.url = customUrl;
                 custom.format = FORMAT_THEINTRODB;
                 custom.builtIn = false;
+                custom.enabled = true;
                 list.add(custom);
-                setActiveSource(custom.id);
-                return;
             }
         }
-        if (old == 1) setActiveSource(ID_BUILTIN_INTRODB);
-        // 其余情况保持默认 TheIntroDB
+        // 旧版是单选启用，新版两个公共服务默认都启用，不再单独迁移 active
     }
 
     /* ============================ 区间查询 ============================ */
@@ -311,7 +341,9 @@ public class IntroDbApi {
     }
 
     /**
-     * 按当前使用的来源查询某一集的片头 / 片尾区间。
+     * 查询某一集的片头 / 片尾区间：按启用来源的添加顺序逐个尝试，
+     * 某个来源失败或查不到数据就换下一个；全部落空才回调 null。
+     * 一个来源都没启用时，回落到两个公共服务的默认地址。
      *
      * @param season  季（电影传 0）
      * @param episode 集（电影传 0）
@@ -320,8 +352,33 @@ public class IntroDbApi {
     public static void querySegments(String imdbId, int season, int episode, boolean isMovie,
                                      final SegmentsCallback callback) {
         if (TextUtils.isEmpty(imdbId) || callback == null) return;
-        final DbSource source = getActiveSource();
-        if (source == null || TextUtils.isEmpty(source.url)) return;
+        List<DbSource> chain = getEnabledSources();
+        if (chain.isEmpty()) {
+            // 用户没有启用/添加任何数据库：默认采用公共服务的默认配置
+            chain = new ArrayList<>();
+            chain.add(buildPublicService(ID_BUILTIN_THEINTRODB, "TheIntroDB",
+                    DEFAULT_URL_THEINTRODB, FORMAT_THEINTRODB));
+            chain.add(buildPublicService(ID_BUILTIN_INTRODB, "IntroDB",
+                    DEFAULT_URL_INTRODB, FORMAT_INTRODB));
+            LOG.i("echo-intro 未启用任何数据库来源，回落到公共服务默认配置");
+        }
+        queryNext(chain, 0, imdbId, season, episode, isMovie, callback);
+    }
+
+    /** 逐个尝试来源链：index 处的来源查完没有可用数据就继续下一个 */
+    private static void queryNext(final List<DbSource> chain, final int index,
+                                  final String imdbId, final int season, final int episode,
+                                  final boolean isMovie, final SegmentsCallback callback) {
+        if (index >= chain.size()) {
+            LOG.i("echo-intro query 所有来源均无数据（共 " + chain.size() + " 个）");
+            postResult(callback, null);
+            return;
+        }
+        final DbSource source = chain.get(index);
+        if (source == null || TextUtils.isEmpty(source.url)) {
+            queryNext(chain, index + 1, imdbId, season, episode, isMovie, callback);
+            return;
+        }
         String url;
         final boolean theIntroDbStyle;
         try {
@@ -341,17 +398,19 @@ public class IntroDbApi {
             }
         } catch (Throwable th) {
             LOG.e("echo-intro query 拼接 URL 失败: " + th.getMessage());
+            queryNext(chain, index + 1, imdbId, season, episode, isMovie, callback);
             return;
         }
-        LOG.i("echo-intro query: url=" + url + "（来源=" + source.name + ", format="
-                + getFormatName(source.format) + "）");
+        LOG.i("echo-intro query[" + (index + 1) + "/" + chain.size() + "]: url=" + url
+                + "（来源=" + source.name + ", format=" + getFormatName(source.format) + "）");
         final String urlFinal = url;
         Request request = new Request.Builder().url(url).get().build();
         httpClient().newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull final IOException e) {
-                LOG.e("echo-intro query 请求失败: " + e.getMessage() + ", url=" + urlFinal);
-                postResult(callback, null);
+                LOG.e("echo-intro query 请求失败: " + e.getMessage() + ", url=" + urlFinal
+                        + "，换下一个来源");
+                queryNext(chain, index + 1, imdbId, season, episode, isMovie, callback);
             }
 
             @Override
@@ -389,7 +448,13 @@ public class IntroDbApi {
                     } catch (Throwable ignored) {
                     }
                 }
-                postResult(callback, segments);
+                boolean usable = segments != null && (segments.hasIntro() || segments.hasCredits());
+                if (usable) {
+                    postResult(callback, segments);
+                } else {
+                    // 这个来源没查到：换下一个来源
+                    queryNext(chain, index + 1, imdbId, season, episode, isMovie, callback);
+                }
             }
         });
     }
