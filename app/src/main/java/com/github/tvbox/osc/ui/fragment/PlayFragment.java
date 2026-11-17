@@ -81,9 +81,11 @@ import com.github.tvbox.osc.ui.dialog.SubtitleDialog;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FileUtils;
+import com.github.tvbox.osc.util.GlassActionTip;
 import com.github.tvbox.osc.util.GlassTip;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.ImgUtil;
+import com.github.tvbox.osc.util.IntroSkipHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.PlayerHelper;
@@ -182,6 +184,8 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
     private String playArtwork;
     private DanmakuView mDanmuView;
     private DanmuLoadController danmuLoadController;
+    /** 片头片尾自动跳过（联网数据库），在 init 里挂到 mVideoView 上 */
+    private IntroSkipHelper introSkipHelper;
     private final List<Cue> exoCues = new ArrayList<>();
     private boolean exoInternalSubtitle;
 
@@ -412,6 +416,12 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                 if (pipModeActive && isStartedPlayState(playState)) {
                     PipHelper.updateParams(getActivity(), currentVideoRatio());
                 }
+                // 自动画中画（Android 12+）：非 PiP 状态下随播放状态同步 autoEnter——
+                // 播放中滑回桌面自动进 PiP；暂停/出错时关闭，不把冻结画面顶进小窗
+                if (!pipModeActive && !floatMode && isStartedPlayState(playState)) {
+                    PipHelper.syncAutoEnterParams(getActivity(), currentVideoRatio(),
+                            playState == VideoView.STATE_PLAYING);
+                }
                 if (pipControlRow != null && pipControlRow.getVisibility() == View.VISIBLE) {
                     updatePipOverlayIcon();
                 }
@@ -578,6 +588,118 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             }
         });
         mVideoView.setVideoController(mController);
+        setupIntroSkip();
+    }
+
+    /**
+     * 片头片尾自动跳过：helper 自带播放状态监听与进度轮询，
+     * 片尾没有结束点时回调这里走「下一集」（与手动 et 同一套逻辑）。
+     */
+    private void setupIntroSkip() {
+        introSkipHelper = new IntroSkipHelper();
+        introSkipHelper.setListener(new IntroSkipHelper.Listener() {
+            @Override
+            public void onSkipCreditsToEnd() {
+                playNext(true);
+            }
+
+            @Override
+            public void onIntroSkipped(final long fromPos) {
+                // 右下角偏上的玻璃动作胶囊：3 秒内可点按撤销本次片头跳过
+                if (isAdded()) {
+                    GlassActionTip.show(mContext, "已跳过片头 · 点按撤销",
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    introSkipHelper.undoIntroSkip(fromPos);
+                                }
+                            });
+                }
+            }
+        });
+        // API 取到的节点写进播放器片头片尾配置（st/et）：抽屉按钮同步显示、可手动微调
+        introSkipHelper.setConfigHook(new IntroSkipHelper.ConfigHook() {
+            @Override
+            public int applyIntroOutro(int introSec, int creditsCountdownSec) {
+                return applyIntroSkipConfig(introSec, creditsCountdownSec);
+            }
+        });
+        introSkipHelper.attach(mVideoView);
+    }
+
+    /**
+     * 把数据库解析到的片头 / 片尾节点并入播放器配置：
+     * st = 片头结束点（秒），et = 片尾倒数秒数；只补空值，不动用户手动设过的数。
+     * 写入后刷新控制器按钮显示，并持久化到本片的 playerCfg（下次进本集直接生效）。
+     *
+     * @return 最终生效的 et 值（0 表示片尾未接管）
+     */
+    private int applyIntroSkipConfig(int introSec, int creditsCountdownSec) {
+        if (mVodPlayerCfg == null || mVodInfo == null) return 0;
+        int et = 0;
+        try {
+            boolean changed = false;
+            if (introSec > 0 && mVodPlayerCfg.optInt("st", 0) == 0) {
+                mVodPlayerCfg.put("st", introSec);
+                changed = true;
+            }
+            if (creditsCountdownSec > 0 && mVodPlayerCfg.optInt("et", 0) == 0) {
+                mVodPlayerCfg.put("et", creditsCountdownSec);
+                changed = true;
+            }
+            if (changed) {
+                mController.setPlayerConfig(mVodPlayerCfg);
+                mVodInfo.playerCfg = mVodPlayerCfg.toString();
+                EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, mVodPlayerCfg));
+            }
+            et = mVodPlayerCfg.optInt("et", 0);
+        } catch (Throwable ignored) {
+        }
+        return et;
+    }
+
+    /** 换集后预取本集的片头片尾数据（内部有缓存与序号保护，重复调用安全） */
+    private void prepareIntroSkip() {
+        if (introSkipHelper == null || mVodInfo == null || mVideoView == null) {
+            LOG.i("echo-intro prepare 跳过: helper=" + (introSkipHelper == null ? "null" : "ok")
+                    + ", mVodInfo=" + (mVodInfo == null ? "null" : "ok")
+                    + ", mVideoView=" + (mVideoView == null ? "null" : "ok"));
+            return;
+        }
+        try {
+            // 外部播放器（MX/VLC 等）不经过 mVideoView，跳过查询省流量
+            if (mVodPlayerCfg != null && mVodPlayerCfg.optInt("pl", 0) >= 10) {
+                LOG.i("echo-intro prepare 跳过: 外部播放器 pl=" + mVodPlayerCfg.optInt("pl", 0));
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+        VodInfo.VodSeries series = null;
+        try {
+            series = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.playIndex);
+        } catch (Throwable ignored) {
+        }
+        boolean manualCredits = false;
+        try {
+            manualCredits = mVodPlayerCfg != null && mVodPlayerCfg.optInt("et", 0) > 0;
+        } catch (Throwable ignored) {
+        }
+        int season = IntroSkipHelper.guessSeason(mVodInfo);
+        int episode = IntroSkipHelper.guessEpisode(series == null ? null : series.name, mVodInfo.playIndex);
+        boolean isMovie = IntroSkipHelper.guessMovie(mVodInfo);
+        LOG.i("echo-intro prepare: 片名=" + (mVodInfo.name == null ? "" : mVodInfo.name)
+                + ", 年份=" + mVodInfo.year
+                + ", 季=" + season + ", 集=" + episode
+                + ", isMovie=" + isMovie
+                + ", 手动Et=" + manualCredits
+                + ", 集名=" + (series == null || series.name == null ? "null" : series.name));
+        introSkipHelper.onEpisodeStart(
+                mVodInfo.name == null ? "" : mVodInfo.name,
+                mVodInfo.year,
+                isMovie,
+                season,
+                episode,
+                manualCredits);
     }
 
     private void showCastDialog() {
@@ -1687,6 +1809,10 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             danmuLoadController.destroy();
             danmuLoadController = null;
         }
+        if (introSkipHelper != null) {
+            introSkipHelper.release();
+            introSkipHelper = null;
+        }
         if (mVideoView != null) {
             if (floatMode && FloatPlayWindow.get().isOwner(this)) {
                 // 小窗仍在悬浮：播放移交窗口以孤儿模式继续，本 fragment 不再过问
@@ -2112,6 +2238,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         ImgUtil.clearMemoryCache();
         subtitleCacheKey = mVodInfo.sourceKey + "-" + mVodInfo.id + "-" + mVodInfo.playFlag + "-" + mVodInfo.playIndex+ "-" + vs.name + "-subt";
         progressKey = mVodInfo.sourceKey + mVodInfo.id + mVodInfo.playFlag + mVodInfo.playIndex + vs.name;
+        prepareIntroSkip();
         startResolvePlayUrlTimeout();
         //重新播放清除现有进度
         if (reset) {
@@ -2406,19 +2533,40 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             // 自定义 Overlay（Mode 1）：走悬浮窗 reparent 路径（同一 mVideoView，不重建）
             // 内核兼容软防线（Phase C）：SurfaceView 跨窗口 reparent + 矩阵缩放的兼容性
             // 弱于 TextureView，软提示不改配置（IJK/EXO 均走同一 VideoView，无需特判内核类型）
-            try {
-                JSONObject cfgForRender = mVodPlayerCfg;
-                int renderType = cfgForRender == null
-                        ? Hawk.get(HawkConfig.PLAY_RENDER, 0) : cfgForRender.optInt("pr", Hawk.get(HawkConfig.PLAY_RENDER, 0));
-                if (renderType == 1) {
-                    GlassTip.show(requireContext(), "当前为 SurfaceView 渲染，小窗缩放建议改用 TextureView（我的→播放设定→渲染方式）");
+            if (enterOverlayWindowNow(true)) {
+                return;
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+            recoverFloatUi();
+        }
+    }
+
+    /**
+     * 进入自定义 Overlay 小窗（手动入口与「自动画中画」共用）。
+     *
+     * @param showRenderTip 是否弹 SurfaceView 渲染软提示（自动触发时静默）
+     * @return true=已进入小窗（调用方应立即返回）；false=未进入（权限缺失等）
+     */
+    private boolean enterOverlayWindowNow(boolean showRenderTip) {
+        try {
+            if (showRenderTip) {
+                try {
+                    JSONObject cfgForRender = mVodPlayerCfg;
+                    int renderType = cfgForRender == null
+                            ? Hawk.get(HawkConfig.PLAY_RENDER, 0) : cfgForRender.optInt("pr", Hawk.get(HawkConfig.PLAY_RENDER, 0));
+                    if (renderType == 1) {
+                        GlassTip.show(requireContext(), "当前为 SurfaceView 渲染，小窗缩放建议改用 TextureView（我的→播放设定→渲染方式）");
+                    }
+                } catch (Throwable ignore) {
                 }
-            } catch (Throwable ignore) {
             }
             if (!FloatPlayWindow.hasOverlayPermission(requireContext())) {
-                GlassTip.show(requireContext(), "小窗播放需要「显示在其他应用上层」权限，请在打开的设置页中开启");
-                FloatPlayWindow.openOverlayPermission(requireActivity());
-                return;
+                if (showRenderTip) {
+                    GlassTip.show(requireContext(), "小窗播放需要「显示在其他应用上层」权限，请在打开的设置页中开启");
+                    FloatPlayWindow.openOverlayPermission(requireActivity());
+                }
+                return false;
             }
             floatMode = true;
             mController.setFloatMode(true);
@@ -2427,7 +2575,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             boolean ok = FloatPlayWindow.get().enter(requireContext(), mVideoView, mController, this, currentVideoRatio());
             if (!ok) {
                 recoverFloatUi();
-                return;
+                return false;
             }
             // 进入小窗的一般意图是去用别的应用：应用整体退到后台（进程与页面保留，
             // 悬浮窗继续在最上层播放；点小窗里的「回到全屏」再恢复）
@@ -2436,9 +2584,49 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                 if (act != null) act.moveTaskToBack(true);
             } catch (Throwable ignore) {
             }
+            return true;
         } catch (Throwable th) {
             th.printStackTrace();
             recoverFloatUi();
+            return false;
+        }
+    }
+
+    /**
+     * 「自动画中画」触发点：DetailActivity.onUserLeaveHint 转发（用户按 Home /
+     * 切换到其他应用时系统回调）。按 PIP_MODE 分发：
+     * <ul>
+     *     <li>系统 PiP（Mode 0）：Android 12+ 由 {@code setAutoEnterEnabled} 原生接管，
+     *         此处不再手动触发；Android 8~11 在此手动进入；</li>
+     *     <li>自定义 Overlay（Mode 1）：任何版本都走悬浮窗路径；</li>
+     *     <li>关闭（Mode 2）或开关未开：不动作。</li>
+     * </ul>
+     * 仅在「正在播放视频」（非暂停、非纯音频、非预览退出）时触发，避免把暂停画面顶进小窗。
+     */
+    public void autoEnterOnUserLeave() {
+        try {
+            if (!Hawk.get(HawkConfig.PIP_AUTO_ENTER, false)) return;
+            if (mVideoView == null || mController == null || !isAdded()) return;
+            if (floatMode || pipModeActive || PipHelper.isInPip(getActivity())) return;
+            if (hasAudioOnlyPlayback() || exitingPreview) return;
+            if (mVideoView.getCurrentPlayState() != VideoView.STATE_PLAYING) return;
+            int pipConfig = Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM);
+            if (pipConfig == HawkConfig.PIP_MODE_OFF) return;
+            if (pipConfig == HawkConfig.PIP_MODE_SYSTEM) {
+                // Android 12+：syncAutoEnterParams 已把 autoEnter 交给系统，离开时系统自动进入；
+                // 此处再调 enterPictureInPictureMode 会与系统路径叠加，跳过
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return;
+                if (!PipHelper.isSupported(requireContext())) return;
+                PipHelper.logSurfaceIdentity("pip-auto-enter", mVideoView);
+                PipHelper.enter(requireActivity(), currentVideoRatio());
+                return;
+            }
+            // 自定义 Overlay：悬浮窗与系统 autoEnter 无关，任何版本走这里（静默，不弹提示）
+            if (!FloatPlayWindow.hasOverlayPermission(requireContext())) return;
+            PipHelper.logSurfaceIdentity("overlay-auto-enter", mVideoView);
+            enterOverlayWindowNow(false);
+        } catch (Throwable th) {
+            th.printStackTrace();
         }
     }
 

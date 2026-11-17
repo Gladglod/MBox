@@ -28,7 +28,39 @@
 3. **弹幕设置** —— 当前在线弹幕源名称、弹幕颜色、速度、字号、行数、透明度，以及「搜索弹幕」入口。
 4. **其他** —— 播放重试 / 刷新、字幕、音轨、视频轨、横竖屏切换、屏显开关、解析线路。
 
+## 片头片尾自动跳过
+
+实现细节见 [docs/design-intro-skip.md](design-intro-skip.md)，要点：
+
+- 换集时先查本地缓存（键「片名|年份|季|集」，TTL 7 天），未命中才联网：先经 IMDb 官方建议接口
+  把片名解析成 tt 号，再按当前启用的数据库来源查询片头 / 片尾区间。
+- 进度轮询 500ms 一次：片头落在区间内自动 seek 过片头（每集一次，可撤销）；片尾按延迟秒数触发，
+  有结束点就 seek，没有则交给播放页走下一集。
+- 解析到的节点通过 `ConfigHook` 写进播放器 `mVodPlayerCfg` 的 `st` / `et`，抽屉里的
+  「片头 / 片尾」按钮随即显示，用户可手动微调；手动设过 et 时片尾由 `VodController` 原有机制执行，
+  避免双重触发。外部播放器（`pl != 0`）不支持。
+
+## 自动画中画
+
+「我的 → 播放设定 → 后台播放 → 自动画中画」（`HawkConfig.PIP_AUTO_ENTER`，默认关）：
+
+- Android 12+ 走 `PictureInPictureParams.setAutoEnterEnabled` 原生路径（`PipHelper`）；
+  Android 8~11 在 `DetailActivity.onUserLeaveHint()` 手动进入，按 `PIP_MODE` 分发
+  （系统 PiP 直接 enter，自定义小窗走 `FloatPlayWindow`）。
+- 仅播放中生效：`PipHelper.syncAutoEnterParams(...)` 随播放状态同步，暂停 / 出错时关闭
+  autoEnter，避免把冻结画面顶进小窗。
+
 ## 弹幕搜索
 
 弹幕「搜索弹幕」选中结果后对话框**立即关闭**，弹幕在后台继续加载完成，只弹一条提示，不再卡着搜索浮层看转圈。
 弹幕搜索对话框自适应屏幕：限宽 `min(90% 屏宽, 430dp)`、限高 `min(86% 屏高, 560dp)`。
+
+## 弹幕接口设置
+
+「我的 → 弹幕设定 → 自定义接口」改为**卡片内嵌展开编辑**（`ModelSettingFragment` /
+`MineSettingActivity` 里的 `danmuApiEditor`）：点击行后箭头旋转 90°、编辑区淡入展开，
+支持回车保存、「一键测试」真实发起一次弹幕搜索验证可用性（测试通过地址立即生效，无需再点确定）、
+「恢复默认」；不再使用独立的 `DanmuApiDialog`（已删除）。
+
+地址输入类对话框统一由新的 **`TextInputDialog`** 提供（复用 `NumberInputDialog` 的玻璃布局，
+文本输入放开长度与输入类型），用于自定义弹幕接口、片头片尾数据库接口等地址输入。

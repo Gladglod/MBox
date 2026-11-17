@@ -1,4 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  简介对话框内嵌滚动区的主题玻璃底（原版写死 #44000000 黑底）。
+  走 dialog_control_* 主题色：日=浅色场域、夜=深色场域，文字仍走主题字色。
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/color_scrollview_bg" />
-    <corners android:radius="12dp"/>
+    <solid android:color="@color/dialog_input_bg" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/dialog_panel_stroke" />
+    <corners android:radius="12dp" />
 </shape>

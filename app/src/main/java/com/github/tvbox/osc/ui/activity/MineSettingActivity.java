@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.ui.activity;
 
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Bitmap;
@@ -14,9 +15,13 @@ import android.text.method.LinkMovementMethod;
 import android.text.util.Linkify;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
@@ -34,14 +39,15 @@ import com.github.tvbox.osc.BuildConfig;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.api.DanmakuApi;
+import com.github.tvbox.osc.api.IntroDbApi;
 import com.github.tvbox.osc.base.BaseActivity;
 import com.github.tvbox.osc.bean.DanmuSearchResult;
 import com.github.tvbox.osc.bean.GithubRelease;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.event.RefreshEvent;
-import com.github.tvbox.osc.ui.dialog.DanmuApiDialog;
 import com.github.tvbox.osc.ui.dialog.NumberInputDialog;
+import com.github.tvbox.osc.ui.dialog.TextInputDialog;
 import com.github.tvbox.osc.ui.dialog.TipDialog;
 import com.github.tvbox.osc.ui.dialog.UpdateDialog;
 import com.github.tvbox.osc.ui.dialog.XWalkInitDialog;
@@ -91,6 +97,7 @@ public class MineSettingActivity extends BaseActivity {
 
     public static final String SECTION_APPEARANCE = "appearance";
     public static final String SECTION_PLAY = "play";
+    public static final String SECTION_INTRO = "intro";
     public static final String SECTION_UI = "ui";
     public static final String SECTION_GESTURE = "gesture";
     public static final String SECTION_DANMU = "danmu";
@@ -105,6 +112,17 @@ public class MineSettingActivity extends BaseActivity {
     private LinearLayout contentContainer;
     private LinearLayout currentCard;
     private final List<Runnable> refreshers = new ArrayList<>();
+    /* 弹幕接口：点击行在卡片内展开 / 折叠输入区（不走对话框） */
+    private View danmuApiRowView;
+    private LinearLayout danmuApiEditorView;
+    private EditText danmuApiInput;
+    private TextView danmuApiTestResult;
+    private boolean danmuApiExpanded = false;
+    /* 片头片尾数据库接口：行内 switch 决定启用；地址编辑走卡片内嵌展开输入区 */
+    private String introEditorSourceId = null;
+    private LinearLayout introEditorView = null;
+    private View introEditorRowView = null;
+    private EditText introEditorInput = null;
 
     /** 「关于 → 检查更新」那一行右侧的状态文字：空表示还没查过 */
     private String updateStatus = "";
@@ -183,6 +201,8 @@ public class MineSettingActivity extends BaseActivity {
         switch (section) {
             case SECTION_PLAY:
                 return "播放设定";
+            case SECTION_INTRO:
+                return "片头片尾设定";
             case SECTION_UI:
                 return "界面偏好";
             case SECTION_GESTURE:
@@ -203,6 +223,9 @@ public class MineSettingActivity extends BaseActivity {
         switch (section) {
             case SECTION_PLAY:
                 buildPlay();
+                break;
+            case SECTION_INTRO:
+                buildIntro();
                 break;
             case SECTION_UI:
                 buildUi();
@@ -634,12 +657,216 @@ public class MineSettingActivity extends BaseActivity {
                     }
                 });
 
+        header("后台播放");
+        card();
+        addSwitchRow("自动画中画", "返回桌面或切换其他应用时，自动进入画中画/小窗继续播放（按画中画模式生效）",
+                HawkConfig.PIP_AUTO_ENTER, false, null);
+
         header("播放行为");
         card();
         addSwitchRow("IJK缓存", "开启后可减少卡顿，占用更多内存", HawkConfig.IJK_CACHE_PLAY, false, null);
         addSwitchRow("自动换线", "播放失败时自动切换线路", HawkConfig.AUTO_SWITCH_LINE, true, null);
         addSwitchRow("M3U8去广告", "自动过滤 M3U8 中的广告分片", HawkConfig.M3U8_PURIFY, false, null);
         addSwitchRow("窗口预览", "详情页顶部显示小窗预览", HawkConfig.SHOW_PREVIEW, true, null);
+
+        header("片头片尾");
+        card();
+        addActionRow("片头片尾设定", "自动跳过开关、片尾时机与数据库接口管理", new Action() {
+            @Override
+            public void run() {
+                jumpMineSection(SECTION_INTRO);
+            }
+        });
+    }
+
+    /** 片尾跳过延迟：进入片尾后多少秒触发，0~60 秒 */
+    private void showCreditsDelayDialog() {
+        NumberInputDialog dialog = new NumberInputDialog(this, "片尾跳过时机",
+                "进入片尾后多少秒自动跳过（0~60 秒）", Hawk.get(HawkConfig.INTRO_SKIP_CREDITS_DELAY, 3), 0, 60);
+        dialog.setOnConfirm(new NumberInputDialog.OnConfirm() {
+            @Override
+            public void onConfirm(int value) {
+                Hawk.put(HawkConfig.INTRO_SKIP_CREDITS_DELAY, value);
+            }
+        });
+        dialog.show();
+    }
+
+    /* ============================ 片头片尾设定 ============================ */
+
+    private void buildIntro() {
+        header("自动跳过");
+        card();
+        addSwitchRow("自动跳过片头", "联网查询片头区间，播放进入片头后自动跳过", HawkConfig.INTRO_SKIP_OPEN, true, null);
+        addSwitchRow("自动跳过片尾", "进入片尾设定秒数后自动跳过（跳到片尾结束或下一集）", HawkConfig.INTRO_SKIP_CREDITS, false, null);
+        addValueRow("片尾跳过时机", "进入片尾后多少秒触发自动跳过", new TextProvider() {
+            @Override
+            public String get() {
+                return Hawk.get(HawkConfig.INTRO_SKIP_CREDITS_DELAY, 3) + " 秒后";
+            }
+        }, new Action() {
+            @Override
+            public void run() {
+                showCreditsDelayDialog();
+            }
+        });
+
+        header("数据库接口");
+        card();
+        for (final IntroDbApi.DbSource source : IntroDbApi.getSources()) {
+            addSourceRows(source);
+        }
+        addActionRow("添加自定义接口", "新增一个兼容 TheIntroDB v4 或 IntroDB 格式的数据库接口", new Action() {
+            @Override
+            public void run() {
+                showAddSourceDialog();
+            }
+        });
+
+        addInfoRow("说明", new TextProvider() {
+            @Override
+            public String get() {
+                return "查询流程：片名 → IMDb 编号 → 按使用中的接口查询片头片尾区间。\n"
+                        + "两个默认接口的地址可改成镜像或代理；自定义接口需兼容 "
+                        + "TheIntroDB v4（GET /media）或 IntroDB（GET /segments）查询格式。";
+            }
+        });
+    }
+
+    /**
+     * 一个数据库来源的行：右侧 switch 决定是否启用（同一时刻只启用一个，互斥），
+     * 点击行在卡片内展开 / 折叠地址编辑区；自定义来源多一行格式选择
+     */
+    private void addSourceRows(final IntroDbApi.DbSource source) {
+        final boolean active = IntroDbApi.getActiveSourceId().equals(source.id);
+        LinearLayout row = makeRow(source.name, source.url);
+        final TextView tvSub = row.findViewById(R.id.tvRowSub);
+        final TextView tvValue = row.findViewById(R.id.tvRowValue);
+        final View arrow = row.findViewById(R.id.tvRowArrow);
+        Runnable refresher = new Runnable() {
+            @Override
+            public void run() {
+                IntroDbApi.DbSource cur = IntroDbApi.findSource(source.id);
+                String url = cur == null ? source.url : cur.url;
+                if (tvSub != null) tvSub.setText(url == null ? "" : url);
+                tvValue.setText(IntroDbApi.getActiveSourceId().equals(source.id) ? "使用中" : "");
+            }
+        };
+        refreshers.add(refresher);
+        refresher.run();
+
+        // ---- 启用开关：开 = 该接口设为使用中；关 = 停用（全部关闭时不查询） ----
+        final SpringSwitch switchView = new SpringSwitch(this);
+        switchView.setContentDescription(source.name);
+        switchView.setChecked(active, false);
+        switchView.setClickable(true);
+        switchView.setFocusable(true);
+        switchView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                boolean target = !switchView.isChecked();
+                switchView.setChecked(target);
+                if (target) {
+                    IntroDbApi.setActiveSource(source.id);
+                    GlassTip.show(MineSettingActivity.this, "已启用 " + source.name);
+                } else if (IntroDbApi.getActiveSourceId().equals(source.id)) {
+                    IntroDbApi.setActiveSource("");
+                    GlassTip.show(MineSettingActivity.this, "已停用 " + source.name);
+                }
+                refreshRows();
+            }
+        });
+        row.addView(switchView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // ---- 点击行 = 展开 / 折叠地址编辑区（与弹幕接口同一套内嵌交互） ----
+        MotionCompat.attachPressScale(row);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                toggleIntroSourceEditor(source.id, row);
+            }
+        });
+        attachRow(row);
+
+        if (!source.builtIn) {
+            addSelectRow(source.name + " 格式", "自定义接口的查询格式", "请选择接口格式",
+                    new String[]{IntroDbApi.getFormatName(IntroDbApi.FORMAT_THEINTRODB),
+                            IntroDbApi.getFormatName(IntroDbApi.FORMAT_INTRODB)},
+                    new IntProvider() {
+                        @Override
+                        public int get() {
+                            IntroDbApi.DbSource current = IntroDbApi.findSource(source.id);
+                            return current == null
+                                    || current.format == IntroDbApi.FORMAT_THEINTRODB ? 0 : 1;
+                        }
+                    },
+                    new IntAction() {
+                        @Override
+                        public void run(int value) {
+                            IntroDbApi.setSourceFormat(source.id,
+                                    value == 1 ? IntroDbApi.FORMAT_INTRODB : IntroDbApi.FORMAT_THEINTRODB);
+                        }
+                    });
+        }
+    }
+
+    /** 添加自定义接口：先填名称，再填地址 */
+    private void showAddSourceDialog() {
+        TextInputDialog nameDialog = new TextInputDialog(this, "接口名称",
+                "显示在列表里的名字，例如「我的镜像」", "", "例如：我的镜像");
+        nameDialog.setOnConfirm(new TextInputDialog.OnConfirm() {
+            @Override
+            public void onConfirm(String name) {
+                if (TextUtils.isEmpty(name)) {
+                    GlassTip.show(MineSettingActivity.this, "名称不能为空");
+                    return;
+                }
+                TextInputDialog urlDialog = new TextInputDialog(MineSettingActivity.this,
+                        name + " 接口地址", "TheIntroDB v4 兼容格式，例如 https://example.com/v4\n"
+                        + "添加后可在该接口的「格式」里切换为 IntroDB 格式",
+                        "", "https://");
+                urlDialog.setOnConfirm(new TextInputDialog.OnConfirm() {
+                    @Override
+                    public void onConfirm(String url) {
+                        if (TextUtils.isEmpty(url)) {
+                            GlassTip.show(MineSettingActivity.this, "地址不能为空");
+                            return;
+                        }
+                        IntroDbApi.addCustomSource(name, url, IntroDbApi.FORMAT_THEINTRODB);
+                        rebuildSection();
+                    }
+                });
+                urlDialog.show();
+            }
+        });
+        nameDialog.show();
+    }
+
+    /** 行内数据变了（来源增删改）时整页重建：通用行工厂的文本刷新覆盖不到标题/副标题 */
+    private void rebuildSection() {
+        refreshers.clear();
+        contentContainer.removeAllViews();
+        currentCard = null;
+        // 视图整体重建：内嵌编辑器状态一并作废
+        introEditorView = null;
+        introEditorSourceId = null;
+        introEditorRowView = null;
+        buildSection();
+        refreshRows();
+    }
+
+    /** 设置页之间的共享轴转场（与「我的」→ 设置页一致） */
+    private void jumpMineSection(String section) {
+        Intent intent = new Intent(this, MineSettingActivity.class);
+        intent.putExtra(EXTRA_SECTION, section);
+        boolean reduced = MotionCompat.reducedMotion(mContext);
+        android.app.ActivityOptions options = android.app.ActivityOptions.makeCustomAnimation(this,
+                reduced ? R.anim.anim_fade_in : R.anim.anim_shared_axis_in,
+                reduced ? R.anim.anim_fade_out : R.anim.anim_shared_axis_out);
+        startActivity(intent, options.toBundle());
     }
 
     private String[] playerNames() {
@@ -975,25 +1202,30 @@ public class MineSettingActivity extends BaseActivity {
                         DanmuHelper.isOpen()));
             }
         });
-        addValueRow("弹幕接口", "支持自定义弹幕搜索接口", new TextProvider() {
-            @Override
-            public String get() {
-                String api = DanmakuApi.getDisplayApiUrl();
-                return TextUtils.isEmpty(api) ? "内置默认" : api;
-            }
-        }, new Action() {
+        // 弹幕接口：点击行在卡片内直接展开 / 再点折叠输入区（不走对话框）
+        danmuApiRowView = makeRow("弹幕接口", "支持自定义弹幕搜索接口");
+        final TextView tvDanmuApiValue = danmuApiRowView.findViewById(R.id.tvRowValue);
+        Runnable danmuApiRefresher = new Runnable() {
             @Override
             public void run() {
-                DanmuApiDialog dialog = new DanmuApiDialog(mContext);
-                dialog.setOnListener(new DanmuApiDialog.OnListener() {
-                    @Override
-                    public void onChange(String api) {
-                        refreshRows();
-                    }
-                });
-                dialog.show();
+                String api = DanmakuApi.getDisplayApiUrl();
+                tvDanmuApiValue.setText(TextUtils.isEmpty(api) ? "内置默认" : api);
+            }
+        };
+        refreshers.add(danmuApiRefresher);
+        danmuApiRefresher.run();
+        MotionCompat.attachPressScale(danmuApiRowView);
+        danmuApiRowView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                toggleDanmuApiEditor();
             }
         });
+        attachRow(danmuApiRowView);
+        danmuApiEditorView = buildDanmuApiEditor();
+        currentCard.addView(danmuApiEditorView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         addActionRow("测试接口", "使用当前接口搜索一次示例影片", new Action() {
             @Override
             public void run() {
@@ -1101,6 +1333,352 @@ public class MineSettingActivity extends BaseActivity {
             names[i] = String.format(Locale.getDefault(), "%.1f 倍", (i + 6) / 10f);
         }
         return names;
+    }
+
+    /* ==================== 弹幕接口内嵌展开编辑（卡片内，不走对话框） ==================== */
+
+    /** 卡片内的展开输入区：地址输入 + 测试结果 + 测试 / 默认 / 确定三颗玻璃 chip */
+    private LinearLayout buildDanmuApiEditor() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(4), 0, dp(4), dp(12));
+
+        danmuApiInput = new EditText(this);
+        danmuApiInput.setBackground(getResources().getDrawable(R.drawable.bg_glass_card_pill));
+        danmuApiInput.setSingleLine(true);
+        danmuApiInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        danmuApiInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        danmuApiInput.setHint("请输入弹幕搜索地址");
+        danmuApiInput.setTextColor(getResources().getColor(R.color.ui_text_primary));
+        danmuApiInput.setHintTextColor(getResources().getColor(R.color.ui_muted));
+        danmuApiInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        danmuApiInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        danmuApiInput.setText(Hawk.get(HawkConfig.DANMU_API, ""));
+        danmuApiInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE
+                        || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                    saveDanmuApiInline(danmuApiInput.getText().toString().trim());
+                    return true;
+                }
+                return false;
+            }
+        });
+        box.addView(danmuApiInput, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        danmuApiTestResult = new TextView(this);
+        danmuApiTestResult.setTextColor(getResources().getColor(R.color.ui_muted));
+        danmuApiTestResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        danmuApiTestResult.setVisibility(View.GONE);
+        LinearLayout.LayoutParams testLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        testLp.topMargin = dp(8);
+        box.addView(danmuApiTestResult, testLp);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams btnRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
+        btnRowLp.topMargin = dp(10);
+        buttons.setLayoutParams(btnRowLp);
+        buttons.addView(makeEditorChip("测试", false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                testDanmuApiInline(danmuApiInput.getText().toString().trim());
+            }
+        }));
+        buttons.addView(makeEditorChip("默认", false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                saveDanmuDefaultInline();
+            }
+        }));
+        buttons.addView(makeEditorChip("确定", true, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                saveDanmuApiInline(danmuApiInput.getText().toString().trim());
+            }
+        }));
+        box.addView(buttons);
+
+        box.setVisibility(danmuApiExpanded ? View.VISIBLE : View.GONE);
+        return box;
+    }
+
+    /** 编辑区小按钮：普通 = 玻璃 chip；primary = 强调色描边 + 强调色字 */
+    private TextView makeEditorChip(String label, boolean primary, View.OnClickListener listener) {
+        TextView chip = new TextView(this);
+        chip.setText(label);
+        chip.setGravity(Gravity.CENTER);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        chip.setTextColor(getResources().getColor(primary ? R.color.ui_accent : R.color.ui_text_primary));
+        chip.setBackgroundResource(primary ? R.drawable.bg_chip_selected : R.drawable.bg_glass_card_pill);
+        chip.setClickable(true);
+        chip.setFocusable(true);
+        MotionCompat.attachPressScale(chip);
+        chip.setOnClickListener(listener);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        lp.leftMargin = dp(5);
+        lp.rightMargin = dp(5);
+        chip.setLayoutParams(lp);
+        return chip;
+    }
+
+    /** 展开 / 折叠：行尾箭头旋转 90°，编辑区淡入淡出；折叠时收起软键盘 */
+    private void toggleDanmuApiEditor() {
+        if (danmuApiEditorView == null) return;
+        danmuApiExpanded = !danmuApiExpanded;
+        if (danmuApiRowView != null) {
+            View arrow = danmuApiRowView.findViewById(R.id.tvRowArrow);
+            if (arrow != null) {
+                arrow.animate().cancel();
+                arrow.animate().rotation(danmuApiExpanded ? 90f : 0f).setDuration(180).start();
+            }
+        }
+        danmuApiEditorView.animate().cancel();
+        if (danmuApiExpanded) {
+            danmuApiEditorView.setVisibility(View.VISIBLE);
+            danmuApiEditorView.setAlpha(0f);
+            danmuApiEditorView.animate().alpha(1f).setDuration(200).start();
+        } else {
+            danmuApiEditorView.animate().alpha(0f).setDuration(160)
+                    .withEndAction(new Runnable() {
+                        @Override
+                        public void run() {
+                            danmuApiEditorView.setVisibility(View.GONE);
+                        }
+                    }).start();
+            if (danmuApiInput != null) {
+                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(danmuApiInput.getWindowToken(), 0);
+            }
+        }
+    }
+
+    /**
+     * 用输入框中的地址（未填则用内置默认）真实发起一次弹幕搜索，验证接口是否可用。
+     * 测试通过后地址立即生效，无需再点确定。
+     */
+    private void testDanmuApiInline(String api) {
+        if (danmuApiTestResult == null) return;
+        if (api.isEmpty()) {
+            DanmakuApi.setUseDefault(true);
+        } else {
+            DanmakuApi.setCustomApi(api);
+        }
+        danmuApiTestResult.setVisibility(View.VISIBLE);
+        danmuApiTestResult.setText("正在测试…");
+        DanmakuApi.searchList("庆余年", "1", new DanmakuApi.SearchListCallback() {
+            @Override
+            public void onSuccess(List<DanmuSearchResult> results) {
+                int count = results == null ? 0 : results.size();
+                if (count > 0) {
+                    danmuApiTestResult.setText("✔ 接口正常，匹配到 " + count + " 条弹幕");
+                } else {
+                    danmuApiTestResult.setText("接口可访问，但没有匹配到弹幕");
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+                danmuApiTestResult.setText("✘ 接口异常：" + message);
+            }
+        });
+    }
+
+    private void saveDanmuApiInline(String api) {
+        DanmakuApi.setCustomApi(api);
+        GlassTip.show(this, api.isEmpty() ? "已恢复默认接口" : "弹幕接口已保存");
+        refreshRows();
+        if (danmuApiExpanded) toggleDanmuApiEditor();
+    }
+
+    private void saveDanmuDefaultInline() {
+        DanmakuApi.setUseDefault(true);
+        if (danmuApiInput != null) danmuApiInput.setText("");
+        GlassTip.show(this, "已使用内置默认接口");
+        refreshRows();
+    }
+
+    /* ==================== 片头片尾数据库接口：switch + 卡片内嵌地址编辑 ==================== */
+
+    /** 展开 / 折叠某来源的地址编辑区（同时只展开一个；再点收起） */
+    private void toggleIntroSourceEditor(final String sourceId, final View row) {
+        if (introEditorSourceId != null && introEditorSourceId.equals(sourceId)
+                && introEditorView != null) {
+            collapseIntroEditor(true);
+            return;
+        }
+        // 先收起已展开的另一个
+        if (introEditorView != null) collapseIntroEditor(false);
+        final IntroDbApi.DbSource source = IntroDbApi.findSource(sourceId);
+        if (source == null || row == null) return;
+        LinearLayout card = (LinearLayout) row.getParent();
+        if (card == null) return;
+        LinearLayout editor = buildIntroSourceEditor(source);
+        introEditorView = editor;
+        introEditorSourceId = sourceId;
+        introEditorRowView = row;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        card.addView(editor, card.indexOfChild(row) + 1, lp);
+        editor.setVisibility(View.VISIBLE);
+        editor.setAlpha(0f);
+        editor.animate().alpha(1f).setDuration(200).start();
+        View arrow = row.findViewById(R.id.tvRowArrow);
+        if (arrow != null) {
+            arrow.animate().cancel();
+            arrow.animate().rotation(90f).setDuration(180).start();
+        }
+    }
+
+    /** @param animate true 淡出收场；false 立即撤（切换展开目标时） */
+    private void collapseIntroEditor(final boolean animate) {
+        if (introEditorView != null) {
+            final LinearLayout editor = introEditorView;
+            if (animate) {
+                editor.animate().alpha(0f).setDuration(160)
+                        .withEndAction(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (editor.getParent() instanceof ViewGroup) {
+                                    ((ViewGroup) editor.getParent()).removeView(editor);
+                                }
+                            }
+                        }).start();
+            } else {
+                editor.animate().cancel();
+                if (editor.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) editor.getParent()).removeView(editor);
+                }
+            }
+            if (introEditorInput != null) {
+                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(introEditorInput.getWindowToken(), 0);
+            }
+        }
+        if (introEditorRowView != null) {
+            View arrow = introEditorRowView.findViewById(R.id.tvRowArrow);
+            if (arrow != null) {
+                arrow.animate().cancel();
+                arrow.animate().rotation(0f).setDuration(180).start();
+            }
+        }
+        introEditorView = null;
+        introEditorSourceId = null;
+        introEditorRowView = null;
+    }
+
+    /** 编辑区：地址输入 + 说明 + 恢复默认/删除 + 确定两颗 chip（复用弹幕那套 chip 样式） */
+    private LinearLayout buildIntroSourceEditor(final IntroDbApi.DbSource source) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(4), 0, dp(4), dp(12));
+
+        introEditorInput = new EditText(this);
+        introEditorInput.setBackground(getResources().getDrawable(R.drawable.bg_glass_card_pill));
+        introEditorInput.setSingleLine(true);
+        introEditorInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        introEditorInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        introEditorInput.setHint("https://");
+        introEditorInput.setTextColor(getResources().getColor(R.color.ui_text_primary));
+        introEditorInput.setHintTextColor(getResources().getColor(R.color.ui_muted));
+        introEditorInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        introEditorInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        introEditorInput.setText(source.url == null ? "" : source.url);
+        introEditorInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE
+                        || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                    saveIntroSourceUrl(source);
+                    return true;
+                }
+                return false;
+            }
+        });
+        box.addView(introEditorInput, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView tip = new TextView(this);
+        tip.setTextColor(getResources().getColor(R.color.ui_muted));
+        tip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tip.setText(source.builtIn
+                ? "默认：" + IntroDbApi.getDefaultUrl(source.format) + "，可改为镜像或代理地址"
+                : "自定义接口可填自己的域名；查询格式在下方一行选择");
+        LinearLayout.LayoutParams tipLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tipLp.topMargin = dp(6);
+        box.addView(tip, tipLp);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams btnRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
+        btnRowLp.topMargin = dp(8);
+        buttons.setLayoutParams(btnRowLp);
+        if (source.builtIn) {
+            buttons.addView(makeEditorChip("恢复默认", false, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    if (IntroDbApi.resetSourceUrl(source.id)) {
+                        IntroDbApi.DbSource cur = IntroDbApi.findSource(source.id);
+                        if (cur != null && introEditorInput != null) {
+                            introEditorInput.setText(cur.url);
+                            introEditorInput.setSelection(introEditorInput.getText().length());
+                        }
+                        GlassTip.show(MineSettingActivity.this, "已恢复默认地址");
+                        refreshRows();
+                    }
+                }
+            }));
+        } else {
+            TextView del = makeEditorChip("删除", false, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    IntroDbApi.removeSource(source.id);
+                    introEditorView = null;
+                    introEditorSourceId = null;
+                    introEditorRowView = null;
+                    GlassTip.show(MineSettingActivity.this, "已删除 " + source.name);
+                    rebuildSection();
+                }
+            });
+            del.setTextColor(getResources().getColor(R.color.ui_danger));
+            buttons.addView(del);
+        }
+        buttons.addView(makeEditorChip("确定", true, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                saveIntroSourceUrl(source);
+            }
+        }));
+        box.addView(buttons);
+        return box;
+    }
+
+    private void saveIntroSourceUrl(final IntroDbApi.DbSource source) {
+        if (introEditorInput == null) return;
+        String value = introEditorInput.getText().toString().trim();
+        if (TextUtils.isEmpty(value)) {
+            GlassTip.show(this, "地址不能为空");
+            return;
+        }
+        IntroDbApi.updateSourceUrl(source.id, value);
+        GlassTip.show(this, "地址已保存");
+        refreshRows();
+        collapseIntroEditor(true);
     }
 
     private void postDanmuSettings() {

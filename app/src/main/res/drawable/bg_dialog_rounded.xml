@@ -1,5 +1,25 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/color_dialog_bg" />
-    <corners android:radius="16dp"/>
-    <padding android:left="10dp" android:right="10dp" android:top="10dp" android:bottom="10dp"/>
-</shape>
+<?xml version="1.0" encoding="utf-8"?><!--
+  简介对话框底（DescDialog）：主题玻璃面板。
+  原版写死 color_dialog_bg 半透明黑，日间主题下是一块黑玻璃；改为 glass_card_*
+  主题色——日=白玻璃、夜=深玻璃，与全部功能对话框同一套观感。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/dialog_panel_bg" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/dialog_panel_stroke" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="16dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="@color/glass_card_highlight"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

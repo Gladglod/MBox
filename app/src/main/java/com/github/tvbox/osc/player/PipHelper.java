@@ -7,7 +7,9 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Rational;
 
+import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
+import com.orhanobut.hawk.Hawk;
 
 import java.util.Locale;
 
@@ -52,13 +54,34 @@ public final class PipHelper {
         return new Rational(Math.round(ratio * 1000f), 1000);
     }
 
-    private static PictureInPictureParams buildParams(float videoRatio) {
+    /**
+     * 「自动画中画」（播放设定→后台播放）当前配置：返回桌面 / 切换应用时自动进系统画中画。
+     * 与 PIP_MODE 独立：设为 OFF 时整体关闭；设为 OVERLAY 时走 FloatPlayWindow，不走本方法。
+     */
+    public static boolean isAutoEnterEnabled() {
+        try {
+            return Hawk.get(HawkConfig.PIP_AUTO_ENTER, false)
+                    && Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM) == HawkConfig.PIP_MODE_SYSTEM;
+        } catch (Throwable th) {
+            return false;
+        }
+    }
+
+    private static PictureInPictureParams buildParams(float videoRatio, boolean autoEnter) {
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder();
         builder.setAspectRatio(ratioToRational(videoRatio));
         try {
             // 无缝缩放：PiP 边角拖大拖小时不触发 Activity 重启，表面连续无闪断
             // （API 26+ 可用；Android 12+ 该行为由系统自动接管，此调用被平滑忽略）
             builder.setSeamlessResizeEnabled(true);
+        } catch (Throwable ignored) {
+        }
+        try {
+            // 自动画中画（Android 12+ 原生路径）：播放中滑动回桌面时由系统自动进入 PiP，
+            // 无需 App 在 onUserLeaveHint 里手动触发。非 S 版本无此 API，走 onUserLeaveHint。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.setAutoEnterEnabled(autoEnter);
+            }
         } catch (Throwable ignored) {
         }
         return builder.build();
@@ -87,7 +110,8 @@ public final class PipHelper {
             LOG.i("pip enter: device="
                     + Build.MANUFACTURER + "/" + Build.MODEL
                     + " sdk=" + Build.VERSION.SDK_INT);
-            activity.enterPictureInPictureMode(buildParams(videoRatio));
+            activity.enterPictureInPictureMode(
+                    buildParams(videoRatio, isAutoEnterEnabled()));
             return true;
         } catch (Throwable th) {
             th.printStackTrace();
@@ -99,7 +123,23 @@ public final class PipHelper {
     public static void updateParams(Activity activity, float videoRatio) {
         if (!isInPip(activity)) return;
         try {
-            activity.setPictureInPictureParams(buildParams(videoRatio));
+            activity.setPictureInPictureParams(
+                    buildParams(videoRatio, isAutoEnterEnabled()));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 非播放中的 PiP 暂未进入 PiP 时，把「自动画中画」随播放状态同步进 PiP 参数
+     * （Android 12+ 有效）：playing=true 时滑回桌面自动进 PiP；暂停/出错时关闭，
+     * 避免把冻结的暂停画面顶进小窗。仅在全屏播放且未处于任何小窗时调用。
+     */
+    public static void syncAutoEnterParams(Activity activity, float videoRatio, boolean playing) {
+        if (activity == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
+        if (isInPip(activity)) return;
+        try {
+            activity.setPictureInPictureParams(
+                    buildParams(videoRatio, isAutoEnterEnabled() && playing));
         } catch (Throwable ignored) {
         }
     }

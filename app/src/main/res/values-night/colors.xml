@@ -30,13 +30,13 @@
     <color name="ui_material">#F50E0E12</color>
 
     <!-- 弹窗调色板：夜间保持深色面板（日间那套浅色在 values/colors.xml 里） -->
-    <color name="dialog_panel_bg">#D91D202A</color>
+    <color name="dialog_panel_bg">#C71D202A</color>
     <color name="dialog_panel_stroke">#33FFFFFF</color>
-    <color name="dialog_control_bg">#80353744</color>
-    <color name="dialog_control_bg_focused">#CC1890FF</color>
+    <color name="dialog_control_bg">#73353744</color>
+    <color name="dialog_control_bg_focused">#B81890FF</color>
     <color name="dialog_control_stroke">#22FFFFFF</color>
     <color name="dialog_control_stroke_focused">#CC02F8E1</color>
-    <color name="dialog_input_bg">#66353744</color>
+    <color name="dialog_input_bg">#59353744</color>
     <color name="dialog_text_primary">#FFFFFFFF</color>
     <color name="dialog_text_hint">#80FFFFFF</color>
 

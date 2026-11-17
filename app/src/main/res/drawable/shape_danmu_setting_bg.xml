@@ -1,8 +1,26 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <corners android:radius="@dimen/vs_10" />
-    <solid android:color="@color/dialog_panel_bg" />
-    <stroke
-        android:width="@dimen/vs_1"
-        android:color="@color/dialog_panel_stroke" />
-</shape>
+<?xml version="1.0" encoding="utf-8"?><!--
+  功能对话框通用玻璃面板（About/Api/备份/弹幕/提示/更新/XWalk/输入框等 18 个布局共用）。
+  原版是 10dp 小圆角平面板；升级为 iOS 玻璃卡片质感：
+  18dp 大圆角 + dialog_panel_* 主题底（日=近白 / 夜=深蓝灰，自动切换）
+  + 细描边 + 顶部高光渐变，与确认框（bg_glass_alert）同一套观感。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="20dp" />
+            <solid android:color="@color/dialog_panel_bg" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/dialog_panel_stroke" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="20dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="@color/glass_card_highlight"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

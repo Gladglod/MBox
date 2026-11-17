@@ -28,3 +28,29 @@
 
 背景优先级：自定义配图（`files/wp`）> 纯色（`HawkConfig.WALLPAPER_COLOR`）> 默认 `app_bg`。
 设置页里选完立即生效（`BaseActivity.applyWallpaperNow()`），其他页面在 `onResume` 时自动跟随。
+
+## 弹幕接口设置
+
+「我的 → 弹幕设定 → 自定义接口」改为**卡片内嵌展开编辑**（`danmuApiEditor`）：
+点击行后箭头旋转 90°、编辑区淡入展开，支持回车保存、「一键测试」真实发起一次弹幕搜索验证可用性
+（测试通过地址立即生效，无需再点确定）、「恢复默认」；不再使用独立的 `DanmuApiDialog`（已删除）。
+地址输入类对话框统一由新的 **`TextInputDialog`** 提供（复用 `NumberInputDialog` 的玻璃布局，
+文本输入放开长度与输入类型）。TV 端 `ModelSettingFragment` 同步改为内嵌编辑（`fragment_model.xml` 新增编辑区）。
+
+## 片头片尾设定（独立分组）
+
+`MineSettingActivity.SECTION_INTRO`，从「播放设定 → 片头片尾 → 片头片尾设定」跳入，包含：
+
+- **自动跳过片头**开关（默认开）、**自动跳过片尾**开关（默认关）；
+- **片尾触发延迟**：进入片尾后多少秒跳过（0~60 秒，数字输入弹窗）；
+- **数据库接口管理**：每个来源一张卡片，行内 switch 决定启用（单选），点击卡片内嵌展开地址编辑；
+  内置 TheIntroDB / IntroDB 两个来源（不可删除、地址可改），支持「添加自定义接口」
+  与来源「格式」切换（TheIntroDB v4 兼容 / IntroDB 兼容）。
+
+实现细节见 [docs/design-intro-skip.md](design-intro-skip.md)。
+
+## 自动画中画
+
+「播放设定 → 后台播放 → 自动画中画」开关（`HawkConfig.PIP_AUTO_ENTER`，默认关），
+Android 12+ 走系统 `setAutoEnterEnabled` 原生路径，低版本在 `onUserLeaveHint` 手动进入，
+暂停 / 出错时不进小窗。实现细节见 [docs/design-intro-skip.md](design-intro-skip.md)。

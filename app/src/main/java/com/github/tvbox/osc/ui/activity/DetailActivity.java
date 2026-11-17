@@ -2612,6 +2612,20 @@ public class DetailActivity extends BaseActivity {
         LOG.i("pip mode changed -> " + isInPictureInPictureMode);
     }
 
+    /**
+     * 「自动画中画」触发点（播放设定→后台播放→自动画中画）：用户按 Home / 切换到
+     * 其他应用时系统回调，转发给播放 Fragment 按画中画模式分发（详见
+     * {@link PlayFragment#autoEnterOnUserLeave()}）。App 内部跳转也会触发本回调，
+     * 因此仅在「正在播放视频」时动作，开关默认关闭（按需开启）。
+     */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (playFragment != null) {
+            playFragment.autoEnterOnUserLeave();
+        }
+    }
+
     void releasePlayFragment() {
         if (playFragment == null) return;
         getSupportFragmentManager().beginTransaction().remove(playFragment).commitNowAllowingStateLoss();

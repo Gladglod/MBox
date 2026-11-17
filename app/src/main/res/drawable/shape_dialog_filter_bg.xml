@@ -1,8 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-<!--    筛选页背景颜色-->
-    <corners
-        android:topLeftRadius="@dimen/vs_10"
-        android:topRightRadius="@dimen/vs_10" />
-    <solid android:color="@color/color_99FFFFFF" />
-</shape>
+<?xml version="1.0" encoding="utf-8"?><!--
+  筛选页（GridFilterDialog）底部玻璃面板：
+  原版写死 color_99FFFFFF 半透明白；改为 dialog_panel_* 主题玻璃 +
+  顶部高光渐变，与剧集选集抽屉（bg_drawer_sheet）同一套观感。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners
+                android:topLeftRadius="18dp"
+                android:topRightRadius="18dp" />
+            <solid android:color="@color/dialog_panel_bg" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/dialog_panel_stroke" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners
+                android:topLeftRadius="18dp"
+                android:topRightRadius="18dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="@color/glass_card_highlight"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

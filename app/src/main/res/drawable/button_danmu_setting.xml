@@ -1,21 +1,39 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  对话框通用玻璃按钮（与「离线缓存删除确认」对话框同一套 chip 观感）：
+  常态 = bg_glass_chip 同款玻璃（glass_row_* 主题场域 + 顶部高光）；
+  焦点态 = bg_chip_selected 同款强调色（ui_accent 描边 + ui_accent_soft 场域）。
+  日=浅玻璃/深字，夜=深玻璃/白字，全部走主题色自动切换。
+-->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
-        <shape>
-            <corners android:radius="@dimen/vs_6" />
-            <solid android:color="@color/dialog_control_bg_focused" />
+        <shape android:shape="rectangle">
+            <corners android:radius="10dp" />
+            <solid android:color="@color/ui_accent_soft" />
             <stroke
-                android:width="@dimen/vs_1"
-                android:color="@color/dialog_control_stroke_focused" />
+                android:width="1dp"
+                android:color="@color/ui_accent" />
         </shape>
     </item>
     <item>
-        <shape>
-            <corners android:radius="@dimen/vs_6" />
-            <solid android:color="@color/dialog_control_bg" />
-            <stroke
-                android:width="@dimen/vs_1"
-                android:color="@color/dialog_control_stroke" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:radius="10dp" />
+                    <solid android:color="@color/glass_row_fill" />
+                    <stroke
+                        android:width="1dp"
+                        android:color="@color/glass_row_stroke" />
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:radius="10dp" />
+                    <gradient
+                        android:angle="270"
+                        android:startColor="@color/glass_card_highlight"
+                        android:endColor="#00FFFFFF" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
 </selector>

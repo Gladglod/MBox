@@ -20,6 +20,7 @@
             android:id="@+id/tvTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center"
             android:text="发现新版本"
             android:textColor="@color/dialog_text_primary"
             android:textSize="@dimen/ts_30"

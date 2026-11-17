@@ -16,7 +16,7 @@ import com.github.tvbox.osc.R;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 一个轻量的数值输入弹窗，与 {@link DanmuApiDialog} 同一套视觉，
+ * 一个轻量的数值输入弹窗，与设置页各对话框同一套视觉，
  * 避免设置页里混进系统风格弹窗。
  *
  * <ul>
@@ -99,8 +99,16 @@ public class NumberInputDialog extends BaseDialog {
                 return false;
             }
         });
-        findViewById(R.id.btnCancel).setOnClickListener(v -> dismiss());
-        findViewById(R.id.btnConfirm).setOnClickListener(v -> submit());
+        findViewById(R.id.btnCancel).setOnClickListener(v -> {
+            if (!allowGlassClick(v)) return;
+            dismiss();
+        });
+        findViewById(R.id.btnConfirm).setOnClickListener(v -> {
+            if (!allowGlassClick(v)) return;
+            submit();
+        });
+        bindGlassPressEffect(findViewById(R.id.btnCancel));
+        bindGlassPressEffect(findViewById(R.id.btnConfirm));
     }
 
     private void submit() {

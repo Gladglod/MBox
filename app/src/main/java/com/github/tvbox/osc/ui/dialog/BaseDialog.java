@@ -6,9 +6,12 @@ import android.content.Context;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
 
 import androidx.annotation.NonNull;
 
@@ -29,6 +32,50 @@ public class BaseDialog extends Dialog {
     protected void onCreate(Bundle savedInstanceState) {
         CutoutUtil.adaptCutoutAboveAndroidP(this, true);//设置刘海
         super.onCreate(savedInstanceState);
+    }
+
+    /* ==================== 玻璃按钮通用动效（与播放页/各页面同一套） ==================== */
+
+    /**
+     * 玻璃按钮统一按压效果：按下缩至 0.86（90ms）、松开平滑回弹 1.0（180ms 减速曲线）。
+     * 只动观感不改点击逻辑，各功能对话框的按钮统一挂这一套。
+     */
+    protected void bindGlassPressEffect(final View view) {
+        if (view == null) return;
+        view.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        v.animate().cancel();
+                        v.animate().scaleX(0.86f).scaleY(0.86f).setDuration(90).start();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.animate().cancel();
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(180)
+                                .setInterpolator(new DecelerateInterpolator()).start();
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
+    private long mLastGlassClickAt = 0L;
+    private int mLastGlassClickId = 0;
+
+    /** @return true 放行本次点击；false 拦截（同一按钮 0.45s 内的连点） */
+    protected boolean allowGlassClick(View v) {
+        if (v == null) return false;
+        long now = SystemClock.uptimeMillis();
+        int id = v.getId();
+        if (id == mLastGlassClickId && now - mLastGlassClickAt < 450) {
+            return false;
+        }
+        mLastGlassClickAt = now;
+        mLastGlassClickId = id;
+        return true;
     }
 
     @Override

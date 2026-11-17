@@ -136,6 +136,8 @@ public class HawkConfig {
     public static final String PIP_WINDOW_SIZE = "pip_window_size";
     /** 自定义小窗上次位置（"x|y"），下次进窗恢复 */
     public static final String PIP_WINDOW_POS = "pip_window_pos";
+    /** 自动画中画：返回桌面 / 切换其他应用时，按 PIP_MODE 自动进入系统画中画或自定义小窗 */
+    public static final String PIP_AUTO_ENTER = "pip_auto_enter";
 
     /* ===== 版本更新（GitHub Releases） ===== */
     /** 启动时自动检查更新，默认开启（每天最多一次） */
@@ -147,6 +149,23 @@ public class HawkConfig {
 
     /** 换源测速延迟缓存（json：{sourceKey: [latencyMs, timestamp]}） */
     public static final String SOURCE_SPEED_CACHE = "source_speed_cache";
+
+    /* ===== 片头片尾自动跳过（联网数据库） ===== */
+    /** 自动跳过片头：查询数据库拿到片头区间，播放进入区间后跳到片尾结束点 */
+    public static final String INTRO_SKIP_OPEN = "intro_skip_open";
+    /** 自动跳过片尾：进入片尾设定秒数后自动跳过（跳到片尾结束或下一集） */
+    public static final String INTRO_SKIP_CREDITS = "intro_skip_credits";
+    /** 进入片尾多少秒后触发跳过（0~60） */
+    public static final String INTRO_SKIP_CREDITS_DELAY = "intro_skip_credits_delay";
+    /** 片头片尾数据库来源列表（json 数组：[{id,name,url,format,builtIn}]） */
+    public static final String INTRO_DB_SOURCES = "intro_db_sources";
+    /** 当前使用的数据库来源 id */
+    public static final String INTRO_DB_ACTIVE = "intro_db_active";
+    /* 旧版单选配置：仅用于向来源列表迁移，不再读写 */
+    public static final String INTRO_DB_SOURCE = "intro_db_source";
+    public static final String INTRO_DB_CUSTOM_URL = "intro_db_custom_url";
+    /** 片头片尾查询结果的缓存 TTL（毫秒）：7 天 */
+    public static final long INTRO_SKIP_CACHE_TTL = 7 * 24 * 3600 * 1000L;
 
     public static boolean hotVodDelete;
 }

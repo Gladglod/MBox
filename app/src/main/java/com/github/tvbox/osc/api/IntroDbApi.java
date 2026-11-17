@@ -1,0 +1,624 @@
+package com.github.tvbox.osc.api;
+
+import android.os.Handler;
+import android.os.Looper;
+import android.text.TextUtils;
+
+import androidx.annotation.NonNull;
+
+import com.github.tvbox.osc.util.DanmuTitleUtil;
+import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.LOG;
+import com.github.tvbox.osc.util.OkGoHelper;
+import com.orhanobut.hawk.Hawk;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
+/**
+ * 片头片尾数据库远程接口。
+ *
+ * <p>数据库来源是一个可管理的列表（见 {@link #getSources()}）：两个内置接口的地址
+ * 可编辑（改镜像/代理），也可添加自定义接口；查询格式分两种——</p>
+ *
+ * <ul>
+ *     <li><b>TheIntroDB v4</b> {@code GET {url}/media?imdb_id=tt…&season=&episode=}
+ *         —— 返回 {@code intro / recap / credits / preview} 四类区间数组，
+ *         {@code start_ms} 或 {@code end_ms} 可为 null（片头从 0 开始 / 片尾直到片尾结束），
+ *         404 + {@code code: no_submissions} 表示该集还没有人提交过；</li>
+ *     <li><b>IntroDB</b> {@code GET {url}/segments?imdb_id=tt…&season=&episode=}
+ *         —— 电影带 {@code is_movie=true}；
+ *         返回单个对象 {@code intro / outro}，缺失为 null，
+ *         {@code no_intro} / {@code no_outro} 表示社区确认没有该区间。</li>
+ * </ul>
+ *
+ * <p>两个库都只能按 IMDb tt 号查询，不支持按片名搜索，所以这里额外提供
+ * IMDb 官方建议接口（免密钥）做「片名 → tt 号」解析。</p>
+ */
+public class IntroDbApi {
+
+    /** 查询格式：TheIntroDB v4 兼容（{url}/media） */
+    public static final int FORMAT_THEINTRODB = 0;
+    /** 查询格式：IntroDB 兼容（{url}/segments） */
+    public static final int FORMAT_INTRODB = 1;
+
+    private static final String DEFAULT_URL_THEINTRODB = "https://api.theintrodb.org/v4";
+    private static final String DEFAULT_URL_INTRODB = "https://api.introdb.app";
+    private static final String ID_BUILTIN_THEINTRODB = "builtin_theintrodb";
+    private static final String ID_BUILTIN_INTRODB = "builtin_introdb";
+
+    /** IMDb 官方片名建议接口（公开、免密钥），用于把片名解析成 tt 号 */
+    private static final String IMDB_SUGGEST_API = "https://v2.sg.media-imdb.com/suggestion";
+
+    private static final Handler handler = new Handler(Looper.getMainLooper());
+
+    /* ============================ 数据库来源 ============================ */
+
+    /** 一个数据库接口来源：内置两个不可删除，地址可改；自定义的可增删 */
+    public static class DbSource {
+        public String id;
+        public String name;
+        public String url;
+        /** 查询格式：{@link #FORMAT_THEINTRODB} / {@link #FORMAT_INTRODB} */
+        public int format;
+        public boolean builtIn;
+    }
+
+    public static String getDefaultUrl(int format) {
+        return format == FORMAT_INTRODB ? DEFAULT_URL_INTRODB : DEFAULT_URL_THEINTRODB;
+    }
+
+    public static String getFormatName(int format) {
+        return format == FORMAT_INTRODB ? "IntroDB" : "TheIntroDB v4";
+    }
+
+    /** 全部数据库来源（首次调用会生成默认列表并迁移旧版单选配置） */
+    public static List<DbSource> getSources() {
+        List<DbSource> list = parseSources(Hawk.get(HawkConfig.INTRO_DB_SOURCES, ""));
+        if (list == null) {
+            list = new ArrayList<>();
+            DbSource theIntroDb = new DbSource();
+            theIntroDb.id = ID_BUILTIN_THEINTRODB;
+            theIntroDb.name = "TheIntroDB";
+            theIntroDb.url = DEFAULT_URL_THEINTRODB;
+            theIntroDb.format = FORMAT_THEINTRODB;
+            theIntroDb.builtIn = true;
+            list.add(theIntroDb);
+            DbSource introDb = new DbSource();
+            introDb.id = ID_BUILTIN_INTRODB;
+            introDb.name = "IntroDB";
+            introDb.url = DEFAULT_URL_INTRODB;
+            introDb.format = FORMAT_INTRODB;
+            introDb.builtIn = true;
+            list.add(introDb);
+            migrateLegacy(list);
+            saveSources(list);
+        }
+        return list;
+    }
+
+    public static void saveSources(List<DbSource> sources) {
+        JSONArray array = new JSONArray();
+        if (sources != null) {
+            for (DbSource source : sources) {
+                try {
+                    JSONObject obj = new JSONObject();
+                    obj.put("id", source.id);
+                    obj.put("name", source.name);
+                    obj.put("url", source.url);
+                    obj.put("format", source.format);
+                    obj.put("builtIn", source.builtIn);
+                    array.put(obj);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        Hawk.put(HawkConfig.INTRO_DB_SOURCES, array.toString());
+    }
+
+    /** 按 id 找来源，找不到返回 null */
+    public static DbSource findSource(String id) {
+        if (TextUtils.isEmpty(id)) return null;
+        for (DbSource source : getSources()) {
+            if (id.equals(source.id)) return source;
+        }
+        return null;
+    }
+
+    /** 当前使用的来源（active 无效时退回第一个） */
+    public static DbSource getActiveSource() {
+        List<DbSource> sources = getSources();
+        if (sources.isEmpty()) return null;
+        String active = Hawk.get(HawkConfig.INTRO_DB_ACTIVE, ID_BUILTIN_THEINTRODB);
+        for (DbSource source : sources) {
+            if (active.equals(source.id)) return source;
+        }
+        // 所有接口的开关都关（或指向已删除的源）时不再兜底第一个——
+        // 视为未启用任何数据库，querySegments 会直接跳过查询
+        return null;
+    }
+
+    public static String getActiveSourceId() {
+        DbSource source = getActiveSource();
+        return source == null ? "" : source.id;
+    }
+
+    public static void setActiveSource(String id) {
+        Hawk.put(HawkConfig.INTRO_DB_ACTIVE, id == null ? "" : id);
+    }
+
+    /** 当前选择是否可用（必须有可用来源且地址非空） */
+    public static boolean isConfigured() {
+        DbSource source = getActiveSource();
+        return source != null && !TextUtils.isEmpty(source.url);
+    }
+
+    public static DbSource addCustomSource(String name, String url, int format) {
+        DbSource source = new DbSource();
+        source.id = UUID.randomUUID().toString();
+        source.name = TextUtils.isEmpty(name) ? "自定义接口" : name.trim();
+        source.url = url == null ? "" : url.trim();
+        source.format = format;
+        source.builtIn = false;
+        List<DbSource> sources = getSources();
+        sources.add(source);
+        saveSources(sources);
+        return source;
+    }
+
+    /** 编辑地址；来源不存在返回 false */
+    public static boolean updateSourceUrl(String id, String url) {
+        List<DbSource> sources = getSources();
+        for (DbSource source : sources) {
+            if (source.id.equals(id)) {
+                source.url = url == null ? "" : url.trim();
+                saveSources(sources);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean setSourceFormat(String id, int format) {
+        List<DbSource> sources = getSources();
+        for (DbSource source : sources) {
+            if (source.id.equals(id)) {
+                source.format = format;
+                saveSources(sources);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 内置来源的地址恢复默认 */
+    public static boolean resetSourceUrl(String id) {
+        List<DbSource> sources = getSources();
+        for (DbSource source : sources) {
+            if (source.id.equals(id) && source.builtIn) {
+                source.url = getDefaultUrl(source.format);
+                saveSources(sources);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 只允许删除自定义来源 */
+    public static boolean removeSource(String id) {
+        List<DbSource> sources = getSources();
+        for (int i = 0; i < sources.size(); i++) {
+            DbSource source = sources.get(i);
+            if (source.id.equals(id) && !source.builtIn) {
+                sources.remove(i);
+                saveSources(sources);
+                if (id.equals(Hawk.get(HawkConfig.INTRO_DB_ACTIVE, ""))) {
+                    setActiveSource(sources.isEmpty() ? "" : sources.get(0).id);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 序列化来源列表；内容损坏返回 null（触发重建默认） */
+    private static List<DbSource> parseSources(String json) {
+        if (TextUtils.isEmpty(json)) return null;
+        try {
+            JSONArray array = new JSONArray(json);
+            if (array.length() == 0) return null;
+            List<DbSource> list = new ArrayList<>();
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.optJSONObject(i);
+                if (obj == null) continue;
+                DbSource source = new DbSource();
+                source.id = obj.optString("id", "");
+                source.name = obj.optString("name", "");
+                source.url = obj.optString("url", "");
+                source.format = obj.optInt("format", FORMAT_THEINTRODB);
+                source.builtIn = obj.optBoolean("builtIn", false);
+                if (TextUtils.isEmpty(source.id) || TextUtils.isEmpty(source.name)) continue;
+                list.add(source);
+            }
+            return list.isEmpty() ? null : list;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** 旧版单选配置（INTRO_DB_SOURCE + INTRO_DB_CUSTOM_URL）迁移进来源列表 */
+    private static void migrateLegacy(List<DbSource> list) {
+        int old = Hawk.get(HawkConfig.INTRO_DB_SOURCE, -1);
+        if (old == 2) {
+            String customUrl = Hawk.get(HawkConfig.INTRO_DB_CUSTOM_URL, "");
+            if (!TextUtils.isEmpty(customUrl)) {
+                DbSource custom = new DbSource();
+                custom.id = UUID.randomUUID().toString();
+                custom.name = "自定义";
+                custom.url = customUrl;
+                custom.format = FORMAT_THEINTRODB;
+                custom.builtIn = false;
+                list.add(custom);
+                setActiveSource(custom.id);
+                return;
+            }
+        }
+        if (old == 1) setActiveSource(ID_BUILTIN_INTRODB);
+        // 其余情况保持默认 TheIntroDB
+    }
+
+    /* ============================ 区间查询 ============================ */
+
+    /** 一次查询解析出的片头 / 片尾区间（毫秒），全部 null 表示该集没有数据 */
+    public static class Segments {
+        public Long introStartMs;
+        public Long introEndMs;
+        public Long creditsStartMs;
+        /** null 表示片尾一直到视频结束 */
+        public Long creditsEndMs;
+
+        public boolean hasIntro() {
+            return introEndMs != null && introEndMs > (introStartMs == null ? 0 : introStartMs);
+        }
+
+        public boolean hasCredits() {
+            return creditsStartMs != null && creditsStartMs > 0;
+        }
+    }
+
+    public interface SegmentsCallback {
+        void onResult(Segments segments);
+    }
+
+    public interface IdCallback {
+        /** id 为空串表示没解析到（也用于负缓存） */
+        void onResult(String imdbId);
+    }
+
+    /**
+     * 按当前使用的来源查询某一集的片头 / 片尾区间。
+     *
+     * @param season  季（电影传 0）
+     * @param episode 集（电影传 0）
+     * @param isMovie 电影查询时免带季集
+     */
+    public static void querySegments(String imdbId, int season, int episode, boolean isMovie,
+                                     final SegmentsCallback callback) {
+        if (TextUtils.isEmpty(imdbId) || callback == null) return;
+        final DbSource source = getActiveSource();
+        if (source == null || TextUtils.isEmpty(source.url)) return;
+        String url;
+        final boolean theIntroDbStyle;
+        try {
+            String encoded = URLEncoder.encode(imdbId, "UTF-8");
+            if (source.format == FORMAT_INTRODB) {
+                url = normalizeBase(source.url) + "/segments?imdb_id=" + encoded;
+                if (isMovie) {
+                    url += "&is_movie=true";
+                } else {
+                    url += "&season=" + Math.max(1, season) + "&episode=" + 1;
+                }
+                theIntroDbStyle = false;
+            } else {
+                url = normalizeBase(source.url) + "/media?imdb_id=" + encoded;
+                if (!isMovie) url += "&season=" + Math.max(1, season) + "&episode=" + 1;
+                theIntroDbStyle = true;
+            }
+        } catch (Throwable th) {
+            LOG.e("echo-intro query 拼接 URL 失败: " + th.getMessage());
+            return;
+        }
+        LOG.i("echo-intro query: url=" + url + "（来源=" + source.name + ", format="
+                + getFormatName(source.format) + "）");
+        final String urlFinal = url;
+        Request request = new Request.Builder().url(url).get().build();
+        httpClient().newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull final IOException e) {
+                LOG.e("echo-intro query 请求失败: " + e.getMessage() + ", url=" + urlFinal);
+                postResult(callback, null);
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                Segments segments = null;
+                int code = response.code();
+                try {
+                    // 404 在这两个数据库里都表示「该集没有数据」而不是查询失败
+                    if (code == 200) {
+                        String body = response.body() == null ? "" : response.body().string();
+                        if (theIntroDbStyle) {
+                            segments = parseTheIntroDb(body);
+                        } else {
+                            segments = parseIntroDb(body);
+                        }
+                        LOG.i("echo-intro query 响应 200: "
+                                + (segments == null || (!segments.hasIntro() && !segments.hasCredits())
+                                ? "无可用区间"
+                                : (segments.hasIntro()
+                                ? "intro=[" + (segments.introStartMs == null ? 0 : segments.introStartMs)
+                                + "," + segments.introEndMs + "]ms" : "intro=无")
+                                + (segments.hasCredits()
+                                ? ", credits=[" + segments.creditsStartMs + "," + segments.creditsEndMs + "]ms"
+                                : ", credits=无"))
+                                + "，body=" + (body.length() > 500 ? body.substring(0, 500) + "…" : body));
+                    } else {
+                        LOG.i("echo-intro query 响应 " + code
+                                + (code == 404 ? "（该集无数据）" : "（非 200，视为查询失败）"));
+                    }
+                } catch (Throwable th) {
+                    LOG.e("echo-intro query 解析响应失败: " + th.getMessage());
+                } finally {
+                    try {
+                        if (response.body() != null) response.close();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                postResult(callback, segments);
+            }
+        });
+    }
+
+    /** TheIntroDB v4：intro / credits 是区间数组，start 或 end 可为 null */
+    private static Segments parseTheIntroDb(String body) {
+        Segments segments = new Segments();
+        try {
+            JSONObject json = new JSONObject(body);
+            JSONArray intro = json.optJSONArray("intro");
+            if (intro != null && intro.length() > 0) {
+                JSONObject item = intro.optJSONObject(0);
+                if (item != null && item.optLong("end_ms", 0) > 0) {
+                    segments.introStartMs = item.isNull("start_ms") ? 0L : item.optLong("start_ms", 0);
+                    segments.introEndMs = item.optLong("end_ms", 0);
+                }
+            }
+            JSONArray credits = json.optJSONArray("credits");
+            if (credits != null && credits.length() > 0) {
+                JSONObject item = credits.optJSONObject(0);
+                if (item != null && item.optLong("start_ms", 0) > 0) {
+                    segments.creditsStartMs = item.optLong("start_ms", 0);
+                    segments.creditsEndMs = item.isNull("end_ms") ? null : item.optLong("end_ms", 0);
+                    if (segments.creditsEndMs != null && segments.creditsEndMs <= 0) segments.creditsEndMs = null;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return segments;
+    }
+
+    /** IntroDB：intro / outro 是单个对象（或 null） */
+    private static Segments parseIntroDb(String body) {
+        Segments segments = new Segments();
+        try {
+            JSONObject json = new JSONObject(body);
+            JSONObject intro = json.optJSONObject("intro");
+            if (intro != null) {
+                long start = intro.optLong("start_ms", 0);
+                long end = intro.optLong("end_ms", 0);
+                if (end > start) {
+                    segments.introStartMs = start;
+                    segments.introEndMs = end;
+                }
+            }
+            JSONObject outro = json.optJSONObject("outro");
+            if (outro != null) {
+                long start = outro.optLong("start_ms", 0);
+                long end = outro.optLong("end_ms", 0);
+                if (start > 0) {
+                    segments.creditsStartMs = start;
+                    segments.creditsEndMs = end > start ? end : null;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return segments;
+    }
+
+    /* ============================ IMDb ID 解析 ============================ */
+
+    /**
+     * 片名 → IMDb ID（免密钥）。
+     * <p>IMDb 建议接口返回的标题多为英文，中文片名按「年份 + 类型 + 相关度」挑最合适的；
+     * 解析不到回调空串。</p>
+     */
+    public static void resolveImdbId(String name, int year, boolean isTv, final IdCallback callback) {
+        if (callback == null || TextUtils.isEmpty(name)) return;
+        String query = cleanQuery(name);
+        if (TextUtils.isEmpty(query)) {
+            postResult(callback, "");
+            return;
+        }
+        String url;
+        try {
+            String slug = query.toLowerCase().replaceAll("\\s+", "_");
+            char pathChar = 'a';
+            for (int i = 0; i < query.length(); i++) {
+                char ch = Character.toLowerCase(query.charAt(i));
+                if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
+                    pathChar = ch;
+                    break;
+                }
+            }
+            url = IMDB_SUGGEST_API + "/" + pathChar + "/" + URLEncoder.encode(slug, "UTF-8") + ".json";
+        } catch (Throwable th) {
+            LOG.e("echo-intro resolve 拼接 URL 失败: " + th.getMessage());
+            postResult(callback, "");
+            return;
+        }
+        LOG.i("echo-intro resolve: query=\"" + query + "\", year=" + year + ", isTv=" + isTv + ", url=" + url);
+        Request request = new Request.Builder().url(url).get().build();
+        httpClient().newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                LOG.e("echo-intro resolve 请求失败: " + e.getMessage() + ", url=" + url);
+                postResult(callback, "");
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String imdbId = "";
+                try {
+                    if (response.code() == 200) {
+                        String body = response.body() == null ? "" : response.body().string();
+                        JSONArray list = new JSONObject(body).optJSONArray("d");
+                        imdbId = pickBestMatch(list, query, year, isTv);
+                        LOG.i("echo-intro resolve 候选 " + (list == null ? 0 : list.length())
+                                + " 条 → 选中 " + (TextUtils.isEmpty(imdbId) ? "无（全被过滤/得分过低）" : imdbId));
+                    } else {
+                        LOG.i("echo-intro resolve 响应 " + response.code() + "（非 200）");
+                    }
+                } catch (Throwable th) {
+                    LOG.e("echo-intro resolve 解析响应失败: " + th.getMessage());
+                } finally {
+                    try {
+                        if (response.body() != null) response.close();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                postResult(callback, imdbId);
+            }
+        });
+    }
+
+    /** 去掉片名里的季数尾巴，数据库里同一部剧按不带季的片名收录 */
+    private static String cleanQuery(String name) {
+        String text = DanmuTitleUtil.normalize(name);
+        // 「庆余年 第二季」「权力的游戏 S03」→ 留下主片名
+        text = text.replaceAll("(?i)第\\s*[0-9一二三四五六七八九十]{1,3}\\s*[季部篇]", " ");
+        text = text.replaceAll("(?i)\\bS\\s*[0-9]{1,3}\\b", " ");
+        text = text.replaceAll("(?i)\\bSEASON\\s*[0-9]{1,3}\\b", " ");
+        text = text.replaceAll("\\s{2,}", " ").trim();
+        // 再兜一层「尾部季数」：「天下3」→「天下」
+        String base = DanmuTitleUtil.keywordBase(text);
+        return TextUtils.isEmpty(base) ? text : base;
+    }
+
+    /**
+     * 从建议结果里挑最合适的条目：
+     * 标题完全一致 &gt; 标题互相包含 &gt; 年份一致 &gt; 类型一致 &gt; 接口排序（相关度）。
+     */
+    private static String pickBestMatch(JSONArray list, String query, int year, boolean isTv) {
+        if (list == null || list.length() == 0) return "";
+        String bestId = "";
+        int bestScore = -1;
+        String compactQuery = DanmuTitleUtil.compact(query);
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject item = list.optJSONObject(i);
+            if (item == null) continue;
+            String id = item.optString("id", "");
+            if (id == null || !id.matches("tt[0-9]{7,8}")) continue;
+            String qid = item.optString("qid", "");
+            boolean itemIsTv = qid.startsWith("tv");
+            if (itemIsTv != isTv) continue;
+
+            int score = 0;
+            String title = DanmuTitleUtil.compact(item.optString("l", ""));
+            if (!TextUtils.isEmpty(title) && !TextUtils.isEmpty(compactQuery)) {
+                if (title.equals(compactQuery)) {
+                    score += 50;
+                } else if (title.contains(compactQuery) || compactQuery.contains(title)) {
+                    score += 15;
+                }
+            }
+            if (year > 0) {
+                int itemYear = item.optInt("y", 0);
+                if (itemYear == year) {
+                    score += 25;
+                } else {
+                    String yearRange = item.optString("yr", "");
+                    Matcher range = Pattern.compile("(\\d{4})-?(\\d{0,4})").matcher(yearRange);
+                    if (range.matches()) {
+                        int from = Integer.parseInt(range.group(1));
+                        String to = range.group(2);
+                        int toYear = TextUtils.isEmpty(to) ? 2999 : Integer.parseInt(to);
+                        if (toYear < 1000) toYear = Integer.parseInt(from / 100 + to);
+                        if (year >= from && year <= toYear) score += 15;
+                    }
+                }
+            }
+            // 排序兜底：越靠前相关度越高
+            score += Math.max(0, 5 - i);
+            if (score > bestScore) {
+                bestScore = score;
+                bestId = id;
+            }
+        }
+        return bestScore > 0 ? bestId : "";
+    }
+
+    /* ============================ 通用 ============================ */
+
+    private static OkHttpClient httpClient() {
+        // 单次查询给足 10s，避免弱网下一直挂着
+        return OkGoHelper.getDefaultClient().newBuilder()
+                .callTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .build();
+    }
+
+    private static <T> void postResult(final T callback, final Object value) {
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (callback instanceof SegmentsCallback) {
+                        ((SegmentsCallback) callback).onResult((Segments) value);
+                    } else if (callback instanceof IdCallback) {
+                        ((IdCallback) callback).onResult((String) value);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+    }
+
+    /**
+     * 规范化来源地址：补协议、去尾部斜杠；用户直接粘贴完整端点
+     * （…/v4/media 或 …/segments）时把端点尾巴去掉，由调用处统一拼接。
+     */
+    private static String normalizeBase(String base) {
+        String url = base == null ? "" : base.trim();
+        if (TextUtils.isEmpty(url)) return "";
+        if (!url.startsWith("http")) url = "https://" + url;
+        while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
+        if (url.endsWith("/media") || url.endsWith("/segments")) {
+            url = url.substring(0, url.lastIndexOf('/'));
+        }
+        return url;
+    }
+}
