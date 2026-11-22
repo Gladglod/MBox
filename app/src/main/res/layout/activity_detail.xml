@@ -169,7 +169,7 @@
                 android:overScrollMode="never"
                 android:visibility="gone" />
 
-            <!-- 选集标题 + 正序/倒序切换 -->
+            <!-- 选集标题 + 正序/倒序切换 + 列表展开 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -179,9 +179,8 @@
                 android:orientation="horizontal">
 
                 <TextView
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:text="选集"
                     android:textColor="@color/ui_text_primary"
                     android:textSize="14sp"
@@ -189,6 +188,30 @@
 
                 <TextView
                     android:id="@+id/mSeriesSortTv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:layout_marginStart="@dimen/vs_8"
+                    android:layout_marginLeft="@dimen/vs_8"
+                    android:background="@drawable/bg_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minWidth="56dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:singleLine="true"
+                    android:text="正序"
+                    android:textColor="@color/ui_accent"
+                    android:textSize="12sp" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <!-- 展开全部选集（列表/表格），方便长剧集查找 -->
+                <TextView
+                    android:id="@+id/tvSeriesExpand"
                     android:layout_width="wrap_content"
                     android:layout_height="30dp"
                     android:background="@drawable/bg_chip"
@@ -199,7 +222,7 @@
                     android:paddingLeft="10dp"
                     android:paddingRight="10dp"
                     android:singleLine="true"
-                    android:text="正序"
+                    android:text="列表"
                     android:textColor="@color/ui_accent"
                     android:textSize="12sp" />
             </LinearLayout>

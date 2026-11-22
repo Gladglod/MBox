@@ -70,6 +70,7 @@ public class SourceSpeedDialog extends BaseDialog {
             setOwnerActivity((Activity) context);
         }
         setCanceledOnTouchOutside(true);
+        pickListener = listener;
         setContentView(R.layout.dialog_source_speed);
         setupBottomWindow();
         for (SourceBean source : sources) {
@@ -142,6 +143,25 @@ public class SourceSpeedDialog extends BaseDialog {
                 scrim.animate().alpha(1f).setDuration(SCRIM_IN_DURATION).start();
             }
         });
+        // TV 遥控：焦点直接落到第一条源上，避免焦点停在面板本身
+        if (mRecyclerView != null) {
+            mRecyclerView.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (dismissing || mRecyclerView == null) {
+                        return;
+                    }
+                    androidx.recyclerview.widget.RecyclerView.LayoutManager lm = mRecyclerView.getLayoutManager();
+                    View first = lm == null ? null : lm.findViewByPosition(0);
+                    if (first == null) {
+                        first = mRecyclerView.getChildAt(0);
+                    }
+                    if (first != null) {
+                        first.requestFocus();
+                    }
+                }
+            }, PANEL_IN_DURATION);
+        }
     }
 
     /** 出场：面板下沉 + 蒙层淡出，动画结束后真正 dismiss */

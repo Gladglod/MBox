@@ -1,6 +1,7 @@
 package com.github.tvbox.osc.ui.activity;
 
 import android.annotation.SuppressLint;
+import android.app.ActivityOptions;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -14,6 +15,7 @@ import android.text.Html;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.content.pm.ActivityInfo;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -42,10 +44,12 @@ import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.RoomDataManger;
+import com.github.tvbox.osc.player.FloatPlayWindow;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.adapter.SeriesAdapter;
 import com.github.tvbox.osc.ui.adapter.SeriesFlagAdapter;
 import com.github.tvbox.osc.ui.dialog.DownloadSelectDialog;
+import com.github.tvbox.osc.ui.dialog.SeriesPickDialog;
 import com.github.tvbox.osc.ui.dialog.SourceSpeedDialog;
 import com.github.tvbox.osc.ui.fragment.PlayFragment;
 import com.github.tvbox.osc.util.DefaultConfig;
@@ -137,6 +141,8 @@ public class DetailActivity extends BaseActivity {
     private boolean infoExpanded = false;
 //    private TextView tvSort;
     private TextView tvSeriesSort;
+    /** 展开全部选集（列表/表格） */
+    private TextView tvSeriesExpand;
     private TextView tvChangeSource;
     /** 手动换源测速面板与单源搜索状态 */
     private SourceSpeedDialog sourceSpeedDialog;
@@ -227,6 +233,70 @@ public class DetailActivity extends BaseActivity {
             fullWindows = savedInstanceState.getBoolean(STATE_FULL_WINDOWS, false);
         }
         super.onCreate(savedInstanceState);
+        // singleTask 任务根：本实例存活期间，点应用图标应直接回到播放页（见 sDetailSessionAlive）
+        sDetailSessionAlive = true;
+        setupPipKeepClearStrip();
+    }
+
+    /* ============================ 系统 PiP 落位（上侧） ============================ */
+
+    /**
+     * PiP 落位避让条（Android 13+ 生效）：系统 PiP 的落位由 WM Shell 决定（默认屏幕
+     * 底部），App 没有直接指定位置的 API；官方提供的合法杠杆是
+     * {@link View#setPreferKeepClear}——标记「不可遮挡区域」后，落位算法
+     * （PipKeepClearAlgorithm.findUnoccludedPosition）会把 PiP 推离该区域。
+     * 在窗口底部常驻一条透明、不可交互的避让区（透明 + 无点击，触摸穿透到页面），
+     * PiP 每次进入都被推到屏幕上侧。Android &lt; 13 无此 API，静默跳过（走系统默认落位）。
+     */
+    private void setupPipKeepClearStrip() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        try {
+            ViewGroup content = findViewById(android.R.id.content);
+            if (content == null || pipKeepClearStrip != null) return;
+            View strip = new View(this);
+            strip.setBackgroundColor(Color.TRANSPARENT);
+            strip.setClickable(false);
+            strip.setFocusable(false);
+            strip.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            strip.setPreferKeepClear(true);
+            content.addView(strip, keepClearStripLp());
+            pipKeepClearStrip = strip;
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    /** 避让条布局：贴底、宽满屏、高约屏高 45%（旋转时随 onConfigurationChanged 更新） */
+    private FrameLayout.LayoutParams keepClearStripLp() {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Math.round(getResources().getDisplayMetrics().heightPixels * 0.45f));
+        lp.gravity = Gravity.BOTTOM;
+        return lp;
+    }
+
+    /** 跨任务返回首页的自定义转场：与应用内返回一致的共享轴反向动画（无动画设置时纯淡入淡出） */
+    private Bundle buildBackToHomeOptions() {
+        try {
+            boolean reduced = MotionCompat.reducedMotion(this);
+            ActivityOptions options = ActivityOptions.makeCustomAnimation(this,
+                    reduced ? R.anim.anim_fade_in : R.anim.anim_shared_axis_in_reverse,
+                    reduced ? R.anim.anim_fade_out : R.anim.anim_shared_axis_out_reverse);
+            return options.toBundle();
+        } catch (Throwable th) {
+            return null;
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // singleTask：再次打开播放页（搜索/收藏/首页跳转、图标路由）复用本实例。
+        // 带 extras 的新意图 = 换片，按旧标准启动路径重新加载；不带 extras 的路由
+        // 意图（HomeActivity 图标回跳）不触碰当前播放状态
+        if (intent == null || intent.getExtras() == null) return;
+        setIntent(intent);
+        initData();
     }
 
     @Override
@@ -401,6 +471,14 @@ public class DetailActivity extends BaseActivity {
         setupInfoToggle();
 //        tvSort = findViewById(R.id.tvSort);
         tvSeriesSort = findViewById(R.id.mSeriesSortTv);
+        tvSeriesExpand = findViewById(R.id.tvSeriesExpand);
+        tvSeriesExpand.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                showSeriesPickDialog();
+            }
+        });
         tvCollect = findViewById(R.id.tvCollect);
         tvChangeSource = findViewById(R.id.tvChangeSource);
         tvCache = findViewById(R.id.tvCache);
@@ -623,39 +701,7 @@ public class DetailActivity extends BaseActivity {
             @Override
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 FastClickCheckUtil.check(view);
-                if (vodInfo != null && vodInfo.seriesMap.get(vodInfo.playFlag).size() > 0) {
-                    boolean reload = false;
-                    for (int j = 0; j < vodInfo.seriesMap.get(vodInfo.playFlag).size(); j++) {
-                        seriesAdapter.getData().get(j).selected = false;
-                        seriesAdapter.notifyItemChanged(j);
-                    }
-                    //解决倒叙不刷新
-                    if (vodInfo.playIndex != position) {
-                        seriesAdapter.getData().get(position).selected = true;
-                        seriesAdapter.notifyItemChanged(position);
-                        vodInfo.playIndex = position;
-                        routeSwitchSeries = seriesAdapter.getData().get(position);
-
-                        reload = true;
-                    }
-                    //解决当前集不刷新的BUG
-                    if (!preFlag.isEmpty() && !vodInfo.playFlag.equals(preFlag)) {
-                        reload = true;
-                    }
-                    boolean isCurrentPlaying = !showPreview || isCurrentPreviewPlaying(position);
-                    if (showPreview && !isCurrentPlaying) {
-                        reload = true;
-                    }
-
-                    seriesAdapter.getData().get(vodInfo.playIndex).selected = true;
-                    seriesAdapter.notifyItemChanged(vodInfo.playIndex);
-                    //选集全屏 想选集不全屏的注释下面一行
-                    if (showPreview && !fullWindows && previewVodInfo != null && TextUtils.equals(vodInfo.playFlag, previewVodInfo.playFlag) && (playFragment.getPlayer().isPlaying() || isCurrentPlaying)) enterFullPreview();
-                    if (!showPreview || reload) {
-                        jumpToPlay();
-                        firstReverse=false;
-                    }
-                }
+                selectSeries(position);
             }
         });
 
@@ -857,6 +903,10 @@ public class DetailActivity extends BaseActivity {
         if (tvSeriesSort != null) {
             tvSeriesSort.setVisibility(listSize > 1 ? View.VISIBLE : View.GONE);
             tvSeriesSort.setText(vodInfo.reverseSort ? "倒序" : "正序");
+        }
+        // 「列表」展开按钮：只有一集时也不需要
+        if (tvSeriesExpand != null) {
+            tvSeriesExpand.setVisibility(listSize > 1 ? View.VISIBLE : View.GONE);
         }
         int offset = mGridViewLayoutMgr.getSpanCount();
         seriesGroupOptions.clear();
@@ -1307,6 +1357,71 @@ public class DetailActivity extends BaseActivity {
         return startDetailFallback(false);
     }
 
+    /** 选中某一集（选集网格与「选集列表」抽屉共用）：更新高亮并跳转播放。 */
+    private void selectSeries(int position) {
+        if (vodInfo == null || vodInfo.seriesMap == null || TextUtils.isEmpty(vodInfo.playFlag)) {
+            return;
+        }
+        List<VodInfo.VodSeries> currentList = vodInfo.seriesMap.get(vodInfo.playFlag);
+        if (currentList == null || currentList.isEmpty()
+                || position < 0 || position >= currentList.size()) {
+            return;
+        }
+        boolean reload = false;
+        for (int j = 0; j < currentList.size(); j++) {
+            seriesAdapter.getData().get(j).selected = false;
+            seriesAdapter.notifyItemChanged(j);
+        }
+        //解决倒叙不刷新
+        if (vodInfo.playIndex != position) {
+            seriesAdapter.getData().get(position).selected = true;
+            seriesAdapter.notifyItemChanged(position);
+            vodInfo.playIndex = position;
+            routeSwitchSeries = seriesAdapter.getData().get(position);
+
+            reload = true;
+        }
+        //解决当前集不刷新的BUG
+        if (!preFlag.isEmpty() && !vodInfo.playFlag.equals(preFlag)) {
+            reload = true;
+        }
+        boolean isCurrentPlaying = !showPreview || isCurrentPreviewPlaying(position);
+        if (showPreview && !isCurrentPlaying) {
+            reload = true;
+        }
+
+        seriesAdapter.getData().get(vodInfo.playIndex).selected = true;
+        seriesAdapter.notifyItemChanged(vodInfo.playIndex);
+        //选集全屏 想选集不全屏的注释下面一行
+        if (showPreview && !fullWindows && previewVodInfo != null && TextUtils.equals(vodInfo.playFlag, previewVodInfo.playFlag) && (playFragment.getPlayer().isPlaying() || isCurrentPlaying)) enterFullPreview();
+        if (!showPreview || reload) {
+            jumpToPlay();
+            firstReverse=false;
+        }
+    }
+
+    /** 选集列表抽屉：把当前线路全部选集以表格展开，方便长剧集查找选集。 */
+    private void showSeriesPickDialog() {
+        if (vodInfo == null || vodInfo.seriesMap == null || TextUtils.isEmpty(vodInfo.playFlag)) {
+            GlassTip.show(this, "暂无选集信息");
+            return;
+        }
+        List<VodInfo.VodSeries> list = vodInfo.seriesMap.get(vodInfo.playFlag);
+        if (list == null || list.isEmpty()) {
+            GlassTip.show(this, "暂无选集信息");
+            return;
+        }
+        String title = !TextUtils.isEmpty(vod_name) ? vod_name
+                : (mVideo != null && !TextUtils.isEmpty(mVideo.name) ? mVideo.name : "");
+        new SeriesPickDialog(this, title, vodInfo.playFlag, list, vodInfo.playIndex,
+                new SeriesPickDialog.OnSeriesPickListener() {
+                    @Override
+                    public void onSeriesPick(int position) {
+                        selectSeries(position);
+                    }
+                }).show();
+    }
+
     /** 换源测速面板：列出可切换的源并测速，用户自行点选要切换到的源。 */
     private void showSourceSpeedDialog() {
         if (isFinishing() || switchSourceSearching) {
@@ -1389,6 +1504,12 @@ public class DetailActivity extends BaseActivity {
 
     /** 用预搜索/单源搜索命中的候选影片直接切换过去（点选搜索成功时也走这里）。 */
     private void switchToMatchedVideo(Movie.Video video, String sourceName) {
+        if (video == null || TextUtils.isEmpty(video.id)) {
+            return;
+        }
+        // 先清掉可能仍在进行的自动换源状态：否则 detailResult 会被自动换源的
+        // 「detailFallbackActive && !detailFallbackLoadingCandidate」守卫拦掉，表现为点了没反应。
+        resetDetailFallback();
         // 记入换源历史，后续自动换源（线路耗尽兜底）不会再走这个源
         detailFallbackTitle = switchSourceTitle != null && !TextUtils.isEmpty(switchSourceTitle)
                 ? switchSourceTitle : (vod_name == null ? "" : vod_name.trim());
@@ -2313,6 +2434,7 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     protected void onDestroy() {
+        sDetailSessionAlive = false;
         resetDetailFallback();
         super.onDestroy();
         try {
@@ -2340,6 +2462,27 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     public void onBackPressed() {
+        // singleTask 任务根：播放页自成任务，PiP 期间整任务转 pinned、退出后无残留。
+        // 从桌面展开 PiP 回到播放页时，本任务下面直接是桌面（原主任务不在紧邻位置），
+        // 返回键会退到桌面——这里把主任务拉回前台再结束本页，恢复「播放页 → 首页 → 桌面」
+        // 的返回链。正常浏览（未进过 PiP）时本任务下面就是主任务，走自然返回不受影响。
+        if (everEnteredPipTask && isTaskRoot()) {
+            try {
+                Intent home = new Intent(this, HomeActivity.class);
+                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                // 跨任务启动默认是「应用切换」动画（缩放/上滑拉任务），与页面内返回的
+                // 观感割裂。这里用与应用内返回一致的共享轴反向转场覆盖，
+                // 「移除动画」开启时降级为纯淡入淡出
+                startActivity(home, buildBackToHomeOptions());
+                LOG.i("pip task back repair: bring main task to front");
+                finish();
+                return;
+            } catch (Throwable th) {
+                th.printStackTrace();
+            }
+        }
         if (fullWindows) {
             if (playFragment.onBackPressed())
                 return;
@@ -2404,6 +2547,108 @@ public class DetailActivity extends BaseActivity {
     // preview
     VodInfo previewVodInfo = null;
     boolean fullWindows = false;
+    /** 本 Activity 进过系统 PiP（singleTask 任务根：PiP 退出后按返回键需拉回主任务） */
+    boolean everEnteredPipTask = false;
+    /** 预览（未全屏）进 PiP 时把播放器布局临时提升为全屏，PiP 窗口内才是干净视频 */
+    boolean pipAutoPromotedFull = false;
+    /** PiP 退出后的去向待判定：展开（回前台）保持全屏；被划掉（不可见）静默还原预览 */
+    boolean pendingPipDemote = false;
+
+    /**
+     * 当前是否处于系统 PiP（带版本守卫：{@code isInPictureInPictureMode()} 是 API 26+，
+     * minSdk 19/21 的老设备直接调用会 NoSuchMethodError）。
+     */
+    private boolean inPipNow() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode();
+    }
+
+    /**
+     * 预提升兜底：没有真正进入 PiP（系统拒绝 / 只是内部跳转）时，
+     * 延时静默把临时全屏还原回预览，避免页面停在错误布局。
+     */
+    private final Runnable pipPromoteAbortCheck = new Runnable() {
+        @Override
+        public void run() {
+            if (!pipAutoPromotedFull || pendingPipDemote) return;
+            if (inPipNow()) return;
+            pipAutoPromotedFull = false;
+            try {
+                setFullPreview(false);
+            } catch (Throwable ignored) {
+            }
+            LOG.i("pip enter transition: promote aborted, restore preview");
+        }
+    };
+
+    /**
+     * 预提升（PiP 转场开始前）：预览（未全屏）状态下把播放器布局临时提升为全屏。
+     *
+     * <p>没有 API 31 时能“转场前”感知 PiP 的方式——系统只在 API 31+ 提供
+     * {@code onPictureInPictureUiStateChanged}（该回调的参数类型是 API 31 才有的类，
+     * 写进 Activity 签名会让低版本 ROM 在类校验时闪退，已弃用）。因此改由「已知的
+     * 进 PiP 时机」主动调用：手动点小窗按钮、Android 11 及以下自动画中画、
+     * Android 12+ 系统自动进入 PiP 前的 {@code onUserLeaveHint}。
+     * 常规兜底仍是 {@link #onPictureInPictureModeChanged} 里的提升。</p>
+     */
+    public void preparePipPromotion() {
+        if (fullWindows || pipAutoPromotedFull) return;
+        pipAutoPromotedFull = true;
+        try {
+            setFullPreview(true);
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        postPipPromoteAbortCheck();
+        LOG.i("pip enter transition: pre-promote full window");
+    }
+
+    /** 预提升后确认没有进入 PiP（例如系统拒绝）：立即还原预览，不等兜底定时器 */
+    public void cancelPipPromotion() {
+        if (!pipAutoPromotedFull || pendingPipDemote) return;
+        if (inPipNow()) return;
+        pipAutoPromotedFull = false;
+        removePipPromoteAbortCheck();
+        try {
+            setFullPreview(false);
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        LOG.i("pip enter transition: promote cancelled");
+    }
+
+    private void postPipPromoteAbortCheck() {
+        try {
+            View decor = getWindow() == null ? null : getWindow().getDecorView();
+            if (decor != null) {
+                decor.removeCallbacks(pipPromoteAbortCheck);
+                decor.postDelayed(pipPromoteAbortCheck, 1500);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void removePipPromoteAbortCheck() {
+        try {
+            View decor = getWindow() == null ? null : getWindow().getDecorView();
+            if (decor != null) decor.removeCallbacks(pipPromoteAbortCheck);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 播放页会话存活标记（singleTask 任务根，同进程内至多一个实例）。
+     * HomeActivity 收到 launcher 重新进入时据此把用户直接送回播放页
+     * （对齐其他播放软件「点应用图标回到看视频时的页面」的行为）。
+     */
+    private static boolean sDetailSessionAlive = false;
+
+    /** 是否存在存活的播放页（供首页图标路由判定） */
+    public static boolean isDetailSessionAlive() {
+        return sDetailSessionAlive;
+    }
+
+    /** PiP 落位避让条：贴底透明区，系统落位时避开该区域 → PiP 漂浮在屏幕上侧（API 33+） */
+    private View pipKeepClearStrip;
     private int previewOrientation;
     private boolean previewOrientationChanged;
     ViewGroup.LayoutParams windowsPreview = null;
@@ -2582,6 +2827,13 @@ public class DetailActivity extends BaseActivity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        // 旋转后同步 PiP 避让条高度（跟随屏幕高度）
+        if (pipKeepClearStrip != null) {
+            try {
+                pipKeepClearStrip.setLayoutParams(keepClearStripLp());
+            } catch (Throwable ignored) {
+            }
+        }
         if (fullWindows && newConfig.orientation != previewOrientation) {
             previewOrientation = newConfig.orientation;
             previewOrientationChanged = true;
@@ -2606,10 +2858,74 @@ public class DetailActivity extends BaseActivity {
             super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
         } catch (Throwable ignored) {
         }
+        if (isInPictureInPictureMode) {
+            everEnteredPipTask = true;
+            // 预览（未全屏）进 PiP：把播放器布局提升为全屏——PiP 窗口渲染的是整个
+            // Activity 窗口，只有播放器铺满窗口，窗口里才是干净的视频画面。
+            // 已由 preparePipPromotion() 转场前提升过则跳过（常见路径）；
+            // 系统自行进入 PiP 等未预判到的情况在这里兜底提升。
+            // 提升不强制旋转；退出 PiP 时按去向还原（展开保持全屏 / 划掉还原预览）
+            removePipPromoteAbortCheck();
+            if (!fullWindows && !pipAutoPromotedFull) {
+                pipAutoPromotedFull = true;
+                setFullPreview(true);
+            }
+        } else if (pipAutoPromotedFull) {
+            // 退出 PiP 的去向由接下来的生命周期判定：onResume=展开回前台（保持全屏）；
+            // onStop=被划掉/关闭（此时窗口不可见，静默还原预览布局）
+            pendingPipDemote = true;
+        }
         if (playFragment != null) {
             playFragment.setPipModeChanged(isInPictureInPictureMode);
         }
         LOG.i("pip mode changed -> " + isInPictureInPictureMode);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // PiP 展开回到前台：保持全屏布局（清除自动提升标记，返回键走正常全屏逻辑）
+        if (pendingPipDemote) {
+            pendingPipDemote = false;
+            pipAutoPromotedFull = false;
+            removePipPromoteAbortCheck();
+        } else if (pipAutoPromotedFull && !inPipNow()) {
+            // 预提升后并没有进入 PiP（内部跳转 / 系统拒绝）：页面已回到前台，
+            // 立刻还原预览布局，避免用户看到「莫名全屏」
+            pipAutoPromotedFull = false;
+            removePipPromoteAbortCheck();
+            try {
+                setFullPreview(false);
+            } catch (Throwable ignored) {
+            }
+            LOG.i("pip enter transition: promote reverted on resume");
+        }
+        // 自定义小窗（overlay）随页面回前台自动收回：页面已经回到播放界面，悬浮小窗
+        // 没有继续存在的必要（点应用图标 / 最近任务回到本页都会走到这里）。
+        // recall(false) 把播放器视图挂回本页并继续播放，不释放播放器实例。
+        if (playFragment != null && FloatPlayWindow.get().isOwner(playFragment)) {
+            try {
+                FloatPlayWindow.get().recall(false);
+            } catch (Throwable th) {
+                th.printStackTrace();
+            }
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // PiP 被划掉/关闭（而非展开）：Activity 已不可见，静默还原预览布局不闪屏
+        if (pendingPipDemote) {
+            pendingPipDemote = false;
+            pipAutoPromotedFull = false;
+            removePipPromoteAbortCheck();
+            try {
+                setFullPreview(false);
+            } catch (Throwable th) {
+                th.printStackTrace();
+            }
+        }
     }
 
     /**

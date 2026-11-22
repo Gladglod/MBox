@@ -2525,7 +2525,12 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                     return;
                 }
                 PipHelper.logSurfaceIdentity("pip-enter", mVideoView);
+                // 转场前预提升：PiP 窗口渲染整个 Activity 窗口，预览布局在缩放动画
+                // 中途重排会跳帧；先在转场开始前铺满窗口（低版本 ROM 没有转场前回调，
+                // 只能由已知的进入时机主动做，见 DetailActivity#preparePipPromotion）
+                promotePreviewForPip();
                 if (!PipHelper.enter(requireActivity(), currentVideoRatio())) {
+                    cancelPipPromotion();
                     GlassTip.show(requireContext(), "系统画中画启动失败");
                 }
                 return;
@@ -2609,16 +2614,26 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             if (mVideoView == null || mController == null || !isAdded()) return;
             if (floatMode || pipModeActive || PipHelper.isInPip(getActivity())) return;
             if (hasAudioOnlyPlayback() || exitingPreview) return;
+            // 预览（未全屏）播放中切走也弹小窗：进入 PiP 前宿主会把播放器布局
+            // 提升为全屏（promotePreviewForPip / 兜底 onPictureInPictureModeChanged），
+            // 窗口内是干净视频；自定义 Overlay 直接 reparent 视频视图，天然干净
             if (mVideoView.getCurrentPlayState() != VideoView.STATE_PLAYING) return;
             int pipConfig = Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM);
             if (pipConfig == HawkConfig.PIP_MODE_OFF) return;
             if (pipConfig == HawkConfig.PIP_MODE_SYSTEM) {
                 // Android 12+：syncAutoEnterParams 已把 autoEnter 交给系统，离开时系统自动进入；
-                // 此处再调 enterPictureInPictureMode 会与系统路径叠加，跳过
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return;
+                // 此处再调 enterPictureInPictureMode 会与系统路径叠加，跳过。但本回调发生在
+                // 系统 PiP 转场之前，正好用来提前铺满布局（低版本 ROM 没有转场前回调）
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    promotePreviewForPip();
+                    return;
+                }
                 if (!PipHelper.isSupported(requireContext())) return;
                 PipHelper.logSurfaceIdentity("pip-auto-enter", mVideoView);
-                PipHelper.enter(requireActivity(), currentVideoRatio());
+                promotePreviewForPip();
+                if (!PipHelper.enter(requireActivity(), currentVideoRatio())) {
+                    cancelPipPromotion();
+                }
                 return;
             }
             // 自定义 Overlay：悬浮窗与系统 autoEnter 无关，任何版本走这里（静默，不弹提示）
@@ -2630,8 +2645,33 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         }
     }
 
-    /** PiP 模式切换（DetailActivity.onPictureInPictureModeChanged 转发） */
-    public void setPipModeChanged(boolean inPip) {
+    /**
+     * PiP 转场前预提升宿主布局（预览未全屏时铺满窗口），由已知的进入时机调用：
+     * 手动小窗按钮、自动画中画（8~11 手动进入 / 12+ 交给系统前的 onUserLeaveHint）。
+     * 真正进入 PiP 后仍会走 onPictureInPictureModeChanged 兜底；未进入则自动还原。
+     */
+    private void promotePreviewForPip() {
+        try {
+            Activity act = getActivity();
+            if (act instanceof DetailActivity) {
+                ((DetailActivity) act).preparePipPromotion();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 系统拒绝进入 PiP 时立即还原预提升的布局（不等待兜底定时器） */
+    private void cancelPipPromotion() {
+        try {
+            Activity act = getActivity();
+            if (act instanceof DetailActivity) {
+                ((DetailActivity) act).cancelPipPromotion();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** PiP 模式切换（DetailActivity.onPictureInPictureModeChanged 转发） */    public void setPipModeChanged(boolean inPip) {
         boolean changed = pipModeActive != inPip;
         pipModeActive = inPip;
         try {

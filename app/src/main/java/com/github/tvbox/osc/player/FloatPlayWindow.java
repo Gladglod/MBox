@@ -20,6 +20,7 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -28,6 +29,7 @@ import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.player.controller.VodController;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.MotionCompat;
 import com.orhanobut.hawk.Hawk;
 
 import xyz.doikki.videoplayer.player.VideoView;
@@ -268,6 +270,7 @@ public final class FloatPlayWindow {
             winLp = lp;
             windowManager = (WindowManager) appContext.getSystemService(Context.WINDOW_SERVICE);
             windowManager.addView(root, lp);
+            playEnterAnimation();
 
             uiHandler.removeCallbacks(iconSync);
             uiHandler.post(iconSync);
@@ -294,6 +297,28 @@ public final class FloatPlayWindow {
                 ((VideoView) playerView).release();
             } catch (Throwable ignore) {
             }
+        }
+    }
+
+    /**
+     * 入场动效：轻微放大 + 淡入（约 180ms），让小窗出现柔和而不突兀；
+     * 系统「移除动画」开启时直接显示（尊重无障碍设置）。
+     */
+    private void playEnterAnimation() {
+        if (root == null) return;
+        try {
+            if (MotionCompat.reducedMotion(appContext)) return;
+            root.setAlpha(0f);
+            root.setScaleX(0.88f);
+            root.setScaleY(0.88f);
+            root.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(180)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
+        } catch (Throwable ignore) {
         }
     }
 

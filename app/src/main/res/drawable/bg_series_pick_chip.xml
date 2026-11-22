@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  选集表格单元格底：当前集 / 遥控焦点 / 普通态三态。
+  当前集用品牌色描边填充，焦点用玻璃高亮，其余为玻璃行条底。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/bg_chip_selected" android:state_selected="true" />
+    <item android:drawable="@drawable/bg_glass_chip_selected" android:state_focused="true" />
+    <item android:drawable="@drawable/bg_glass_chip" />
+</selector>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  选集表格单元格（一行 5 个）：集名铺满格子，当前集用品牌色填充。
+  配色随主题翻色（日间浅玻璃深字 / 夜间深玻璃白字）。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="40dp"
+    android:layout_margin="3dp"
+    android:background="@drawable/bg_series_pick_chip"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/tvSeriesName"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:duplicateParentState="true"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:paddingLeft="4dp"
+        android:paddingRight="4dp"
+        android:textColor="@color/dialog_text_primary"
+        android:textSize="@dimen/ts_18" />
+</FrameLayout>

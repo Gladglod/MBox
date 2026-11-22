@@ -916,6 +916,23 @@ public class HomeActivity extends BaseActivity {
         applyHomeTabChange();
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // 点应用图标 → 直接回到播放页（对齐其他播放软件的小窗后台体验）：
+        // launcher 重新进入（singleTop）时若播放页会话还活着，路由回播放任务。
+        // 仅识别 launcher 意图（ACTION_MAIN + LAUNCHER），内部跳转/重启不触发，
+        // 避免与播放页返回修复形成回路
+        try {
+            if (!DetailActivity.isDetailSessionAlive()) return;
+            if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction())
+                    || !intent.hasCategory(Intent.CATEGORY_LAUNCHER)) return;
+            startActivity(new Intent(this, DetailActivity.class));
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
     /** 从「界面偏好 → 首页标签」返回后，按新配置重建页签与页面 */
     private void applyHomeTabChange() {
         // 首页数据还没回来时先不动，等下一次 onResume 或首页加载完成后再应用

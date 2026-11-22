@@ -40,7 +40,8 @@
         <activity
             android:name=".ui.activity.HomeActivity"
             android:exported="true"
-           >
+            android:launchMode="singleTop"
+            >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -55,6 +56,8 @@
             android:name=".ui.activity.DetailActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:supportsPictureInPicture="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
             />
         <activity
             android:name=".ui.activity.PushActivity"

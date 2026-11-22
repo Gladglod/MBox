@@ -42,6 +42,9 @@ public class App extends MultiDexApplication {
         super.onCreate();
         instance = this;
         initParams();
+        // 真机闪退排查：崩溃堆栈 + 最近运行日志落盘到
+        // Android/data/<包名>/files/crash/（无需权限），复现一次即可取回日志
+        com.github.tvbox.osc.util.CrashLog.install(this);
         // 必须在任何 Activity 创建之前把明暗模式定下来，否则首个页面会先按默认色渲染再重建
         com.github.tvbox.osc.util.ThemeUtil.applyMode();
         // OKGo
