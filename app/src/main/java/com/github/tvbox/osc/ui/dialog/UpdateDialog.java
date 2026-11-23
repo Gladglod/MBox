@@ -218,6 +218,14 @@ public class UpdateDialog extends BaseDialog {
             }
 
             @Override
+            public void onChannelFallback(String hint) {
+                // 换了下载通道：进度归零，把原因告诉用户，别让他以为进度条抽风
+                if (!isShowing()) return;
+                progressBar.setProgress(0);
+                tvProgress.setText(hint);
+            }
+
+            @Override
             public void onError(String msg) {
                 downloading = false;
                 if (!isShowing()) return;

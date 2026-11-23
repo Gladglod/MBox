@@ -25,11 +25,16 @@ import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
  * 基于 GitHub Releases 的版本更新检查 / 下载 / 安装。
+ *
+ * <p>网络策略：GitHub 在部分网络环境下被墙，检查与下载都是双通道 ——
+ * 直连失败自动改走 {@link #GH_PROXY_PREFIX} 加速前缀；检查阶段走通的通道会被记住，
+ * 下载时优先用它，避免被墙用户每次先白等一次直连超时。</p>
  *
  * <p>约定（发版时必须遵守）：</p>
  * <ul>
@@ -47,6 +52,13 @@ public final class UpdateChecker {
 
     private static final String API_LATEST = "https://api.github.com/repos/" + REPO + "/releases/latest";
     private static final String TAG_DOWNLOAD = "app_update_download";
+    /** GitHub 被墙时的加速通道：在原 GitHub 链接前拼上这个前缀即可（release 包、API 都支持） */
+    public static final String GH_PROXY_PREFIX = "https://gh-proxy.org/";
+    /** 上次检查走通的通道：直连成功记 false，代理成功记 true。
+     *  下载时用它决定先试哪个通道，被墙用户就不用每次先白等一次直连超时 */
+    private static volatile boolean lastCheckViaProxy = false;
+    /** 用户主动取消下载的标记：取消会以 onError 的形式回到回调里，别再傻乎乎切通道重试 */
+    private static volatile boolean downloadCanceled = false;
     /** 自动检查的最小间隔：一天 */
     private static final long CHECK_INTERVAL = 24L * 60 * 60 * 1000;
     /** 启动后延迟再查，别和首页首屏抢带宽 */
@@ -68,13 +80,20 @@ public final class UpdateChecker {
         void onError(String msg, boolean manual);
     }
 
-    /** 手动检查：结果无论有没有新版都回调，由调用方决定怎么提示 */
+    /** 手动检查：结果无论有没有新版都回调，由调用方决定怎么提示。
+     *  GitHub API 被墙时自动改走 gh-proxy.org 加速通道再试一次 */
     public static void check(final boolean manual, final CheckCallback callback) {
+        attemptCheck(0, manual, callback);
+    }
+
+    /** 先直连，失败（超时 / 被墙重置 / 限流 / 5xx）换加速通道；attempt 从 0 开始 */
+    private static void attemptCheck(final int attempt, final boolean manual, final CheckCallback callback) {
+        final String url = attempt == 0 ? API_LATEST : proxied(API_LATEST);
         HttpHeaders headers = new HttpHeaders();
         // GitHub 要求带 UA，否则 403
         headers.put("User-Agent", "MBox-Android/" + BuildConfig.VERSION_NAME);
         headers.put("Accept", "application/vnd.github+json");
-        OkGo.<String>get(API_LATEST)
+        OkGo.<String>get(url)
                 .headers(headers)
                 .tag("app_update_check")
                 .execute(new StringCallback() {
@@ -85,6 +104,8 @@ public final class UpdateChecker {
                             if (callback != null) callback.onError("返回数据无法解析", manual);
                             return;
                         }
+                        // 记下这次走通的通道，下载时优先用它
+                        lastCheckViaProxy = attempt > 0;
                         if (isNewer(release.tagName, BuildConfig.VERSION_NAME)) {
                             if (callback != null) callback.onNewVersion(release, manual);
                         } else {
@@ -94,10 +115,16 @@ public final class UpdateChecker {
 
                     @Override
                     public void onError(Response<String> response) {
-                        if (callback == null) return;
                         int code = response == null ? 0 : response.code();
-                        LOG.e("UpdateChecker check failed: code=" + code
+                        LOG.e("UpdateChecker check failed: url=" + url + " code=" + code
                                 + " msg=" + (response == null ? "" : response.message()));
+                        if (callback == null) return;
+                        // 404 是 GitHub 的明确答复（仓库还没有发布版本），换通道也没用；
+                        // 其余失败换一条通道还有救，比如被墙换加速、限流换个出口 IP
+                        if (attempt == 0 && code != 404) {
+                            attemptCheck(1, manual, callback);
+                            return;
+                        }
                         if (code == 404) {
                             callback.onError("仓库还没有发布版本", manual);
                         } else if (code == 403) {
@@ -272,6 +299,10 @@ public final class UpdateChecker {
         void onSuccess(File apk);
 
         void onError(String msg);
+
+        /** 当前通道失败、切换到另一条通道（直连 <-> gh-proxy 加速）时回调，hint 是给用户看的一句话 */
+        default void onChannelFallback(String hint) {
+        }
     }
 
     /** 下载目录：优先外部缓存（不占应用数据配额），没有就退到内部缓存 */
@@ -283,13 +314,17 @@ public final class UpdateChecker {
         return dir;
     }
 
+    /**
+     * 双通道下载：直连 GitHub 与 gh-proxy.org 加速各试一次，先后顺序按检查阶段走通的通道来，
+     * 失败的通道会删掉半截文件再换下一条，全部失败才报错。
+     */
     public static void download(Context context, GithubRelease release, GithubRelease.Asset asset,
                                 final DownloadCallback callback) {
         if (asset == null || TextUtils.isEmpty(asset.downloadUrl)) {
             if (callback != null) callback.onError("该版本没有可用的安装包");
             return;
         }
-        File dir = downloadDir(context);
+        final File dir = downloadDir(context);
         final File target = new File(dir, fileNameOf(release, asset));
 
         // 之前已经完整下过就直接复用，省一次 30MB 流量
@@ -299,34 +334,85 @@ public final class UpdateChecker {
         }
         if (target.exists()) target.delete();
 
-        OkGo.<File>get(asset.downloadUrl)
+        downloadCanceled = false;
+        List<String> urls = new ArrayList<>();
+        if (lastCheckViaProxy) {
+            // 检查阶段直连 GitHub API 都不通，说明多半被墙了，先走加速通道
+            urls.add(proxied(asset.downloadUrl));
+            urls.add(asset.downloadUrl);
+        } else {
+            urls.add(asset.downloadUrl);
+            urls.add(proxied(asset.downloadUrl));
+        }
+        attemptDownload(0, urls, dir, target.getName(), asset.size, callback);
+    }
+
+    /** 按顺序尝试各条通道；当前这条废了就删掉半截文件，通知 UI 后换下一条 */
+    private static void attemptDownload(final int index, final List<String> urls, final File dir,
+                                        final String name, final long expectSize, final DownloadCallback callback) {
+        if (callback == null) return;
+        if (index >= urls.size()) {
+            callback.onError("下载失败：直连与加速通道均不可用，请检查网络后重试");
+            return;
+        }
+        final String url = urls.get(index);
+        OkGo.<File>get(url)
                 .tag(TAG_DOWNLOAD)
-                .execute(new FileCallback(dir.getAbsolutePath(), target.getName()) {
+                .execute(new FileCallback(dir.getAbsolutePath(), name) {
                     @Override
                     public void onSuccess(Response<File> response) {
                         File file = response.body();
                         if (file == null || !file.exists() || file.length() <= 0) {
-                            if (callback != null) callback.onError("下载的文件无效");
+                            nextChannel("下载的文件无效");
                             return;
                         }
-                        if (callback != null) callback.onSuccess(file);
+                        // 加速通道偶发会回错误页而不是安装包，用 API 里的包大小做完整性校验
+                        if (expectSize > 0 && file.length() != expectSize) {
+                            file.delete();
+                            nextChannel("下载的安装包不完整，请稍后重试");
+                            return;
+                        }
+                        callback.onSuccess(file);
                     }
 
                     @Override
                     public void onError(Response<File> response) {
-                        if (callback != null) callback.onError("下载失败，请检查网络后重试");
+                        LOG.e("UpdateChecker download failed: url=" + url
+                                + " code=" + (response == null ? 0 : response.code()));
+                        // 是用户主动取消（关弹窗）的话，别再切通道偷偷接着下
+                        if (downloadCanceled) return;
+                        nextChannel(null);
                     }
 
                     @Override
                     public void downloadProgress(Progress progress) {
-                        if (callback != null) {
-                            callback.onProgress(progress.fraction, progress.currentSize, progress.totalSize);
+                        callback.onProgress(progress.fraction, progress.currentSize, progress.totalSize);
+                    }
+
+                    private void nextChannel(String reason) {
+                        File partial = new File(dir, name);
+                        if (partial.exists()) partial.delete();
+                        if (index + 1 < urls.size()) {
+                            String next = urls.get(index + 1);
+                            String failed = url.startsWith(GH_PROXY_PREFIX) ? "加速通道失败" : "直连下载失败";
+                            String switching = next.startsWith(GH_PROXY_PREFIX) ? "改用加速通道下载" : "尝试直连下载";
+                            callback.onChannelFallback(failed + "，正在" + switching + "…");
+                            attemptDownload(index + 1, urls, dir, name, expectSize, callback);
+                        } else {
+                            callback.onError(reason == null ? "下载失败，请检查网络后重试" : reason);
                         }
                     }
                 });
     }
 
+    /** 在 GitHub 链接（release 包、API）前拼接 gh-proxy.org 加速前缀 */
+    private static String proxied(String url) {
+        if (TextUtils.isEmpty(url)) return url;
+        return GH_PROXY_PREFIX + url;
+    }
+
     public static void cancelDownload() {
+        downloadCanceled = true;
         OkGo.getInstance().cancelTag(TAG_DOWNLOAD);
     }
 
