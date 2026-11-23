@@ -1,9 +1,13 @@
 package com.github.tvbox.osc.player;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
@@ -95,6 +99,9 @@ public final class FloatPlayWindow {
     private TextView resizeHandle;
     private WindowManager.LayoutParams winLp;
     private boolean controlsVisible;
+    /** 入场「从播放器当前屏幕位置缩到小窗」的窗口尺寸动画（可为 null） */
+    private ValueAnimator enterAnimator;
+    private Runnable pendingOnEntered;
 
     private View playerView;
     private VodController playController;
@@ -190,9 +197,22 @@ public final class FloatPlayWindow {
      * @param ratio      视频宽高比（w/h），决定小窗初始形状
      */
     public boolean enter(Context context, View video, VodController controller, Owner owner, float ratio) {
+        return enter(context, video, controller, owner, ratio, null, null);
+    }
+
+    /**
+     * 同上，并支持「从播放器当前屏幕位置缩入小窗」的入场动效。
+     *
+     * @param fromRect 入场动画起始矩形（播放器此刻在屏幕上的可见区域；null 表示不做位移动画）
+     * @param onShown  小窗显示首帧后的回调（不等动画结束）。调用方在这里把应用退到后台，
+     *                 观感上就是「应用窗口退场的同时画面收成小窗」而不是瞬间切换应用。
+     */
+    public boolean enter(Context context, View video, VodController controller, Owner owner,
+                         float ratio, Rect fromRect, Runnable onShown) {
         if (root != null || video == null || context == null) return false;
         try {
             appContext = context.getApplicationContext();
+            pendingOnEntered = onShown;
             playerView = video;
             playController = controller;
             this.owner = owner;
@@ -261,6 +281,9 @@ public final class FloatPlayWindow {
             }
             if (storedY > 0) {
                 lp.y = clamp(storedY, dp(4), dm.heightPixels - h - dp(16));
+            } else if (PipHelper.isTopPositionPreferred()) {
+                // 默认落在屏幕上方（顶部小窗）：与系统 PiP 顶部落位保持一致
+                lp.y = dp(36);
             } else {
                 // 底部给手势条 / 导航条留出空间
                 lp.y = Math.max(dp(64), dm.heightPixels - h - dp(110));
@@ -269,8 +292,11 @@ public final class FloatPlayWindow {
             lp.height = h;
             winLp = lp;
             windowManager = (WindowManager) appContext.getSystemService(Context.WINDOW_SERVICE);
-            windowManager.addView(root, lp);
-            playEnterAnimation();
+            if (!animateIn(fromRect, lp)) {
+                windowManager.addView(root, lp);
+                playEnterAnimation();
+                notifyEntered();
+            }
 
             uiHandler.removeCallbacks(iconSync);
             uiHandler.post(iconSync);
@@ -319,6 +345,107 @@ public final class FloatPlayWindow {
                     .setInterpolator(new DecelerateInterpolator())
                     .start();
         } catch (Throwable ignore) {
+        }
+    }
+
+    /**
+     * 入场位移动画：窗口先出现在播放器此刻的屏幕矩形上，再在 260ms 内插值到小窗的
+     * 最终位置/尺寸——非全屏预览页触发时，画面从预览框里升到顶部小窗；全屏触发时
+     * 从整屏收成小窗（与系统 PiP 转场同一观感）。系统「移除动画」开启时返回 false。
+     */
+    private boolean animateIn(Rect from, WindowManager.LayoutParams target) {
+        if (from == null || windowManager == null || MotionCompat.reducedMotion(appContext)) {
+            return false;
+        }
+        try {
+            DisplayMetrics dm = appContext.getResources().getDisplayMetrics();
+            final Rect start = new Rect(from);
+            start.intersect(0, 0, dm.widthPixels, dm.heightPixels);
+            if (start.width() < dp(120) || start.height() < dp(68)) return false;
+
+            final WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
+            lp.type = target.type;
+            lp.flags = target.flags;
+            lp.format = target.format;
+            lp.gravity = target.gravity;
+            lp.x = start.left;
+            lp.y = start.top;
+            lp.width = start.width();
+            lp.height = start.height();
+            windowManager.addView(root, lp);
+
+            final int fromX = lp.x, fromY = lp.y, fromW = lp.width, fromH = lp.height;
+            final int toX = target.x, toY = target.y, toW = target.width, toH = target.height;
+
+            enterAnimator = ValueAnimator.ofFloat(0f, 1f);
+            enterAnimator.setDuration(260L);
+            enterAnimator.setInterpolator(new DecelerateInterpolator(1.6f));
+            enterAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator animation) {
+                    float t = (float) animation.getAnimatedValue();
+                    lp.x = fromX + Math.round((toX - fromX) * t);
+                    lp.y = fromY + Math.round((toY - fromY) * t);
+                    lp.width = fromW + Math.round((toW - fromW) * t);
+                    lp.height = fromH + Math.round((toH - fromH) * t);
+                    try {
+                        windowManager.updateViewLayout(root, lp);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+            final boolean[] cancelled = {false};
+            enterAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled[0] = true;
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    enterAnimator = null;
+                    if (cancelled[0]) return;
+                    if (root == null || windowManager == null) return;
+                    winLp = target;
+                    try {
+                        windowManager.updateViewLayout(root, target);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+            enterAnimator.start();
+            // 首帧布局完成后就通知页面退到后台：小窗收缩动效与页面退场同时进行，
+            // 观感连贯（若等动画结束再退后台，页面会先露出被挖空的预览区）
+            final FrameLayout shownRoot = root;
+            if (shownRoot != null) {
+                shownRoot.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        notifyEntered();
+                    }
+                });
+            }
+            return true;
+        } catch (Throwable th) {
+            th.printStackTrace();
+            return false;
+        }
+    }
+
+    /** 小窗首帧就位：执行一次待回调（页面侧在此把应用退到后台） */
+    private void notifyEntered() {
+        final Runnable cb = pendingOnEntered;
+        pendingOnEntered = null;
+        if (cb != null) {
+            uiHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        cb.run();
+                    } catch (Throwable ignore) {
+                    }
+                }
+            });
         }
     }
 
@@ -811,6 +938,15 @@ public final class FloatPlayWindow {
             uiHandler.removeCallbacks(iconSync);
             uiHandler.removeCallbacks(controlsAutoHide);
         } catch (Throwable ignore) {
+        }
+        // 先摘掉入场回调：若正在播放入场动画，取消时不能把「退后台」再执行一次
+        pendingOnEntered = null;
+        if (enterAnimator != null) {
+            try {
+                enterAnimator.cancel();
+            } catch (Throwable ignore) {
+            }
+            enterAnimator = null;
         }
         controlsVisible = false;
         persistGeometry();

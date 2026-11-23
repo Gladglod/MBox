@@ -602,6 +602,28 @@ public class MineSettingActivity extends BaseActivity {
                         Hawk.put(HawkConfig.PIP_MODE, value);
                     }
                 });
+        addSelectRow("小窗落位", "小窗出现的屏幕位置。Android 13 及以下系统画中画固定在底部，选择「顶部」时自动改用自定义小窗（需悬浮窗权限）", "请选择小窗落位",
+                new String[]{
+                        PlayerHelper.getPipPositionName(HawkConfig.PIP_POSITION_TOP),
+                        PlayerHelper.getPipPositionName(HawkConfig.PIP_POSITION_BOTTOM)},
+                new IntProvider() {
+                    @Override
+                    public int get() {
+                        return Hawk.get(HawkConfig.PIP_POSITION, HawkConfig.PIP_POSITION_TOP)
+                                == HawkConfig.PIP_POSITION_BOTTOM ? 1 : 0;
+                    }
+                },
+                new IntAction() {
+                    @Override
+                    public void run(int value) {
+                        Hawk.put(HawkConfig.PIP_POSITION, value == 1
+                                ? HawkConfig.PIP_POSITION_BOTTOM : HawkConfig.PIP_POSITION_TOP);
+                        if (value != 1 && !com.github.tvbox.osc.player.PipHelper.canPositionPip()) {
+                            GlassTip.show(MineSettingActivity.this,
+                                    "当前系统版本不支持系统画中画定位，顶部将由自定义小窗实现（首次使用需授予悬浮窗权限）");
+                        }
+                    }
+                });
         addSelectRow("小窗比例锁", "锁住自定义小窗的宽高比，避免画面拉伸", "请选择小窗比例锁定",
                 new String[]{
                         PlayerHelper.getPipRatioLockName(HawkConfig.PIP_RATIO_FREE),

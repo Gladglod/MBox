@@ -61,7 +61,42 @@ public final class PipHelper {
     public static boolean isAutoEnterEnabled() {
         try {
             return Hawk.get(HawkConfig.PIP_AUTO_ENTER, false)
-                    && Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM) == HawkConfig.PIP_MODE_SYSTEM;
+                    && Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM) == HawkConfig.PIP_MODE_SYSTEM
+                    // 低于 Android 14 时「顶部落位」要改走自定义小窗，系统 autoEnter 不能抢跑
+                    && !shouldUseOverlayForTopPosition();
+        } catch (Throwable th) {
+            return false;
+        }
+    }
+
+    /**
+     * 系统 PiP 是否能指定落位。AOSP 只有 Android 14 起在「入场落位」计算里读取
+     * {@code setPreferKeepClear} 区域（PipBoundsAlgorithm → findUnoccludedPosition）；
+     * 13 及以下的入口位置固定为系统默认 gravity（底部），没有公开 API 可改。
+     */
+    public static boolean canPositionPip() {
+        return Build.VERSION.SDK_INT >= 34;
+    }
+
+    /** 当前是否选择了「顶部」落位 */
+    public static boolean isTopPositionPreferred() {
+        try {
+            return Hawk.get(HawkConfig.PIP_POSITION, HawkConfig.PIP_POSITION_TOP)
+                    == HawkConfig.PIP_POSITION_TOP;
+        } catch (Throwable th) {
+            return true;
+        }
+    }
+
+    /**
+     * 当前配置是否需要「用自定义小窗代替系统 PiP 来实现顶部落位」：
+     * 系统 PiP 模式 + 落位选顶部 + 平台不支持系统 PiP 定位（Android 13 及以下）。
+     */
+    public static boolean shouldUseOverlayForTopPosition() {
+        try {
+            return Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM) == HawkConfig.PIP_MODE_SYSTEM
+                    && isTopPositionPreferred()
+                    && !canPositionPip();
         } catch (Throwable th) {
             return false;
         }

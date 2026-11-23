@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
@@ -421,6 +422,17 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                 if (!pipModeActive && !floatMode && isStartedPlayState(playState)) {
                     PipHelper.syncAutoEnterParams(getActivity(), currentVideoRatio(),
                             playState == VideoView.STATE_PLAYING);
+                }
+                // 把真实视频比例提前告诉宿主，用于调整系统 PiP 的 keep-clear 避让区，
+                // 让 PiP 入场时就被推到屏幕顶部（Android 14+）
+                if (!pipModeActive && !floatMode && isStartedPlayState(playState)) {
+                    try {
+                        Activity act = getActivity();
+                        if (act instanceof DetailActivity) {
+                            ((DetailActivity) act).setPipVideoRatio(currentVideoRatio());
+                        }
+                    } catch (Throwable ignore) {
+                    }
                 }
                 if (pipControlRow != null && pipControlRow.getVisibility() == View.VISIBLE) {
                     updatePipOverlayIcon();
@@ -2520,6 +2532,15 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             // 系统 PiP（Mode 0，默认）：Activity 整窗进入 PiP，mVideoView 原地不动，
             // Surface / 解码零迁移 —— 这是它稳定省电的原因
             if (pipConfig == HawkConfig.PIP_MODE_SYSTEM) {
+                // 顶部落位 + 平台不支持系统 PiP 定位（Android 13 及以下）：改走自定义小窗；
+                // 没授权悬浮窗时提示一次并回落系统 PiP（该平台的系统小窗固定在底部）
+                if (PipHelper.shouldUseOverlayForTopPosition()) {
+                    if (!FloatPlayWindow.hasOverlayPermission(requireContext())) {
+                        GlassTip.show(requireContext(), "顶部小窗需要「显示在其他应用上层」权限，本次先使用系统画中画");
+                    } else if (enterOverlayWindowNow(true)) {
+                        return;
+                    }
+                }
                 if (!PipHelper.isSupported(requireContext())) {
                     GlassTip.show(requireContext(), "系统画中画需要 Android 8.0+，可在设置中改用自定义画中画");
                     return;
@@ -2577,17 +2598,48 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             mController.setFloatMode(true);
             hideFloatOverlayViews();
             PipHelper.logSurfaceIdentity("overlay-enter", mVideoView);
-            boolean ok = FloatPlayWindow.get().enter(requireContext(), mVideoView, mController, this, currentVideoRatio());
+            // 入场动效起点：播放器此刻在屏幕上的可见区域（预览框或全屏）。小窗会先出现在
+            // 这里再收缩到顶部小窗，同时应用整体退场——观感是「画面从页面里收成小窗」，
+            // 而不是「瞬间切到另一个窗口」。
+            Rect fromRect = null;
+            try {
+                // getGlobalVisibleRect 返回的是「窗口内坐标」，窗口坐标需换算成屏幕坐标，
+                // 才能直接作为 TYPE_APPLICATION_OVERLAY 的 x/y（状态栏/挖孔会有偏移）
+                Rect visible = new Rect();
+                int[] locScreen = new int[2];
+                int[] locWindow = new int[2];
+                mVideoView.getLocationOnScreen(locScreen);
+                mVideoView.getLocationInWindow(locWindow);
+                if (mVideoView.getGlobalVisibleRect(visible) && !visible.isEmpty()) {
+                    visible.offset(locScreen[0] - locWindow[0], locScreen[1] - locWindow[1]);
+                    fromRect = visible;
+                }
+            } catch (Throwable ignore) {
+            }
+            final Activity host = getActivity();
+            final boolean manualTrigger = showRenderTip;
+            boolean ok = FloatPlayWindow.get().enter(requireContext(), mVideoView, mController, this,
+                    currentVideoRatio(), fromRect, new Runnable() {
+                        @Override
+                        public void run() {
+                            // 小窗已显示首帧：应用整体退场，与小窗收缩动效同时发生。
+                            // 手动触发且未全屏：应用窗口自底部向上收起，收起完成再退后台，
+                            // 最终屏幕上只留下顶部小窗；自动触发（按 Home / 切应用）时系统
+                            // 已有自己的退场转场，直接退到后台避免两组动画叠加。
+                            try {
+                                if (host == null || host.isFinishing()) return;
+                                if (manualTrigger && host instanceof DetailActivity) {
+                                    ((DetailActivity) host).collapseToBackWithAnimation();
+                                } else {
+                                    host.moveTaskToBack(true);
+                                }
+                            } catch (Throwable ignore) {
+                            }
+                        }
+                    });
             if (!ok) {
                 recoverFloatUi();
                 return false;
-            }
-            // 进入小窗的一般意图是去用别的应用：应用整体退到后台（进程与页面保留，
-            // 悬浮窗继续在最上层播放；点小窗里的「回到全屏」再恢复）
-            try {
-                Activity act = getActivity();
-                if (act != null) act.moveTaskToBack(true);
-            } catch (Throwable ignore) {
             }
             return true;
         } catch (Throwable th) {
@@ -2621,6 +2673,14 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             int pipConfig = Hawk.get(HawkConfig.PIP_MODE, HawkConfig.PIP_MODE_SYSTEM);
             if (pipConfig == HawkConfig.PIP_MODE_OFF) return;
             if (pipConfig == HawkConfig.PIP_MODE_SYSTEM) {
+                // 顶部落位 + 系统 PiP 不支持定位（Android 13 及以下）：自动切自定义小窗
+                // （无悬浮窗权限时静默放弃，避免把系统 PiP 强行顶到底部打断用户）
+                if (PipHelper.shouldUseOverlayForTopPosition()) {
+                    if (!FloatPlayWindow.hasOverlayPermission(requireContext())) return;
+                    PipHelper.logSurfaceIdentity("overlay-auto-enter-top", mVideoView);
+                    enterOverlayWindowNow(false);
+                    return;
+                }
                 // Android 12+：syncAutoEnterParams 已把 autoEnter 交给系统，离开时系统自动进入；
                 // 此处再调 enterPictureInPictureMode 会与系统路径叠加，跳过。但本回调发生在
                 // 系统 PiP 转场之前，正好用来提前铺满布局（低版本 ROM 没有转场前回调）
@@ -2654,7 +2714,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         try {
             Activity act = getActivity();
             if (act instanceof DetailActivity) {
-                ((DetailActivity) act).preparePipPromotion();
+                ((DetailActivity) act).preparePipPromotion(currentVideoRatio());
             }
         } catch (Throwable ignored) {
         }

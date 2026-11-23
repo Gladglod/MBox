@@ -138,6 +138,14 @@ public class HawkConfig {
     public static final String PIP_WINDOW_POS = "pip_window_pos";
     /** 自动画中画：返回桌面 / 切换其他应用时，按 PIP_MODE 自动进入系统画中画或自定义小窗 */
     public static final String PIP_AUTO_ENTER = "pip_auto_enter";
+    /**
+     * 小窗落位：0 = 顶部（默认）/ 1 = 底部。
+     * 系统 PiP 只有 Android 14+ 能在入口落位时读取 keep-clear 区域把窗口推到顶部；
+     * Android 13 及以下系统固定底部，选择「顶部」时自动改走自定义小窗实现。
+     */
+    public static final String PIP_POSITION = "pip_position";
+    public static final int PIP_POSITION_TOP = 0;
+    public static final int PIP_POSITION_BOTTOM = 1;
 
     /* ===== 版本更新（GitHub Releases） ===== */
     /** 启动时自动检查更新，默认开启（每天最多一次） */

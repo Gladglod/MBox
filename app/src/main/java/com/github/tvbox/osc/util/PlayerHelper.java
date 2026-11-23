@@ -275,6 +275,10 @@ public class PlayerHelper {
         }
     }
 
+    public static String getPipPositionName(int position) {
+        return position == HawkConfig.PIP_POSITION_BOTTOM ? "底部" : "顶部";
+    }
+
     public static String getScaleName(int screenScaleType) {
         String scaleText = "默认";
         switch (screenScaleType) {

@@ -22,6 +22,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -45,6 +46,7 @@ import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.RoomDataManger;
 import com.github.tvbox.osc.player.FloatPlayWindow;
+import com.github.tvbox.osc.player.PipHelper;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.adapter.SeriesAdapter;
 import com.github.tvbox.osc.ui.adapter.SeriesFlagAdapter;
@@ -241,15 +243,21 @@ public class DetailActivity extends BaseActivity {
     /* ============================ 系统 PiP 落位（上侧） ============================ */
 
     /**
-     * PiP 落位避让条（Android 13+ 生效）：系统 PiP 的落位由 WM Shell 决定（默认屏幕
-     * 底部），App 没有直接指定位置的 API；官方提供的合法杠杆是
-     * {@link View#setPreferKeepClear}——标记「不可遮挡区域」后，落位算法
-     * （PipKeepClearAlgorithm.findUnoccludedPosition）会把 PiP 推离该区域。
-     * 在窗口底部常驻一条透明、不可交互的避让区（透明 + 无点击，触摸穿透到页面），
-     * PiP 每次进入都被推到屏幕上侧。Android &lt; 13 无此 API，静默跳过（走系统默认落位）。
+     * PiP 落位避让条（Android 14+ 生效）：系统 PiP 的落位由 WM Shell 决定（默认屏幕
+     * 底部），App 没有直接指定位置的 API；官方杠杆是 {@link View#setPreferKeepClear}——
+     * 标记「不可遮挡区域」后，入口落位算法
+     * （PipKeepClearAlgorithm.findUnoccludedPosition，Android 14 起参与入场计算）
+     * 会把 PiP 推到该区域上方。
+     *
+     * <p>避让区高度按「屏幕高 - 预计 PiP 高」动态计算（见 {@link #updateKeepClearStrip}），
+     * 保证 PiP 恰好落在屏幕最上方而不是屏幕中部；若平台不支持（Android 13 及以下入口
+     * 落位不读取 keep-clear），静默跳过走系统默认落位。</p>
      */
     private void setupPipKeepClearStrip() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        // Android 13 及以下入口落位不读 keep-clear；且用户选了「底部」时无需避让
+        // （34 = Android 14，keep-clear 从这一版起参与入口落位计算）
+        if (Build.VERSION.SDK_INT < 34) return;
+        if (!PipHelper.isTopPositionPreferred()) return;
         try {
             ViewGroup content = findViewById(android.R.id.content);
             if (content == null || pipKeepClearStrip != null) return;
@@ -261,18 +269,205 @@ public class DetailActivity extends BaseActivity {
             strip.setPreferKeepClear(true);
             content.addView(strip, keepClearStripLp());
             pipKeepClearStrip = strip;
+            // 先用 16:9（最常见）定高，后续播放器上报真实比例时再精确调整
+            updateKeepClearStrip(16f / 9f);
         } catch (Throwable th) {
             th.printStackTrace();
         }
     }
 
-    /** 避让条布局：贴底、宽满屏、高约屏高 45%（旋转时随 onConfigurationChanged 更新） */
+    /**
+     * 播放器上报当前视频比例：提前把避让条调到正确高度，避免等「进 PiP 那一刻」才改，
+     * 系统来不及收到新的 keep-clear 区域而回落到默认落位。
+     */
+    public void setPipVideoRatio(float videoRatio) {
+        if (pipKeepClearStrip == null || inPipNow()) return;
+        try {
+            float ratio = videoRatio > 0f && !Float.isNaN(videoRatio) ? videoRatio : 16f / 9f;
+            ratio = Math.max(PipHelper.MIN_ASPECT, Math.min(PipHelper.MAX_ASPECT, ratio));
+            if (Math.abs(ratio - pipKeepClearRatio) < 0.02f) return;
+            updateKeepClearStrip(ratio);
+        } catch (Throwable ignore) {
+        }
+    }
+
+    /** 避让条布局：贴底、宽满屏、高度由 {@link #updateKeepClearStrip()} 按视频比例算 */
     private FrameLayout.LayoutParams keepClearStripLp() {
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                Math.round(getResources().getDisplayMetrics().heightPixels * 0.45f));
+                Math.round(getResources().getDisplayMetrics().heightPixels * 0.6f));
         lp.gravity = Gravity.BOTTOM;
         return lp;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /**
+     * PiP 窗口存在期间停用避让条：此时本 Activity 已被缩成 PiP 窗口，避让条若继续
+     * 上报 keep-clear，会在「窗口内坐标 + 窗口在屏幕上的位置」下形成一块畸形区域，
+     * 反而可能把 PiP 推得到处跑。退出 PiP 回全屏时再恢复。
+     */
+    private void setPipKeepClearStripActive(boolean active) {
+        if (pipKeepClearStrip == null) return;
+        try {
+            pipKeepClearStrip.setVisibility(active ? View.VISIBLE : View.GONE);
+            pipKeepClearStrip.setPreferKeepClear(active);
+            if (active) updateKeepClearStrip(pipKeepClearRatio);
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    /**
+     * 把避让条高度设为「底边到目标 PiP 上沿」的距离。
+     *
+     * <p>系统入口落位算法（{@code PhonePipKeepClearAlgorithm.findUnoccludedPosition}）
+     * 先尝试把 PiP 顶到避让区上方：PiP 底边贴到避让条上边。因此只要避让条上边 = 预计
+     * PiP 高度 + 一点边距，PiP 就落在屏幕顶部。</p>
+     *
+     * <p>PiP 默认尺寸与 AOSP 14 的 {@code SizeSpecDefaultImpl.getDefaultSize} 保持一致
+     * （短边 23%，最小 108dp；横竖比超过 16:9 时短边取最小尺寸），并略留余量，
+     * 保证即使 OEM 把默认占比调大一点也能被推到顶部。</p>
+     */
+    private void updateKeepClearStrip(float videoRatio) {
+        if (pipKeepClearStrip == null) return;
+        try {
+            float ratio = videoRatio > 0f && !Float.isNaN(videoRatio) ? videoRatio : 16f / 9f;
+            ratio = Math.max(PipHelper.MIN_ASPECT, Math.min(PipHelper.MAX_ASPECT, ratio));
+            pipKeepClearRatio = ratio;
+
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int displayH = dm.heightPixels;
+            int smallest = Math.min(dm.widthPixels, displayH);
+            int pipHeight = estimatePipHeight(ratio, smallest);
+
+            // 窗口可见区域的上下沿（沉浸式全屏时就是屏幕上下沿；有系统栏时排除系统栏）
+            int insetTop = 0;
+            int screenBottom = displayH;
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    WindowInsets insets = pipKeepClearStrip.getRootWindowInsets();
+                    if (insets != null) {
+                        insetTop = insets.getSystemWindowInsetTop();
+                        screenBottom = displayH - insets.getSystemWindowInsetBottom();
+                    }
+                }
+            } catch (Throwable ignore) {
+            }
+
+            // PiP 底边（= 避让条上边）距顶部：系统栏 + PiP 高 + 边距（含 keep-clear 内边距）
+            int targetTop = insetTop + pipHeight + dp(22);
+            int stripHeight = screenBottom - targetTop;
+            stripHeight = Math.max(Math.round(displayH * 0.2f),
+                    Math.min(stripHeight, displayH - dp(10)));
+
+            ViewGroup.LayoutParams lp = pipKeepClearStrip.getLayoutParams();
+            if (lp == null) {
+                lp = keepClearStripLp();
+            }
+            lp.height = stripHeight;
+            pipKeepClearStrip.setLayoutParams(lp);
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    /**
+     * 预计系统 PiP 高度（像素）：对齐 AOSP 14 {@code SizeSpecDefaultImpl.getDefaultSize}。
+     * 短边小于 108dp 时按 108dp 起算；16:9 以内用面积半径公式，超出后取短边的 23%。
+     */
+    private int estimatePipHeight(float ratio, int smallestDisplaySize) {
+        final float limit = 1.777778f;
+        int minSize = Math.max(dp(108), Math.round(smallestDisplaySize * 0.23f));
+        if (ratio <= 1f / limit || ratio > limit) {
+            return ratio <= 1f ? Math.round(minSize / ratio) : minSize;
+        }
+        float widthAtMax = limit * minSize;
+        float radius = (float) Math.hypot(widthAtMax, minSize);
+        return Math.round((float) Math.sqrt((radius * radius) / (ratio * ratio + 1f)));
+    }
+
+    /* ==================== 非全屏小窗退场动效（应用自底部向上收起） ==================== */
+
+    /** 小窗退场收起动效进行中：收起完成前回到前台时据此跳过「退到后台」收尾 */
+    private boolean pipCollapsePending;
+
+    /**
+     * 非全屏手动进入小窗的退场动效：应用窗口整体自底部向上收起（pivot 在顶部的纵向
+     * 塌缩，底边上移），与悬浮小窗「播放器原位 → 顶部小窗」的收缩动效同步进行；
+     * 收起完成后应用整体退到后台，屏幕上最终只留下顶部小窗。
+     *
+     * <p>全屏进入不做收起动效（小窗自身从整屏收缩已足够自然），直接退到后台；
+     * 系统「移除动画」开启（无障碍）时同样直接退到后台。窗口变换在下次
+     * {@link #onResume()} 里复位，保证回到前台时页面恢复正常。</p>
+     */
+    public void collapseToBackWithAnimation() {
+        View decor = getWindow() == null ? null : getWindow().getDecorView();
+        if (fullWindows || decor == null || MotionCompat.reducedMotion(this)) {
+            try {
+                moveTaskToBack(true);
+            } catch (Throwable ignore) {
+            }
+            return;
+        }
+        try {
+            if (decor.getWidth() <= 0 || decor.getHeight() <= 0) {
+                moveTaskToBack(true);
+                return;
+            }
+            pipCollapsePending = true;
+            decor.animate().cancel();
+            decor.setPivotX(decor.getWidth() / 2f);
+            decor.setPivotY(0f);
+            // 260ms 与 FloatPlayWindow 的入场收缩动效同参数（时长 + 插值器），观感同步
+            decor.animate()
+                    .scaleY(0.02f)
+                    .setDuration(260L)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
+                    .withEndAction(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (!pipCollapsePending) return;
+                            pipCollapsePending = false;
+                            try {
+                                // 收起完成：应用整体退到后台（小窗是独立悬浮窗，
+                                // 继续在桌面顶层播放）
+                                if (!moveTaskToBack(true)) {
+                                    // 退后台失败（已在后台/被系统拒绝）：立即复位窗口变换，
+                                    // 避免页面停在塌缩状态
+                                    resetWindowCollapseTransform();
+                                }
+                            } catch (Throwable th) {
+                                resetWindowCollapseTransform();
+                            }
+                        }
+                    })
+                    .start();
+        } catch (Throwable th) {
+            th.printStackTrace();
+            pipCollapsePending = false;
+            resetWindowCollapseTransform();
+            try {
+                moveTaskToBack(true);
+            } catch (Throwable ignore) {
+            }
+        }
+    }
+
+    /** 复位退场动效对 decorView 的窗口变换（回到前台 / 退后台失败时调用） */
+    private void resetWindowCollapseTransform() {
+        try {
+            View decor = getWindow() == null ? null : getWindow().getDecorView();
+            if (decor == null) return;
+            decor.animate().cancel();
+            decor.setScaleX(1f);
+            decor.setScaleY(1f);
+            decor.setAlpha(1f);
+            decor.setPivotY(decor.getHeight() / 2f);
+        } catch (Throwable ignore) {
+        }
     }
 
     /** 跨任务返回首页的自定义转场：与应用内返回一致的共享轴反向动画（无动画设置时纯淡入淡出） */
@@ -2590,7 +2785,9 @@ public class DetailActivity extends BaseActivity {
      * Android 12+ 系统自动进入 PiP 前的 {@code onUserLeaveHint}。
      * 常规兜底仍是 {@link #onPictureInPictureModeChanged} 里的提升。</p>
      */
-    public void preparePipPromotion() {
+    public void preparePipPromotion(float videoRatio) {
+        setPipKeepClearStripActive(true);
+        updateKeepClearStrip(videoRatio);
         if (fullWindows || pipAutoPromotedFull) return;
         pipAutoPromotedFull = true;
         try {
@@ -2647,8 +2844,10 @@ public class DetailActivity extends BaseActivity {
         return sDetailSessionAlive;
     }
 
-    /** PiP 落位避让条：贴底透明区，系统落位时避开该区域 → PiP 漂浮在屏幕上侧（API 33+） */
+    /** PiP 落位避让条：贴底透明区，系统落位时避开该区域 → PiP 漂浮在屏幕顶部（Android 14+） */
     private View pipKeepClearStrip;
+    /** 最近一次播放视频的宽高比（旋转时按它重算避让条高度） */
+    private float pipKeepClearRatio = 16f / 9f;
     private int previewOrientation;
     private boolean previewOrientationChanged;
     ViewGroup.LayoutParams windowsPreview = null;
@@ -2827,12 +3026,9 @@ public class DetailActivity extends BaseActivity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // 旋转后同步 PiP 避让条高度（跟随屏幕高度）
+        // 旋转后同步 PiP 避让条高度（跟随屏幕高度与视频比例）
         if (pipKeepClearStrip != null) {
-            try {
-                pipKeepClearStrip.setLayoutParams(keepClearStripLp());
-            } catch (Throwable ignored) {
-            }
+            updateKeepClearStrip(pipKeepClearRatio);
         }
         if (fullWindows && newConfig.orientation != previewOrientation) {
             previewOrientation = newConfig.orientation;
@@ -2860,6 +3056,8 @@ public class DetailActivity extends BaseActivity {
         }
         if (isInPictureInPictureMode) {
             everEnteredPipTask = true;
+            // 进入 PiP 后停用常驻的 keep-clear 避让条（避免任务自身区域参与落位计算）
+            setPipKeepClearStripActive(false);
             // 预览（未全屏）进 PiP：把播放器布局提升为全屏——PiP 窗口渲染的是整个
             // Activity 窗口，只有播放器铺满窗口，窗口里才是干净的视频画面。
             // 已由 preparePipPromotion() 转场前提升过则跳过（常见路径）；
@@ -2874,6 +3072,10 @@ public class DetailActivity extends BaseActivity {
             // 退出 PiP 的去向由接下来的生命周期判定：onResume=展开回前台（保持全屏）；
             // onStop=被划掉/关闭（此时窗口不可见，静默还原预览布局）
             pendingPipDemote = true;
+            setPipKeepClearStripActive(true);
+        } else {
+            // 退出 PiP（未提升过布局，例如本来就是全屏）：恢复避让条，供下次进入使用
+            setPipKeepClearStripActive(true);
         }
         if (playFragment != null) {
             playFragment.setPipModeChanged(isInPictureInPictureMode);
@@ -2884,6 +3086,10 @@ public class DetailActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // 小窗退场收起动效复位：回前台先于首帧绘制，页面恢复原始窗口变换不闪屏；
+        // 此时若收起尚未完成也一并终止，避免「已回前台还把应用退到后台」
+        pipCollapsePending = false;
+        resetWindowCollapseTransform();
         // PiP 展开回到前台：保持全屏布局（清除自动提升标记，返回键走正常全屏逻辑）
         if (pendingPipDemote) {
             pendingPipDemote = false;
@@ -2909,6 +3115,10 @@ public class DetailActivity extends BaseActivity {
             } catch (Throwable th) {
                 th.printStackTrace();
             }
+        }
+        // 首次创建避让条时窗口尚未 attach（拿不到系统栏 inset），回前台后重算一次
+        if (pipKeepClearStrip != null && !inPipNow()) {
+            updateKeepClearStrip(pipKeepClearRatio);
         }
     }
 
