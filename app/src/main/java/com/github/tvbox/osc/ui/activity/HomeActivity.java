@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.text.TextUtils;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.HapticFeedbackConstants;
@@ -52,6 +53,7 @@ import com.github.tvbox.osc.ui.fragment.HotRecommendFragment;
 import com.github.tvbox.osc.ui.fragment.UserFragment;
 import com.github.tvbox.osc.ui.tv.widget.DefaultTransformer;
 import com.github.tvbox.osc.ui.tv.widget.FixedSpeedScroller;
+import com.github.tvbox.osc.ui.widget.CategoryFilterPopup;
 import com.github.tvbox.osc.ui.widget.GlassIndicatorView;
 import com.github.tvbox.osc.ui.widget.LiquidTabBar;
 import com.github.tvbox.osc.ui.widget.SourceSwitchPopup;
@@ -104,6 +106,8 @@ public class HomeActivity extends BaseActivity {
     private HomePageAdapter pageAdapter;
     /** 首页实际渲染的分类页（不含最左侧「热门推荐」），顺序即页序 - 1 */
     private final List<MovieSort.SortData> pageSorts = new ArrayList<>();
+    /** 分类标签旁展开的细分筛选面板 */
+    private CategoryFilterPopup mCategoryFilterPopup;
     private AbsSortXml lastAbsXml;
     private int currentSelected = 0;
     private SourceBean previousHomeSource;
@@ -188,11 +192,13 @@ public class HomeActivity extends BaseActivity {
         this.mTabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
             @Override
             public void onTabSelected(TabLayout.Tab tab) {
+                applyTabState(tab, true);
                 selectPage(tab.getPosition());
             }
 
             @Override
             public void onTabUnselected(TabLayout.Tab tab) {
+                applyTabState(tab, false);
             }
 
             @Override
@@ -260,12 +266,119 @@ public class HomeActivity extends BaseActivity {
 
     private void setupTabs() {
         if (mTabLayout == null || sortAdapter == null) return;
+        dismissCategoryFilterPopup();
         mTabLayout.removeAllTabs();
         // 第 0 页固定是「热门推荐」，其后按用户配置的分类顺序排列
-        mTabLayout.addTab(mTabLayout.newTab().setText(HomeTabConfig.HOT_NAME));
+        addHomeTab(HomeTabConfig.HOT_NAME, null);
         for (MovieSort.SortData sortData : getVisibleSortData()) {
-            mTabLayout.addTab(mTabLayout.newTab().setText(sortData.name));
+            addHomeTab(sortData.name, sortData);
         }
+        for (int i = 0; i < mTabLayout.getTabCount(); i++) {
+            applyTabState(mTabLayout.getTabAt(i), i == mTabLayout.getSelectedTabPosition());
+        }
+    }
+
+    /** 分类页签：有细分筛选的分类在文字右侧多一枚可点的漏斗图标 */
+    private void addHomeTab(String name, final MovieSort.SortData sortData) {
+        final int pagePosition = mTabLayout.getTabCount();
+        final String tabName = name == null ? "" : name;
+        TabLayout.Tab tab = mTabLayout.newTab();
+        tab.setText(tabName);
+        View view = LayoutInflater.from(this).inflate(R.layout.item_home_tab, mTabLayout, false);
+        TextView label = view.findViewById(R.id.tabLabel);
+        label.setText(tabName);
+
+        ImageView filter = view.findViewById(R.id.tabFilter);
+        if (hasFilterOptions(sortData)) {
+            filter.setVisibility(View.VISIBLE);
+            filter.setContentDescription(getString(R.string.home_filter_for, tabName));
+            filter.setColorFilter(ContextCompat.getColor(this,
+                    sortData.filterSelectCount() > 0 ? R.color.ui_accent : R.color.ui_text_secondary));
+            filter.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FastClickCheckUtil.check(v);
+                    openCategoryFilter(pagePosition, v, sortData);
+                }
+            });
+        }
+        tab.setCustomView(view);
+        mTabLayout.addTab(tab);
+    }
+
+    private static boolean hasFilterOptions(MovieSort.SortData data) {
+        if (data == null || data.filters == null) return false;
+        for (MovieSort.SortFilter filter : data.filters) {
+            if (filter != null && filter.values != null && !filter.values.isEmpty()) return true;
+        }
+        return false;
+    }
+
+    /** TabLayout 不会替 customView 里的文字换色，选中态要自己同步 */
+    private void applyTabState(TabLayout.Tab tab, boolean selected) {
+        if (tab == null) return;
+        View view = tab.getCustomView();
+        if (view == null) return;
+        TextView label = view.findViewById(R.id.tabLabel);
+        label.setTextColor(ContextCompat.getColor(this,
+                selected ? R.color.ui_text_primary : R.color.ui_text_secondary));
+    }
+
+    /** 点击标签旁的漏斗：先切到该分类，再贴着标签展开细分筛选 */
+    private void openCategoryFilter(final int position, View anchor, final MovieSort.SortData data) {
+        if (isActivityUnavailable() || !hasFilterOptions(data)) return;
+        TabLayout.Tab tab = mTabLayout.getTabAt(position);
+        if (tab != null && !tab.isSelected()) {
+            tab.select();
+        }
+        dismissCategoryFilterPopup();
+        mCategoryFilterPopup = new CategoryFilterPopup(this);
+        mCategoryFilterPopup.show(anchor, data, new CategoryFilterPopup.OnFilterClosedListener() {
+            @Override
+            public void onClosed(boolean changed) {
+                if (!changed) return;
+                updateFilterIcon(position, data);
+                refreshCategoryPage(position, data);
+            }
+        });
+    }
+
+    /** 面板关闭后再刷新对应分类页；页面可能还没被 ViewPager 创建，延后一帧再取 */
+    private void refreshCategoryPage(final int position, final MovieSort.SortData data) {
+        if (mViewPager == null) return;
+        mViewPager.post(new Runnable() {
+            @Override
+            public void run() {
+                if (isActivityUnavailable() || pageAdapter == null) return;
+                BaseLazyFragment fragment = pageAdapter.getFragment(position);
+                if (fragment instanceof GridFragment && ((GridFragment) fragment).isSameSort(data)) {
+                    ((GridFragment) fragment).forceRefresh();
+                }
+            }
+        });
+    }
+
+    private void updateFilterIcon(int position, MovieSort.SortData data) {
+        TabLayout.Tab tab = mTabLayout == null ? null : mTabLayout.getTabAt(position);
+        View view = tab == null ? null : tab.getCustomView();
+        ImageView icon = view == null ? null : view.findViewById(R.id.tabFilter);
+        if (icon == null) return;
+        icon.setColorFilter(ContextCompat.getColor(this,
+                data != null && data.filterSelectCount() > 0
+                        ? R.color.ui_accent : R.color.ui_text_secondary));
+    }
+
+    private void updateAllFilterIcons() {
+        List<MovieSort.SortData> sorts = getVisibleSortData();
+        for (int i = 0; i < sorts.size(); i++) {
+            updateFilterIcon(i + 1, sorts.get(i));
+        }
+    }
+
+    private void dismissCategoryFilterPopup() {
+        if (mCategoryFilterPopup == null) return;
+        mCategoryFilterPopup.dismissImmediately();
+        mCategoryFilterPopup = null;
     }
 
     /** 首页要显示的分类（已按用户配置过滤 + 排序），不含「热门推荐」 */
@@ -873,6 +986,7 @@ public class HomeActivity extends BaseActivity {
     }
 
     private void clearHomePages() {
+        dismissCategoryFilterPopup();
         mHandler.removeCallbacks(mDataRunnable);
         currentSelected = 0;
         pageSorts.clear();
@@ -1044,6 +1158,9 @@ public class HomeActivity extends BaseActivity {
             }
         } else if (event.type == RefreshEvent.TYPE_HOME_SOURCE_CHANGE) {
             refreshHome(false);
+        } else if (event.type == RefreshEvent.TYPE_FILTER_CHANGE) {
+            // 分类页内部改了筛选状态时，同步标签上的漏斗颜色
+            updateAllFilterIcons();
         }
     }
 
@@ -1161,6 +1278,7 @@ public class HomeActivity extends BaseActivity {
         dismissConfigErrorDialog();
         dismissSiteSwitchDialog();
         dismissHomeMenuDialog();
+        dismissCategoryFilterPopup();
     }
 
     private void dismissHomeMenuDialog() {

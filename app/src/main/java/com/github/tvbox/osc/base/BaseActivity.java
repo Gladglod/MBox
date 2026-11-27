@@ -28,6 +28,7 @@ import com.github.tvbox.osc.callback.EmptyCallback;
 import com.github.tvbox.osc.callback.LoadingCallback;
 import com.github.tvbox.osc.util.AppManager;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.WallpaperGlass;
 import com.orhanobut.hawk.Hawk;
 import com.kingja.loadsir.callback.Callback;
 import com.kingja.loadsir.core.LoadService;
@@ -356,7 +357,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         if (!force && globalWp != null) {
             getWindow().setBackgroundDrawable(globalWp);
             releaseContentBackground(true);
-            applyWallpaperChrome(true);
+            applyWallpaperChrome(true, globalWp.getBitmap(), 0);
             return;
         }
         try {
@@ -390,21 +391,23 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             throwable.printStackTrace();
             globalWp = null;
         }
+        int pureColor = Hawk.get(HawkConfig.WALLPAPER_COLOR, 0);
+        Bitmap wallpaperBitmap = globalWp == null ? null : globalWp.getBitmap();
         if (globalWp != null) {
             getWindow().setBackgroundDrawable(globalWp);
             releaseContentBackground(true);
-            applyWallpaperChrome(true);
-        } else if (Hawk.get(HawkConfig.WALLPAPER_COLOR, 0) != 0) {
-            getWindow().setBackgroundDrawable(new ColorDrawable(Hawk.get(HawkConfig.WALLPAPER_COLOR, 0)));
+            applyWallpaperChrome(true, wallpaperBitmap, 0);
+        } else if (pureColor != 0) {
+            getWindow().setBackgroundDrawable(new ColorDrawable(pureColor));
             releaseContentBackground(true);
-            applyWallpaperChrome(true);
+            applyWallpaperChrome(true, null, pureColor);
         } else {
             // 没有配图也没有纯色：底色交给主题（日间白 / 夜间深），
             // 不再固定用 app_bg.jpg —— 那张是深色图，日间模式下会和白色文字打架。
             getWindow().setBackgroundDrawable(new ColorDrawable(
                     getResources().getColor(R.color.ui_bg)));
             releaseContentBackground(false);
-            applyWallpaperChrome(false);
+            applyWallpaperChrome(false, null, 0);
         }
     }
 
@@ -458,67 +461,34 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
     }
 
     /**
-     * 壁纸模式下把顶栏、底栏、卡片换成半透明，让配图真的透出来。
+     * 壁纸 / 纯色模式下把所有 UI 表面换成自适应玻璃色。
      *
-     * <p>做法是直接改这几张底图的共享 ConstantState：Resources 里同一张 drawable 的
-     * ConstantState 是全进程共享的，改一次之后新 inflate 出来的列表 item 也会自动是半透明的，
-     * 不用挨个页面去 findViewById。恢复时再按语义色写回不透明版本。</p>
+     * <p>Resources 的 drawable ConstantState 是全进程共享的，改一次，之后新 inflate
+     * 出来的列表项、弹窗也会自动跟着是玻璃；再补一遍当前页面里直接
+     * setBackgroundColor 的控件。没有壁纸时按快照原样还原。</p>
      */
-    private void applyWallpaperChrome(boolean glass) {
-        int[] resIds = {R.drawable.bg_appbar, R.drawable.bg_bottom_nav, R.drawable.bg_phone_card};
-        int[] solidColors = {R.color.ui_surface, R.color.ui_material, R.color.ui_surface};
-        int[] glassColors = {R.color.ui_surface_glass, R.color.ui_material_glass, R.color.ui_surface_glass};
-        for (int i = 0; i < resIds.length; i++) {
-            try {
-                Drawable drawable = loadThemedDrawable(resIds[i]);
-                if (drawable instanceof GradientDrawable) {
-                    ((GradientDrawable) drawable).setColor(getResources().getColor(
-                            glass ? glassColors[i] : solidColors[i]));
-                }
-            } catch (Throwable th) {
-                th.printStackTrace();
+    private void applyWallpaperChrome(boolean glass, Bitmap wallpaper, int pureColor) {
+        try {
+            WallpaperGlass.configure(this, wallpaper, pureColor);
+            WallpaperGlass.applyToResources(this, glass);
+            View content = findViewById(android.R.id.content);
+            if (content != null) {
+                WallpaperGlass.applyToViewTree(content, glass);
             }
-        }
-        // 直接写 @color/ui_surface / @color/ui_bar_bg 的控件（首页页签条、收藏/历史底部操作条）
-        View content = findViewById(android.R.id.content);
-        if (content instanceof ViewGroup) {
-            tintColorSurfaces((ViewGroup) content, glass);
-        }
-    }
-
-    private void tintColorSurfaces(ViewGroup parent, boolean glass) {
-        int[] solidColors = {R.color.ui_surface, R.color.ui_bar_bg, R.color.ui_material};
-        int[] glassColors = {R.color.ui_surface_glass, R.color.ui_bar_glass, R.color.ui_material_glass};
-        for (int i = 0; i < parent.getChildCount(); i++) {
-            View child = parent.getChildAt(i);
-            if (child == null) continue;
-            Drawable bg = child.getBackground();
-            if (bg instanceof ColorDrawable) {
-                ColorDrawable colorDrawable = (ColorDrawable) bg;
-                int color = colorDrawable.getColor();
-                for (int k = 0; k < solidColors.length; k++) {
-                    int solid = getResources().getColor(solidColors[k]);
-                    int glassColor = getResources().getColor(glassColors[k]);
-                    if (glass && color == solid) {
-                        colorDrawable.setColor(glassColor);
-                        break;
-                    } else if (!glass && color == glassColor) {
-                        colorDrawable.setColor(solid);
-                        break;
+            // Fragment / 弹窗往往在 onResume 之后才 inflate，补一趟
+            if (glass && content != null) {
+                content.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!isFinishing()) {
+                            WallpaperGlass.applyToViewTree(content, true);
+                        }
                     }
-                }
+                }, 300);
             }
-            if (child instanceof ViewGroup) {
-                tintColorSurfaces((ViewGroup) child, glass);
-            }
+        } catch (Throwable th) {
+            th.printStackTrace();
         }
-    }
-
-    private Drawable loadThemedDrawable(int resId) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            return getResources().getDrawable(resId, getTheme());
-        }
-        return getResources().getDrawable(resId);
     }
 
     /** 立即刷新背景（设置页里切换纯色后即时预览用） */

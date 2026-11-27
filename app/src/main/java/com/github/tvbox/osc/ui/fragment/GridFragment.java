@@ -67,6 +67,8 @@ public class GridFragment extends BaseLazyFragment {
     private int maxPage = 1;
     private boolean isLoad = false;
     private boolean isRequesting = false;
+    /** 筛选在请求途中关闭时不能丢，等当前请求回来再刷一次 */
+    private boolean pendingRefresh = false;
     private boolean hasActionItems = false;
     private boolean isTop = true;
     private float pullRefreshStartX;
@@ -137,6 +139,7 @@ public class GridFragment extends BaseLazyFragment {
         mGrids.clear();
         isLoad = false;
         isRequesting = false;
+        pendingRefresh = false;
         page = 1;
         maxPage = 1;
         hasActionItems = false;
@@ -383,6 +386,14 @@ public class GridFragment extends BaseLazyFragment {
             @Override
             public void onChanged(AbsXml absXml) {
                 isRequesting = false;
+                // 筛选面板关闭时上一次请求可能还在路上：丢掉旧结果，用新条件重拉
+                if (pendingRefresh) {
+                    pendingRefresh = false;
+                    if (gridAdapter != null && mGridView != null && sourceViewModel != null) {
+                        doRefresh();
+                    }
+                    return;
+                }
                 // 视图可能已被释放（滑到别的 tab），此时不能再操作 adapter
                 if (gridAdapter == null || mGridView == null) {
                     return;
@@ -546,9 +557,24 @@ public class GridFragment extends BaseLazyFragment {
         }
     }
 
+    /** 供首页判断刷新目标是否还是同一个分类（切源/标签配置变化后对象会重建） */
+    public boolean isSameSort(MovieSort.SortData data) {
+        if (data == null) return false;
+        if (sortData == data) return true;
+        return sortData != null && sortData.id != null && sortData.id.equals(data.id);
+    }
+
     public void forceRefresh() {
         if (mGridView == null || gridAdapter == null || sourceViewModel == null) return;
-        if (isRequesting) return;
+        if (isRequesting) {
+            pendingRefresh = true;
+            return;
+        }
+        doRefresh();
+    }
+
+    private void doRefresh() {
+        pendingRefresh = false;
         page = 1;
         initData();
     }
