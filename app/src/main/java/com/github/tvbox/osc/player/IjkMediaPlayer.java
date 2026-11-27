@@ -372,6 +372,29 @@ public class IjkMediaPlayer extends IjkPlayer {
         mMediaPlayer.setOnTimedTextListener(listener);
     }
 
+    /** 关闭后台音频时记住当前视轨；deselect 让 ijk 不再解码画面，只留音频 */
+    private int savedVideoTrack = Integer.MIN_VALUE;
+
+    /** @param videoEnabled true = 恢复视频轨解码，false = 关闭视频轨只留声音 */
+    public void setVideoTrackEnabled(boolean videoEnabled) {
+        try {
+            if (mMediaPlayer == null) return;
+            if (videoEnabled) {
+                if (savedVideoTrack >= 0) {
+                    mMediaPlayer.selectTrack(savedVideoTrack);
+                }
+                savedVideoTrack = Integer.MIN_VALUE;
+            } else {
+                int current = mMediaPlayer.getSelectedTrack(ITrackInfo.MEDIA_TRACK_TYPE_VIDEO);
+                if (current >= 0) {
+                    savedVideoTrack = current;
+                    mMediaPlayer.deselectTrack(current);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     public void loadDefaultTrack(TrackInfo trackInfo,String playKey) {
         if(trackInfo!=null && trackInfo.getAudio().size()>1){
             Integer trackIndex = memory.ijkLoad(playKey);

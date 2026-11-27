@@ -248,6 +248,33 @@ public class ExoPlayer extends ExoMediaPlayer {
         return C.INDEX_UNSET;
     }
 
+    /** 后台音频模式：禁用视频渲染器，停止视频解码，只留音频 */
+    public void setVideoTrackEnabled(boolean videoEnabled) {
+        try {
+            MappingTrackSelector.MappedTrackInfo mappedInfo = trackSelector.getCurrentMappedTrackInfo();
+            int videoRenderer = findVideoRendererIndex(mappedInfo);
+            if (videoRenderer == C.INDEX_UNSET) return;
+            DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
+                    .setRendererDisabled(videoRenderer, !videoEnabled);
+            if (videoEnabled) {
+                builder.clearSelectionOverrides(videoRenderer);
+            }
+            trackSelector.setParameters(builder.build());
+        } catch (Throwable th) {
+            LOG.i("echo-exo-set-video-track-error:" + th.getMessage());
+        }
+    }
+
+    private int findVideoRendererIndex(MappingTrackSelector.MappedTrackInfo mappedInfo) {
+        if (mappedInfo == null) return C.INDEX_UNSET;
+        for (int i = 0; i < mappedInfo.getRendererCount(); i++) {
+            if (mappedInfo.getRendererType(i) == C.TRACK_TYPE_VIDEO) {
+                return i;
+            }
+        }
+        return C.INDEX_UNSET;
+    }
+
     private boolean isTrackIndexValid(TrackGroupArray groups, int groupIndex, int trackIndex) {
         if (groupIndex < 0 || groupIndex >= groups.length) return false;
         TrackGroup group = groups.get(groupIndex);

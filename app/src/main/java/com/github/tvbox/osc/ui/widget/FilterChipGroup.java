@@ -76,8 +76,7 @@ public class FilterChipGroup extends ViewGroup {
 
         int measuredWidth = widthMode == MeasureSpec.EXACTLY ? widthSize : Math.min(usedWidth, maxWidth);
         int measuredHeight = heightMode == MeasureSpec.EXACTLY ? heightSize : totalHeight;
-        setMeasuredWidth(measuredWidth);
-        setMeasuredHeight(measuredHeight);
+        setMeasuredDimension(measuredWidth, measuredHeight);
     }
 
     @Override

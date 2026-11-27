@@ -3,11 +3,8 @@ package com.github.tvbox.osc.ui.activity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.text.TextUtils;
@@ -23,7 +20,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
@@ -63,10 +59,6 @@ import com.github.tvbox.osc.util.MotionCompat;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.ThemeUtil;
 import com.github.tvbox.osc.util.UpdateChecker;
-import com.lzy.okgo.OkGo;
-import com.lzy.okgo.callback.FileCallback;
-import com.lzy.okgo.model.Progress;
-import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
 
 import org.greenrobot.eventbus.EventBus;
@@ -74,8 +66,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
@@ -105,7 +95,6 @@ public class MineSettingActivity extends BaseActivity {
     public static final String SECTION_BACKUP = "backup";
     public static final String SECTION_ABOUT = "about";
 
-    private static final int REQUEST_PICK_WALLPAPER = 4001;
     private static final int REQUEST_BACKUP_EXPORT = 4002;
     private static final int REQUEST_BACKUP_IMPORT = 4003;
 
@@ -195,7 +184,6 @@ public class MineSettingActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         refreshRows();
-        if (SECTION_APPEARANCE.equals(section)) updateSwatches();
     }
 
     private String titleOf(String section) {
@@ -277,31 +265,6 @@ public class MineSettingActivity extends BaseActivity {
                     }
                 });
 
-        header("壁纸");
-        card();
-        addActionRow("自定义配图", "从相册选一张图片作为应用背景", new Action() {
-            @Override
-            public void run() {
-                pickCustomWallpaper();
-            }
-        });
-        addActionRow("数据源壁纸", "下载当前数据源配置的壁纸", new Action() {
-            @Override
-            public void run() {
-                changeWallpaperFromApi();
-            }
-        });
-        addActionRow("重置背景", "清除自定义配图与纯色，恢复默认背景", new Action() {
-            @Override
-            public void run() {
-                resetWallpaper();
-            }
-        }, true);
-
-        header("纯色背景");
-        card();
-        addColorPicker();
-
         header("首页与列表");
         card();
         addSwitchRow("首页多行", "热门推荐使用多行网格展示", HawkConfig.HOME_REC_STYLE, false, null);
@@ -335,152 +298,12 @@ public class MineSettingActivity extends BaseActivity {
                 });
     }
 
-    private void changeWallpaperFromApi() {
-        String wallpaper = ApiConfig.get().wallpaper;
-        if (TextUtils.isEmpty(wallpaper)) {
-            GlassTip.show(this, "当前数据源没有提供壁纸");
-            return;
-        }
-        GlassTip.show(this, "正在下载壁纸…");
-        OkGo.<File>get(wallpaper).execute(new FileCallback(getFilesDir().getAbsolutePath(), "wp") {
-            @Override
-            public void onSuccess(Response<File> response) {
-                changeWallpaper(true);
-            }
-
-            @Override
-            public void onError(Response<File> response) {
-                super.onError(response);
-                GlassTip.show(MineSettingActivity.this, "壁纸下载失败");
-            }
-
-            @Override
-            public void downloadProgress(Progress progress) {
-                super.downloadProgress(progress);
-            }
-        });
-    }
-
-    private void resetWallpaper() {
-        File wp = new File(getFilesDir().getAbsolutePath() + "/wp");
-        if (wp.exists() && !wp.delete()) {
-            GlassTip.show(this, "壁纸重置失败");
-            return;
-        }
-        Hawk.put(HawkConfig.WALLPAPER_COLOR, 0);
-        applyWallpaperNow();
-        updateSwatches();
-        GlassTip.show(this, "已恢复默认背景");
-    }
-
-    /* ------------------------- 纯色背景 ------------------------- */
-
-    /** 日间纯色：浅色系，配深色文字 */
-    private static final int[] WALLPAPER_COLORS_DAY = {
-            0xFFF3F4F7, 0xFFFFFFFF, 0xFFEFF4FA, 0xFFF4F0FA,
-            0xFFFBF1F0, 0xFFEFF7F1, 0xFFFAF5EA, 0xFFEDF3FB,
-            0xFFF5F5F5, 0xFFEDF6F7, 0xFFF7F0F8, 0xFFEDF7F5
-    };
-
-    /** 夜间纯色：深色系，避免与白色文字冲突 */
-    private static final int[] WALLPAPER_COLORS_NIGHT = {
-            0xFF0E0E12, 0xFF1B2430, 0xFF22303C, 0xFF2C2A3A,
-            0xFF33262A, 0xFF1E2B26, 0xFF3A2F1E, 0xFF101B2E,
-            0xFF2B2B2B, 0xFF14202A, 0xFF26172E, 0xFF00212B
-    };
-
-    /** 色板跟着当前明暗模式走 */
-    private int[] wallpaperColors() {
-        return com.github.tvbox.osc.util.ThemeUtil.isNight(this)
-                ? WALLPAPER_COLORS_NIGHT : WALLPAPER_COLORS_DAY;
-    }
-
-    private final List<View> colorSwatches = new ArrayList<>();
-
-    private void addColorPicker() {
-        if (currentCard == null) card();
-        LinearLayout wrap = new LinearLayout(this);
-        wrap.setOrientation(LinearLayout.VERTICAL);
-        wrap.setPadding(dp(12), dp(10), dp(12), dp(10));
-        currentCard.addView(wrap, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(6);
-        wrap.addView(grid);
-
-        int size = dp(38);
-        int margin = dp(6);
-        colorSwatches.clear();
-        for (final int color : wallpaperColors()) {
-            View swatch = new View(this);
-            GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-            lp.width = size;
-            lp.height = size;
-            lp.setMargins(margin, margin, margin, margin);
-            swatch.setLayoutParams(lp);
-            swatch.setTag(color);
-            swatch.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
-                    applyPureColor(color);
-                }
-            });
-            colorSwatches.add(swatch);
-            grid.addView(swatch);
-        }
-        updateSwatches();
-    }
-
-    private void applyPureColor(int color) {
-        // 纯色与自定义配图互斥：选了纯色就把配图删掉
-        File wp = new File(getFilesDir().getAbsolutePath() + "/wp");
-        if (wp.exists()) wp.delete();
-        Hawk.put(HawkConfig.WALLPAPER_COLOR, color);
-        applyWallpaperNow();
-        updateSwatches();
-    }
-
-    private void updateSwatches() {
-        int current = Hawk.get(HawkConfig.WALLPAPER_COLOR, 0);
-        boolean hasImage = new File(getFilesDir().getAbsolutePath() + "/wp").exists();
-        for (View swatch : colorSwatches) {
-            Object tag = swatch.getTag();
-            if (!(tag instanceof Integer)) continue;
-            int color = (Integer) tag;
-            GradientDrawable drawable = new GradientDrawable();
-            drawable.setShape(GradientDrawable.OVAL);
-            drawable.setColor(color);
-            boolean selected = !hasImage && color == current;
-            drawable.setStroke(dp(selected ? 2 : 1),
-                    getResources().getColor(selected ? R.color.ui_text_primary : R.color.ui_text_tertiary));
-            swatch.setBackground(drawable);
-        }
-    }
-
-    /* ------------------------- 自定义配图 ------------------------- */
-
-    private void pickCustomWallpaper() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("image/*");
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        try {
-            startActivityForResult(Intent.createChooser(intent, "选择背景图片"), REQUEST_PICK_WALLPAPER);
-        } catch (Throwable th) {
-            GlassTip.show(this, "没有找到可用的图片选择器");
-        }
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         switch (requestCode) {
-            case REQUEST_PICK_WALLPAPER:
-                saveWallpaperFromUri(uri);
-                break;
             case REQUEST_BACKUP_EXPORT:
                 writeBackupToUri(uri);
                 break;
@@ -489,61 +312,6 @@ public class MineSettingActivity extends BaseActivity {
                 break;
             default:
                 break;
-        }
-    }
-
-    /** 把选中的图片压缩后写入 files/wp，作为全局背景 */
-    private void saveWallpaperFromUri(Uri uri) {
-        InputStream input = null;
-        FileOutputStream output = null;
-        try {
-            BitmapFactory.Options bounds = new BitmapFactory.Options();
-            bounds.inJustDecodeBounds = true;
-            input = getContentResolver().openInputStream(uri);
-            if (input == null) {
-                GlassTip.show(this, "读取图片失败");
-                return;
-            }
-            BitmapFactory.decodeStream(input, null, bounds);
-            input.close();
-            input = null;
-
-            int longest = Math.max(bounds.outWidth, bounds.outHeight);
-            int sample = 1;
-            while (longest / sample > 1440) {
-                sample *= 2;
-            }
-
-            BitmapFactory.Options opts = new BitmapFactory.Options();
-            opts.inSampleSize = sample;
-            input = getContentResolver().openInputStream(uri);
-            Bitmap bitmap = BitmapFactory.decodeStream(input, null, opts);
-            if (bitmap == null) {
-                GlassTip.show(this, "图片解码失败");
-                return;
-            }
-
-            File wp = new File(getFilesDir().getAbsolutePath() + "/wp");
-            output = new FileOutputStream(wp);
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output);
-            output.flush();
-            bitmap.recycle();
-
-            Hawk.put(HawkConfig.WALLPAPER_COLOR, 0);
-            applyWallpaperNow();
-            updateSwatches();
-            GlassTip.show(this, "背景已更新");
-        } catch (Throwable th) {
-            GlassTip.show(this, "设置背景失败：" + th.getMessage());
-        } finally {
-            try {
-                if (output != null) output.close();
-            } catch (Throwable ignored) {
-            }
-            try {
-                if (input != null) input.close();
-            } catch (Throwable ignored) {
-            }
         }
     }
 
@@ -1910,7 +1678,7 @@ public class MineSettingActivity extends BaseActivity {
                 sb.append(line).append('\n');
             }
             BackupUtil.RestoreResult result = BackupUtil.restore(sb.toString());
-            // 即时生效的类型：主题 / 播放内核 / 弹幕事件 / 纯色背景
+            // 即时生效的类型：主题 / 播放内核 / 弹幕事件
             if (result.uiModeChanged) {
                 ThemeUtil.setMode(Hawk.get(HawkConfig.UI_MODE, ThemeUtil.getMode()));
             }
@@ -1919,9 +1687,6 @@ public class MineSettingActivity extends BaseActivity {
             }
             if (result.danmuChanged) {
                 postDanmuSettings();
-            }
-            if (result.wallpaperChanged) {
-                applyWallpaperNow();
             }
             refreshRows();
             GlassTip.show(this, "已同步 " + result.count + " 项配置"
@@ -2145,8 +1910,7 @@ public class MineSettingActivity extends BaseActivity {
     }
 
     private void card() {
-        // 玻璃分组容器：半透明填充 + 高光描边 + 26dp 大圆角；
-        // Android 12+ 且背后有壁纸时自带 backdrop 预模糊，其余降级为半透明实色
+        // 玻璃分组容器：半透明填充 + 高光描边 + 26dp 大圆角
         GlassGroupView card = new GlassGroupView(this);
         card.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(

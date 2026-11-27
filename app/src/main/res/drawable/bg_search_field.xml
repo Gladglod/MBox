@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   首页假搜索框。
-  两态拆成独立 shape 资源，壁纸模式下由 WallpaperGlass 分别玻璃化；
-  若写成 selector 内联 shape，子项无法通过公开 API 遍历，就会留成实色。
+  两态拆成独立 shape 资源，便于分别调整按下态底色。
 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true" android:drawable="@drawable/bg_search_field_pressed" />

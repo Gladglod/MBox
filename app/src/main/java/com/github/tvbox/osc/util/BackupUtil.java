@@ -33,7 +33,6 @@ public final class BackupUtil {
         public boolean uiModeChanged = false;      // 外观主题（即时应用）
         public boolean playerChanged = false;      // 播放内核相关（需 PlayerHelper.init）
         public boolean danmuChanged = false;       // 弹幕（发 Settings 事件）
-        public boolean wallpaperChanged = false;   // 纯色背景（需 reapply）
     }
 
     /** 备份覆盖的配置 key（不在此列表里的 key 不导出也不导入，规避会话状态与自定义对象） */
@@ -43,7 +42,7 @@ public final class BackupUtil {
             HawkConfig.LIVE_API_HISTORY, HawkConfig.EPG_URL, HawkConfig.DOH_URL,
             HawkConfig.REMOTE_TVBOX,
             // 外观主题
-            HawkConfig.UI_MODE, HawkConfig.WALLPAPER_COLOR, HawkConfig.HOME_TABS,
+            HawkConfig.UI_MODE, HawkConfig.HOME_TABS,
             HawkConfig.HOME_REC, HawkConfig.HOME_REC_STYLE, HawkConfig.SEARCH_VIEW,
             HawkConfig.DEFAULT_LOAD_LIVE,
             // 历史与搜索
@@ -174,8 +173,6 @@ public final class BackupUtil {
             result.playerChanged = true;
         } else if (key.startsWith("danmu_")) {
             result.danmuChanged = true;
-        } else if (HawkConfig.WALLPAPER_COLOR.equals(key)) {
-            result.wallpaperChanged = true;
         }
     }
 

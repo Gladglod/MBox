@@ -173,6 +173,23 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
     }
 
     /**
+     * 只显示 / 隐藏视频渲染层，不动播放器和音频轨。
+     * 后台纯音频模式用它把画面藏起来：播放器继续正常播放，音频与前台服务照常工作；
+     * 恢复时 Surface / TextureView 会按自身回调重新挂回播放器，不需要重建播放器。
+     */
+    public void setRenderViewVisible(boolean visible) {
+        if (mRenderView == null) return;
+        mRenderView.getView().setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+
+    /** 重新把当前渲染层的 Surface / SurfaceHolder 挂回播放器（不重建播放器） */
+    public void rebindRenderView() {
+        if (mRenderView != null && mMediaPlayer != null) {
+            mRenderView.attachToPlayer(mMediaPlayer);
+        }
+    }
+
+    /**
      * 设置{@link #mPlayerContainer}的背景色
      */
     public void setPlayerBackgroundColor(int color) {

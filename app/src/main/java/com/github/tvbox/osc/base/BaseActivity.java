@@ -5,19 +5,11 @@ import android.content.Intent;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.View;
-import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -27,15 +19,11 @@ import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.callback.EmptyCallback;
 import com.github.tvbox.osc.callback.LoadingCallback;
 import com.github.tvbox.osc.util.AppManager;
-import com.github.tvbox.osc.util.HawkConfig;
-import com.github.tvbox.osc.util.WallpaperGlass;
-import com.orhanobut.hawk.Hawk;
 import com.kingja.loadsir.callback.Callback;
 import com.kingja.loadsir.core.LoadService;
 import com.kingja.loadsir.core.LoadSir;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
@@ -95,7 +83,6 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
     protected void onResume() {
         super.onResume();
         hideSysBar();
-        changeWallpaper(false);
         if (shouldRefreshAutoSize()) {
             refreshAutoSize();
             scheduleRefreshAutoSize();
@@ -341,159 +328,5 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
     @Override
     public boolean isBaseOnWidth() {
         return true;
-    }
-
-    protected static BitmapDrawable globalWp = null;
-
-    /**
-     * 玻璃卡片（GlassGroupView）读取当前全局壁纸位图做 backdrop 预模糊。
-     * 没有配图壁纸时返回 null，卡片自动退化成半透明实色。
-     */
-    public static Bitmap currentWallpaperBitmap() {
-        return globalWp == null ? null : globalWp.getBitmap();
-    }
-
-    public void changeWallpaper(boolean force) {
-        if (!force && globalWp != null) {
-            getWindow().setBackgroundDrawable(globalWp);
-            releaseContentBackground(true);
-            applyWallpaperChrome(true, globalWp.getBitmap(), 0);
-            return;
-        }
-        try {
-            File wp = new File(getFilesDir().getAbsolutePath() + "/wp");
-            if (wp.exists()) {
-                BitmapFactory.Options opts = new BitmapFactory.Options();
-                opts.inJustDecodeBounds = true;
-                BitmapFactory.decodeFile(wp.getAbsolutePath(), opts);
-                // 从Options中获取图片的分辨率
-                int imageHeight = opts.outHeight;
-                int imageWidth = opts.outWidth;
-                int picHeight = 720;
-                int picWidth = 1080;
-                int scaleX = imageWidth / picWidth;
-                int scaleY = imageHeight / picHeight;
-                int scale = 1;
-                if (scaleX > scaleY && scaleY >= 1) {
-                    scale = scaleX;
-                }
-                if (scaleX < scaleY && scaleX >= 1) {
-                    scale = scaleY;
-                }
-                opts.inJustDecodeBounds = false;
-                // 采样率
-                opts.inSampleSize = scale;
-                globalWp = new BitmapDrawable(BitmapFactory.decodeFile(wp.getAbsolutePath(), opts));
-            } else {
-                globalWp = null;
-            }
-        } catch (Throwable throwable) {
-            throwable.printStackTrace();
-            globalWp = null;
-        }
-        int pureColor = Hawk.get(HawkConfig.WALLPAPER_COLOR, 0);
-        Bitmap wallpaperBitmap = globalWp == null ? null : globalWp.getBitmap();
-        if (globalWp != null) {
-            getWindow().setBackgroundDrawable(globalWp);
-            releaseContentBackground(true);
-            applyWallpaperChrome(true, wallpaperBitmap, 0);
-        } else if (pureColor != 0) {
-            getWindow().setBackgroundDrawable(new ColorDrawable(pureColor));
-            releaseContentBackground(true);
-            applyWallpaperChrome(true, null, pureColor);
-        } else {
-            // 没有配图也没有纯色：底色交给主题（日间白 / 夜间深），
-            // 不再固定用 app_bg.jpg —— 那张是深色图，日间模式下会和白色文字打架。
-            getWindow().setBackgroundDrawable(new ColorDrawable(
-                    getResources().getColor(R.color.ui_bg)));
-            releaseContentBackground(false);
-            applyWallpaperChrome(false, null, 0);
-        }
-    }
-
-    /**
-     * 让窗口背景（配图 / 纯色）能真正透出来。
-     *
-     * <p>页面根布局自带 {@code @color/ui_bg} 底色，会把 window background 整个盖住——
-     * 这正是之前「设置了配图/纯色，全局却不生效」的原因。
-     * 用户设了自定义背景时把整棵树上所有「页面底色」抹成透明，没设时还原
-     * （保持不透明可以让 GPU 少画一层全屏底色）。</p>
-     */
-    private void releaseContentBackground(boolean transparent) {
-        View content = findViewById(android.R.id.content);
-        if (!(content instanceof ViewGroup)) return;
-        ViewGroup group = (ViewGroup) content;
-        for (int i = 0; i < group.getChildCount(); i++) {
-            applyPageBackground(group.getChildAt(i), transparent, true);
-        }
-    }
-
-    /**
-     * 递归处理页面底色。
-     *
-     * <p>只动「颜色正好等于 ui_bg」的 ColorDrawable —— Fragment 页、ViewPager 里的
-     * 列表容器都各自铺了一层 ui_bg，不递归的话配图只能从顶栏、底栏那两条缝里露出来。</p>
-     */
-    private void applyPageBackground(View view, boolean transparent, boolean root) {
-        if (view == null) return;
-        int uiBg = getResources().getColor(R.color.ui_bg);
-        Drawable bg = view.getBackground();
-        if (bg instanceof ColorDrawable) {
-            ColorDrawable colorDrawable = (ColorDrawable) bg;
-            if (transparent) {
-                if (colorDrawable.getColor() == uiBg) {
-                    colorDrawable.setColor(Color.TRANSPARENT);
-                    view.setTag(R.id.tag_page_bg_transparent, Boolean.TRUE);
-                }
-            } else if (Boolean.TRUE.equals(view.getTag(R.id.tag_page_bg_transparent))) {
-                colorDrawable.setColor(uiBg);
-                view.setTag(R.id.tag_page_bg_transparent, null);
-            }
-        } else if (root && bg == null) {
-            view.setBackgroundColor(transparent ? Color.TRANSPARENT : uiBg);
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                applyPageBackground(group.getChildAt(i), transparent, false);
-            }
-        }
-    }
-
-    /**
-     * 壁纸 / 纯色模式下把所有 UI 表面换成自适应玻璃色。
-     *
-     * <p>Resources 的 drawable ConstantState 是全进程共享的，改一次，之后新 inflate
-     * 出来的列表项、弹窗也会自动跟着是玻璃；再补一遍当前页面里直接
-     * setBackgroundColor 的控件。没有壁纸时按快照原样还原。</p>
-     */
-    private void applyWallpaperChrome(boolean glass, Bitmap wallpaper, int pureColor) {
-        try {
-            WallpaperGlass.configure(this, wallpaper, pureColor);
-            WallpaperGlass.applyToResources(this, glass);
-            View content = findViewById(android.R.id.content);
-            if (content != null) {
-                WallpaperGlass.applyToViewTree(content, glass);
-            }
-            // Fragment / 弹窗往往在 onResume 之后才 inflate，补一趟
-            if (glass && content != null) {
-                content.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!isFinishing()) {
-                            WallpaperGlass.applyToViewTree(content, true);
-                        }
-                    }
-                }, 300);
-            }
-        } catch (Throwable th) {
-            th.printStackTrace();
-        }
-    }
-
-    /** 立即刷新背景（设置页里切换纯色后即时预览用） */
-    public void applyWallpaperNow() {
-        globalWp = null;
-        changeWallpaper(true);
     }
 }

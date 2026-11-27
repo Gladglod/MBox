@@ -135,7 +135,7 @@
     <!-- 下拉菜单面板：比导航条更实一点，避免背后文字透过来干扰阅读 -->
     <color name="glass_menu_bg">#F2FFFFFF</color>
     <color name="glass_menu_stroke">#1A000000</color>
-    <!-- 「我的」页分组玻璃容器：填充比底部导航更透一点透壁纸，描边/高光同导航一套逻辑 -->
+    <!-- 「我的」页分组玻璃容器：填充比底部导航更透一点，描边/高光同导航一套逻辑 -->
     <color name="glass_card_fill">#D9FFFFFF</color>
     <color name="glass_card_stroke">#1A000000</color>
     <color name="glass_card_highlight">#4DFFFFFF</color>
@@ -160,13 +160,4 @@
     <color name="glass_indicator_stroke">#4D007A70</color>
     <!-- 指示器顶部高光 -->
     <color name="glass_indicator_highlight">#59FFFFFF</color>
-
-    <!--
-      壁纸模式（自定义配图 / 纯色背景）下的半透明表面。
-      用户设了背景时，顶栏、底栏、卡片会换成这几个颜色，让配图真正透出来；
-      没设背景时依旧用上面的不透明色，避免多画一层透明合成。
-    -->
-    <color name="ui_surface_glass">#B8FFFFFF</color>
-    <color name="ui_material_glass">#CCFFFFFF</color>
-    <color name="ui_bar_glass">#CCFFFFFF</color>
 </resources>

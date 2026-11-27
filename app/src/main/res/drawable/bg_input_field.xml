@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 页面内（非弹窗）输入框：跟随日间 / 夜间主题；两态拆开以便壁纸玻璃化 -->
+<!-- 页面内（非弹窗）输入框：跟随日间 / 夜间主题 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true" android:drawable="@drawable/bg_input_field_focused" />
     <item android:drawable="@drawable/bg_input_field_normal" />

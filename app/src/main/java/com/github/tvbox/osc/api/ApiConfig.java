@@ -87,7 +87,6 @@ public class ApiConfig {
     private String currentLivePyKey = "";
     private String currentPlaySourceKey = "";
     private String loadedLiveConfigUrl = "";
-    public String wallpaper = "";
     private String danmaku = "";
 
     private final SourceBean emptyHome = new SourceBean();
@@ -746,8 +745,6 @@ public class ApiConfig {
         spider = DefaultConfig.safeJsonString(infoJson, "spider", "");
         jarCache = DefaultConfig.safeJsonString(infoJson, "jarCache", "true");
         danmaku = DefaultConfig.safeJsonString(infoJson, "danmaku", "");
-        // wallpaper
-        wallpaper = DefaultConfig.safeJsonString(infoJson, "wallpaper", "");
         // 远端站点源
         SourceBean firstSite = null;
         for (JsonElement opt : infoJson.get("sites").getAsJsonArray()) {

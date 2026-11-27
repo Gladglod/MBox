@@ -153,8 +153,7 @@ public class UserFragment extends BaseLazyFragment {
             if (hasHeader) {
                 container.addView(inflater.inflate(R.layout.item_group_header, container, false));
             }
-            // 玻璃分组容器：半透明的填充 + 高光描边 + 26dp 大圆角；
-            // Android 12+ 且背后有壁纸时自带 backdrop 预模糊，其余降级为半透明实色
+            // 玻璃分组容器：半透明填充 + 高光描边 + 26dp 大圆角
             GlassGroupView card = new GlassGroupView(mContext);
             LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

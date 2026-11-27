@@ -38,6 +38,7 @@ import android.widget.PopupMenu;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -631,8 +632,6 @@ public class VodController extends BaseController {
     TextView mZimuBtn;
     TextView mAudioTrackBtn;
     TextView mVideoTrackBtn;
-    TextView mDanmuSettingBtn;
-    TextView mDanmuSearchUiBtn;
     public TextView mLandscapePortraitBtn;
     private View backBtn;//返回键
     private boolean isClickBackBtn;
@@ -661,18 +660,16 @@ public class VodController extends BaseController {
     private LinearLayout mMorePanel;         // 设置抽屉
     private View mDrawerScrim;               // 抽屉遮罩
     private ImageView mDrawerClose;          // 抽屉关闭
+    private TextView mSleepTimerView;        // 定时暂停当前状态文字
+    private TextView[] mSleepTimerChips;     // 抽屉内直接选择的时长胶囊
+    private EditText mSleepTimerInput;       // 自定义分钟输入
+    private TextView mAudioOnlyView;         // 后台音频播放开关
 
-    /* ===== 抽屉内的弹幕设置 ===== */
-    private TextView tvDanmuSource;
-    private TextView btnDanmuSearch;
-    private TextView dmColorDefault, dmColorRandom;
-    private TextView dmSpeed0, dmSpeed1, dmSpeed2, dmSpeed3;
-    private TextView dmSizeSub, dmSize, dmSizeAdd;
-    private TextView dmLineSub, dmLine, dmLineAdd;
-    private TextView dmAlphaSub, dmAlpha, dmAlphaAdd;
-    // 注意：必须是 static。initView() 由 BaseVideoController 构造函数回调，
-    // 此时子类实例字段初始化器尚未执行，非 static 的数组仍是 null。
-    private static final float[] DM_SPEED_RATES = {2.4f, 1.8f, 1.5f, 1.0f}; // 与 DanmuSettingDialog 的档位一致
+    private static final int[] SLEEP_TIMER_CHIP_IDS = {
+            R.id.play_timer_off, R.id.play_timer_15, R.id.play_timer_30, R.id.play_timer_45,
+            R.id.play_timer_60, R.id.play_timer_90, R.id.play_timer_120
+    };
+    private static final int[] SLEEP_TIMER_CHIP_MINUTES = {0, 15, 30, 45, 60, 90, 120};
 
     LockRunnable lockRunnable = new LockRunnable();
     private boolean isLock = false;
@@ -885,8 +882,6 @@ public class VodController extends BaseController {
         mZimuBtn = findViewById(R.id.zimu_select);
         mAudioTrackBtn = findViewById(R.id.audio_track_select);
         mVideoTrackBtn = findViewById(R.id.video_track_select);
-        mDanmuSettingBtn = findViewById(R.id.danmu_setting);
-        mDanmuSearchUiBtn = findViewById(R.id.danmu_search_ui);
         mLandscapePortraitBtn = findViewById(R.id.landscape_portrait);
         backBtn = findViewById(R.id.tv_back);
         seekTime = findViewById(R.id.tv_seek_time);
@@ -913,7 +908,7 @@ public class VodController extends BaseController {
         mDrawerClose = findViewById(R.id.iv_drawer_close);
         bindMainControlButtons();
         bindDrawer();
-        bindDanmuSettingPanel();
+        bindTimerSettings();
         updateDanmuBtn();
         updateDanmuSearchUiBtn();
         backBtn.setOnClickListener(new OnClickListener() {
@@ -1381,38 +1376,6 @@ public class VodController extends BaseController {
                 FastClickCheckUtil.check(view);
                 listener.selectVideoTrack();
                 hideBottom();
-            }
-        });
-        mDanmuSettingBtn.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                FastClickCheckUtil.check(view);
-                listener.showDanmuSetting();
-            }
-        });
-        setOnTvLongClickListener(mDanmuSettingBtn, new OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                FastClickCheckUtil.check(view);
-                boolean opened = listener.toggleDanmu();
-                hideBottom();
-                GlassTip.show(getContext(), opened ? "弹幕已开启" : "弹幕已临时关闭");
-                return true;
-            }
-        });
-        mDanmuSearchUiBtn.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                listener.searchDanmuUi(false);
-                hideBottom();
-            }
-        });
-        setOnTvLongClickListener(mDanmuSearchUiBtn, new OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                listener.searchDanmuUi(true);
-                hideBottom();
-                return true;
             }
         });
         mLandscapePortraitBtn.setOnClickListener(new OnClickListener() {
@@ -2382,7 +2345,7 @@ public class VodController extends BaseController {
             lp.setMargins(0, dp(8), dp(8), dp(8));
         }
         mMorePanel.setLayoutParams(lp);
-        refreshDanmuPanel();
+        // 定时 / 后台音频状态由 PlayFragment 在变化时同步到抽屉，这里无需刷新
 
         if (mDrawerScrim != null) {
             mDrawerScrim.setVisibility(VISIBLE);
@@ -2955,122 +2918,77 @@ public class VodController extends BaseController {
         mDanmuBtn.setTextColor(opened ? getResources().getColor(R.color.color_02F8E1) : 0x99FFFFFF);
     }
 
-    /* ==================== 抽屉内的弹幕设置 ==================== */
+    /* ==================== 抽屉内的定时暂停 / 后台音频 ==================== */
 
-    private void bindDanmuSettingPanel() {
-        tvDanmuSource = findViewById(R.id.tv_danmu_source);
-        btnDanmuSearch = findViewById(R.id.btn_danmu_search);
-
-        dmColorDefault = findViewById(R.id.dm_color_default);
-        dmColorRandom = findViewById(R.id.dm_color_random);
-        dmSpeed0 = findViewById(R.id.dm_speed_0);
-        dmSpeed1 = findViewById(R.id.dm_speed_1);
-        dmSpeed2 = findViewById(R.id.dm_speed_2);
-        dmSpeed3 = findViewById(R.id.dm_speed_3);
-        dmSizeSub = findViewById(R.id.dm_size_sub);
-        dmSize = findViewById(R.id.dm_size);
-        dmSizeAdd = findViewById(R.id.dm_size_add);
-        dmLineSub = findViewById(R.id.dm_line_sub);
-        dmLine = findViewById(R.id.dm_line);
-        dmLineAdd = findViewById(R.id.dm_line_add);
-        dmAlphaSub = findViewById(R.id.dm_alpha_sub);
-        dmAlpha = findViewById(R.id.dm_alpha);
-        dmAlphaAdd = findViewById(R.id.dm_alpha_add);
-
-        if (btnDanmuSearch != null) {
-            btnDanmuSearch.setOnClickListener(new OnClickListener() {
+    private void bindTimerSettings() {
+        mSleepTimerView = findViewById(R.id.play_sleep_timer_state);
+        mAudioOnlyView = findViewById(R.id.play_audio_only);
+        mSleepTimerInput = findViewById(R.id.play_sleep_timer_input);
+        mSleepTimerChips = new TextView[SLEEP_TIMER_CHIP_IDS.length];
+        for (int i = 0; i < SLEEP_TIMER_CHIP_IDS.length; i++) {
+            final int minutes = SLEEP_TIMER_CHIP_MINUTES[i];
+            mSleepTimerChips[i] = findViewById(SLEEP_TIMER_CHIP_IDS[i]);
+            if (mSleepTimerChips[i] != null) {
+                mSleepTimerChips[i].setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (!allowGlassClick(v)) return;
+                        if (listener != null) listener.setSleepTimerMinutes(minutes);
+                    }
+                });
+            }
+        }
+        TextView customSet = findViewById(R.id.play_sleep_timer_set);
+        if (customSet != null) {
+            customSet.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
-                    if (listener != null) listener.openSearchDanmuDialog();
+                    if (!allowGlassClick(v)) return;
+                    if (listener == null || mSleepTimerInput == null) return;
+                    listener.setCustomSleepTimerMinutes(mSleepTimerInput.getText().toString());
                 }
             });
         }
-        // 点弹幕源名字也能更换，扩大点击热区
-        if (tvDanmuSource != null) {
-            tvDanmuSource.setOnClickListener(new OnClickListener() {
+        setSleepTimerSelectedMinutes(0);
+        if (mAudioOnlyView != null) {
+            mAudioOnlyView.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    FastClickCheckUtil.check(v);
-                    if (listener != null) listener.openSearchDanmuDialog();
+                    if (!allowGlassClick(v)) return;
+                    if (listener != null) listener.toggleBackgroundAudio();
                 }
             });
         }
-        if (dmColorDefault != null) {
-            dmColorDefault.setOnClickListener(v -> {
-                DanmuHelper.setRandomColor(false);
-                refreshDanmuPanel();
-                postDanmuSettingChanged(true);
-            });
-        }
-        if (dmColorRandom != null) {
-            dmColorRandom.setOnClickListener(v -> {
-                DanmuHelper.setRandomColor(true);
-                refreshDanmuPanel();
-                postDanmuSettingChanged(true);
-            });
-        }
-        bindDanmuSpeed(dmSpeed0, 0);
-        bindDanmuSpeed(dmSpeed1, 1);
-        bindDanmuSpeed(dmSpeed2, 2);
-        bindDanmuSpeed(dmSpeed3, 3);
-
-        bindStepper(dmSizeSub, dmSizeAdd, true);
-        bindStepper(dmLineSub, dmLineAdd, false);
-        bindStepper(dmAlphaSub, dmAlphaAdd, null);
-
-        refreshDanmuPanel();
     }
 
-    private void bindDanmuSpeed(TextView view, final int index) {
-        if (view == null) return;
-        view.setOnClickListener(v -> {
-            DanmuHelper.setSpeed(DM_SPEED_RATES[index]);
-            refreshDanmuPanel();
-            postDanmuSettingChanged(false);
-        });
+    /** 更新抽屉里的定时暂停显示；空表示未设置 */
+    public void setSleepTimerLabel(String text) {
+        if (mSleepTimerView == null) return;
+        boolean active = !TextUtils.isEmpty(text);
+        mSleepTimerView.setText(active ? "当前：" + text : "到点自动暂停；看视频时会弹出提醒");
+        mSleepTimerView.setTextColor(getResources().getColor(
+                active ? R.color.ui_accent : R.color.ui_text_tertiary));
     }
 
-    /** type: TRUE=大小, FALSE=行数, null=透明度 */
-    private void bindStepper(TextView sub, TextView add, final Boolean type) {
-        if (sub != null) {
-            sub.setOnClickListener(v -> {
-                if (type == null) {
-                    int value = Math.round(DanmuHelper.getAlpha() * 100);
-                    if (value <= 10) return;
-                    DanmuHelper.setAlpha((value - 10) / 100f);
-                } else if (type) {
-                    int value = Math.round(DanmuHelper.getSizeScale() * 10);
-                    if (value <= 6) return;
-                    DanmuHelper.setSizeScale((value - 1) / 10f);
-                } else {
-                    int value = DanmuHelper.getMaxLine();
-                    if (value <= 1) return;
-                    DanmuHelper.setMaxLine(value - 1);
-                }
-                refreshDanmuPanel();
-                postDanmuSettingChanged(false);
-            });
+    /** 高亮当前选中的时长胶囊；-1 表示自定义，均未选中 */
+    public void setSleepTimerSelectedMinutes(int minutes) {
+        if (mSleepTimerChips == null) return;
+        for (int i = 0; i < mSleepTimerChips.length; i++) {
+            TextView chip = mSleepTimerChips[i];
+            if (chip == null) continue;
+            boolean selected = minutes == SLEEP_TIMER_CHIP_MINUTES[i];
+            chip.setBackgroundResource(selected ? R.drawable.bg_chip_selected : R.drawable.bg_player_drawer_chip);
+            chip.setTextColor(getResources().getColor(
+                    selected ? R.color.ui_accent : R.color.ui_text_primary));
         }
-        if (add != null) {
-            add.setOnClickListener(v -> {
-                if (type == null) {
-                    int value = Math.round(DanmuHelper.getAlpha() * 100);
-                    if (value >= 100) return;
-                    DanmuHelper.setAlpha((value + 10) / 100f);
-                } else if (type) {
-                    int value = Math.round(DanmuHelper.getSizeScale() * 10);
-                    if (value >= 20) return;
-                    DanmuHelper.setSizeScale((value + 1) / 10f);
-                } else {
-                    int value = DanmuHelper.getMaxLine();
-                    if (value >= 15) return;
-                    DanmuHelper.setMaxLine(value + 1);
-                }
-                refreshDanmuPanel();
-                postDanmuSettingChanged(false);
-            });
-        }
+    }
+
+    /** 更新抽屉里的后台音频开关显示 */
+    public void setAudioOnlyLabel(boolean enabled) {
+        if (mAudioOnlyView == null) return;
+        mAudioOnlyView.setText(enabled ? "开启 · 仅声音" : "关闭");
+        mAudioOnlyView.setTextColor(getResources().getColor(
+                enabled ? R.color.ui_accent : R.color.ui_text_primary));
     }
 
     private void postDanmuSettingChanged(boolean colorChanged) {
@@ -3082,50 +3000,10 @@ public class VodController extends BaseController {
         }
     }
 
-    /** 刷新抽屉里的弹幕设置显示 */
-    private void refreshDanmuPanel() {
-        if (tvDanmuSource != null) tvDanmuSource.setText(currentDanmuSourceName());
-        boolean random = DanmuHelper.useRandomColor();
-        applyChoice(dmColorDefault, !random);
-        applyChoice(dmColorRandom, random);
-
-        float speed = DanmuHelper.getSpeed();
-        int speedIdx = 2;
-        float best = Float.MAX_VALUE;
-        for (int i = 0; i < DM_SPEED_RATES.length; i++) {
-            float diff = Math.abs(DM_SPEED_RATES[i] - speed);
-            if (diff < best) {
-                best = diff;
-                speedIdx = i;
-            }
-        }
-        applyChoice(dmSpeed0, speedIdx == 0);
-        applyChoice(dmSpeed1, speedIdx == 1);
-        applyChoice(dmSpeed2, speedIdx == 2);
-        applyChoice(dmSpeed3, speedIdx == 3);
-
-        if (dmSize != null) dmSize.setText(Math.round(DanmuHelper.getSizeScale() * 10) + "档");
-        if (dmLine != null) dmLine.setText(DanmuHelper.getMaxLine() + "行");
-        if (dmAlpha != null) dmAlpha.setText(Math.round(DanmuHelper.getAlpha() * 100) + "%");
-    }
-
     private void applyChoice(TextView view, boolean selected) {
         if (view == null) return;
         view.setBackgroundResource(selected ? R.drawable.bg_chip_selected : R.drawable.bg_player_chip);
         view.setTextColor(selected ? getResources().getColor(R.color.color_02F8E1) : 0xF2FFFFFF);
-    }
-
-    /** 当前在线弹幕源名称 */
-    private String currentDanmuSourceName() {
-        try {
-            if (DanmakuApi.isUseDefault()) return "内置弹幕";
-            String url = DanmakuApi.getDisplayApiUrl();
-            if (TextUtils.isEmpty(url)) return "内置弹幕";
-            String host = android.net.Uri.parse(url).getHost();
-            return TextUtils.isEmpty(host) ? url : host;
-        } catch (Throwable th) {
-            return "内置弹幕";
-        }
     }
 
     /* ==================== 播放条上的弹幕设置（玻璃面板 + 进度条） ==================== */
@@ -3292,7 +3170,6 @@ public class VodController extends BaseController {
             @Override
             public void onStopTrackingTouch(SeekBar bar) {
                 applyDanmuSeekValue(type, bar.getProgress());
-                refreshDanmuPanel();
                 postDanmuSettingChanged(false);
             }
         });
@@ -3439,16 +3316,13 @@ public class VodController extends BaseController {
         updateDanmuBtn();
     }
 
+    /** 抽屉里的弹幕按钮已移除（弹幕开关/齿轮仍在播放条上），保留方法兼容外部调用 */
     public void updateDanmuBtn() {
-        if (mDanmuSettingBtn == null) return;
-        mDanmuSettingBtn.setVisibility(DanmuHelper.isOpen() ? VISIBLE : GONE);
         updatePlayLabelVisibility();
     }
 
+    /** 抽屉里的搜弹幕按钮已移除，保留方法兼容外部调用 */
     public void updateDanmuSearchUiBtn() {
-        if (mDanmuSearchUiBtn == null) return;
-        boolean hasDanmuSearchUi = ApiConfig.get().hasDanmuSearchUi();
-        mDanmuSearchUiBtn.setVisibility(hasDanmuSearchUi ? VISIBLE : GONE);
         updatePlayLabelVisibility();
     }
 
@@ -3513,6 +3387,18 @@ public class VodController extends BaseController {
 
         /** 小窗播放入口（锁定键对侧的按钮）；默认空实现，详情页播放 fragment 处理 */
         default void enterFloatPlayback() {
+        }
+
+        /** 抽屉内直接选择定时暂停分钟数（0 = 关闭），默认空实现 */
+        default void setSleepTimerMinutes(int minutes) {
+        }
+
+        /** 抽屉内自定义定时暂停分钟数，默认空实现 */
+        default void setCustomSleepTimerMinutes(String minutes) {
+        }
+
+        /** 切换后台纯音频播放，默认空实现 */
+        default void toggleBackgroundAudio() {
         }
     }
 

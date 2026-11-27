@@ -67,9 +67,6 @@ public class HawkConfig {
     public static final String DANMU_RANDOM_COLOR = "danmu_random_color";
     public static final String DANMU_API = "danmu_api";
 
-    /** 纯色背景（ARGB，0 表示未设置） */
-    public static final String WALLPAPER_COLOR = "wallpaper_color";
-
     /** 「我的」→ 界面偏好 → 高级抽屉是否展开（保留跨进程重启的状态） */
     public static final String UI_ADVANCED = "ui_advanced";
 
@@ -116,6 +113,12 @@ public class HawkConfig {
     public static final String GESTURE_DOUBLE_TAP_SEEK = "gesture_double_tap_seek";
     /** 竖屏上下滑动切换上一集 / 下一集 */
     public static final String GESTURE_PORTRAIT_SWIPE = "gesture_portrait_swipe";
+
+    /* ===== 定时暂停 / 后台音频 ===== */
+    /** 定时暂停的到期时间（SystemClock.elapsedRealtime()），0 或过期表示未设置 */
+    public static final String SLEEP_TIMER_END = "sleep_timer_end";
+    /** 后台纯音频播放：关闭画面、熄屏继续播放 */
+    public static final String BACKGROUND_AUDIO = "background_audio";
 
     /* ===== 画中画（PiP） ===== */
     /**

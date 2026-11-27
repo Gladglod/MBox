@@ -15,6 +15,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.GestureDetector;
 import android.view.Gravity;
@@ -78,6 +79,7 @@ import com.github.tvbox.osc.ui.dialog.EpisodeDialog;
 import com.github.tvbox.osc.ui.dialog.SearchDanmuDialog;
 import com.github.tvbox.osc.ui.dialog.SearchSubtitleDialog;
 import com.github.tvbox.osc.ui.dialog.SelectDialog;
+import com.github.tvbox.osc.ui.dialog.TipDialog;
 import com.github.tvbox.osc.ui.dialog.SubtitleDialog;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
@@ -124,6 +126,8 @@ import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.io.File;
 import java.net.URLEncoder;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -162,6 +166,16 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
     private Handler mHandler;
     private boolean exitingPreview = false;
     private boolean audioPlayback;
+    /** 用户在播放设置里打开的「后台音频」：关闭视频轨解码、熄屏继续播放 */
+    private boolean audioOnlyRequested;
+    /** 视轨是否已按后台音频模式关闭，换集 / 重播后要重新应用 */
+    private boolean audioOnlyTrackApplied;
+    /** 定时暂停到期时间（elapsedRealtime），0 表示未设置；与 HawkConfig 持久化同步 */
+    private long sleepTimerEnd;
+    private final Handler sleepTimerHandler = new Handler(Looper.getMainLooper());
+    private final Runnable sleepTimerTick = this::onSleepTimerTick;
+    /** 后台到期时不能弹窗，回到前台后再提醒 */
+    private boolean sleepTimerWarningPending;
     private boolean switchingPlayback;
     private boolean reusePlayerOnSwitch;
     private boolean releasePlayerOnSwitch;
@@ -396,6 +410,11 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                     markPlaybackStarted();
                     hideTipOnUiThread();
                 }
+                if (playState == VideoView.STATE_PREPARING) {
+                    // 换集 / 重播会新建渲染层和视轨状态，后台音频模式下要重新应用
+                    audioOnlyTrackApplied = false;
+                    mVideoView.setRenderViewVisible(!audioOnlyRequested);
+                }
                 if (switchingPlayback) {
                     if (playState == VideoView.STATE_PLAYBACK_COMPLETED) {
                         LOG.i("echo-music keep session while resolving next episode");
@@ -412,6 +431,11 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
                     }
                 }
                 if (!switchingPlayback) updateMusicSession();
+                // 后台音频开关可能在播放开始前就打开；换集 / 重播后也要重新关掉视频轨
+                if (audioOnlyRequested && !audioOnlyTrackApplied && isStartedPlayState(playState)) {
+                    applyAudioOnlyTrack(true);
+                    updateMusicSession();
+                }
                 startDanmuIfReady();
                 // PiP 中视频源切换 / 宽高变化 → 同步系统 PiP 画面比例（六.4 宽高正确上报）
                 if (pipModeActive && isStartedPlayState(playState)) {
@@ -455,6 +479,21 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
             @Override
             public void openSearchDanmuDialog() {
                 PlayFragment.this.openDanmuSearch();
+            }
+
+            @Override
+            public void setSleepTimerMinutes(int minutes) {
+                PlayFragment.this.setSleepTimer(minutes * 60_000L);
+            }
+
+            @Override
+            public void setCustomSleepTimerMinutes(String minutes) {
+                PlayFragment.this.setCustomSleepTimer(minutes);
+            }
+
+            @Override
+            public void toggleBackgroundAudio() {
+                PlayFragment.this.setBackgroundAudio(!audioOnlyRequested);
             }
 
             @Override
@@ -601,6 +640,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         });
         mVideoView.setVideoController(mController);
         setupIntroSkip();
+        restorePlaybackPreferences();
     }
 
     /**
@@ -1662,8 +1702,187 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         this.exitingPreview = exitingPreview;
     }
 
+    /* ==================== 定时暂停 / 后台音频 ==================== */
+
+    private static final long[] SLEEP_TIMER_MINUTES = {15, 30, 45, 60, 90, 120};
+
+    /** 从设置里恢复定时器与后台音频开关（旋转屏幕 / 重建 Fragment 后仍然有效） */
+    private void restorePlaybackPreferences() {
+        audioOnlyRequested = Hawk.get(HawkConfig.BACKGROUND_AUDIO, false);
+        audioOnlyTrackApplied = false;
+        if (mVideoView != null) mVideoView.setRenderViewVisible(!audioOnlyRequested);
+        if (mController != null) mController.setAudioOnlyLabel(audioOnlyRequested);
+
+        long end = Hawk.get(HawkConfig.SLEEP_TIMER_END, 0L);
+        sleepTimerEnd = 0;
+        if (end <= 0) return;
+        if (SystemClock.elapsedRealtime() >= end) {
+            // 期间 App 不在前台：下次回到播放页时补一次提醒
+            Hawk.put(HawkConfig.SLEEP_TIMER_END, 0L);
+            sleepTimerWarningPending = true;
+        } else {
+            startSleepTimerAt(end);
+        }
+    }
+
+    /** 当前倒计时的抽屉显示，如「28分钟后 · 23:59」 */
+    private String sleepTimerLabel() {
+        if (sleepTimerEnd <= 0) return "";
+        long left = sleepTimerEnd - SystemClock.elapsedRealtime();
+        if (left <= 0) return "即将暂停";
+        long minutes = (left + 30_000L) / 60_000L;
+        String clock = new SimpleDateFormat("HH:mm", Locale.getDefault())
+                .format(new Date(System.currentTimeMillis() + left));
+        return (minutes <= 0 ? "<1" : String.valueOf(minutes)) + "分钟后 · " + clock;
+    }
+
+    private void updateSleepTimerLabel() {
+        if (mController == null) return;
+        mController.setSleepTimerLabel(sleepTimerLabel());
+        mController.setSleepTimerSelectedMinutes(currentSleepTimerMinutes());
+    }
+
+    /** 当前定时时长对应的档位；0 = 未设置，-1 = 自定义 */
+    private int currentSleepTimerMinutes() {
+        if (sleepTimerEnd <= 0) return 0;
+        long left = sleepTimerEnd - SystemClock.elapsedRealtime();
+        for (long minutes : SLEEP_TIMER_MINUTES) {
+            if (Math.abs(left - minutes * 60_000L) < 60_000L) return (int) minutes;
+        }
+        return -1;
+    }
+
+    /** 抽屉里的自定义分钟输入：合法范围 1 ~ 600 */
+    private void setCustomSleepTimer(String text) {
+        int minutes;
+        try {
+            minutes = Integer.parseInt(text == null ? "" : text.trim());
+        } catch (NumberFormatException e) {
+            minutes = 0;
+        }
+        if (minutes < 1 || minutes > 600) {
+            GlassTip.show(mContext, "请输入 1 ~ 600 的分钟数");
+            return;
+        }
+        setSleepTimer(minutes * 60_000L);
+    }
+
+    private void setSleepTimer(long durationMillis) {
+        if (durationMillis <= 0) {
+            sleepTimerHandler.removeCallbacks(sleepTimerTick);
+            sleepTimerEnd = 0;
+            Hawk.put(HawkConfig.SLEEP_TIMER_END, 0L);
+            updateSleepTimerLabel();
+            GlassTip.show(mContext, "定时暂停已关闭");
+            return;
+        }
+        startSleepTimerAt(SystemClock.elapsedRealtime() + durationMillis);
+        GlassTip.show(mContext, "定时暂停已设置 · " + sleepTimerLabel());
+    }
+
+    private void startSleepTimerAt(long end) {
+        sleepTimerHandler.removeCallbacks(sleepTimerTick);
+        sleepTimerEnd = end;
+        Hawk.put(HawkConfig.SLEEP_TIMER_END, end);
+        updateSleepTimerLabel();
+        sleepTimerHandler.postDelayed(sleepTimerTick, 1000L);
+    }
+
+    private void onSleepTimerTick() {
+        if (sleepTimerEnd <= 0) return;
+        long left = sleepTimerEnd - SystemClock.elapsedRealtime();
+        if (left > 0) {
+            updateSleepTimerLabel();
+            sleepTimerHandler.postDelayed(sleepTimerTick, Math.min(1000L, left));
+            return;
+        }
+        sleepTimerEnd = 0;
+        Hawk.put(HawkConfig.SLEEP_TIMER_END, 0L);
+        updateSleepTimerLabel();
+        if (mVideoView != null) mVideoView.pause();
+        updateMusicSession();
+        // 后台纯音频时无法弹窗，等用户回到播放页再提醒；看视频时立即弹出警告
+        if (isResumed() && !pipModeActive && !floatMode) {
+            showSleepTimerWarning();
+        } else {
+            sleepTimerWarningPending = true;
+        }
+    }
+
+    private void showSleepTimerWarning() {
+        Activity activity = getActivity();
+        if (activity == null || activity.isFinishing()) return;
+        sleepTimerWarningPending = false;
+        String clock = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
+        TipDialog dialog = new TipDialog(activity,
+                "已到定时时间（" + clock + "），播放已暂停。",
+                "知道了", "继续播放", new TipDialog.OnListener() {
+            @Override
+            public void left() {
+            }
+
+            @Override
+            public void right() {
+                if (mVideoView != null) mVideoView.start();
+                updateMusicSession();
+            }
+
+            @Override
+            public void cancel() {
+            }
+        });
+        dialog.show();
+    }
+
+    /**
+     * 打开 / 关闭后台纯音频播放：关掉视频轨解码只留声音，省电且熄屏可继续听。
+     * 关闭时恢复视频轨、把渲染层重新挂回播放器，并清掉后台音频时叠加的封面图。
+     */
+    private void setBackgroundAudio(boolean enabled) {
+        audioOnlyRequested = enabled;
+        audioOnlyTrackApplied = false;
+        Hawk.put(HawkConfig.BACKGROUND_AUDIO, enabled);
+        if (mController != null) mController.setAudioOnlyLabel(enabled);
+        if (enabled) {
+            if (mVideoView != null) mVideoView.setRenderViewVisible(false);
+            applyAudioOnlyTrack(true);
+            audioPlayback = true;
+            updateMusicSession();
+            GlassTip.show(mContext, "后台音频已开启 · 熄屏也能继续听");
+        } else {
+            MusicPlaybackService.stop(getContext(), this);
+            audioPlayback = false;
+            applyAudioOnlyTrack(false);
+            if (mVideoView != null) {
+                // 恢复视频轨后把 Surface / SurfaceHolder 重新挂回，不重建播放器
+                mVideoView.rebindRenderView();
+                mVideoView.setRenderViewVisible(true);
+                // 后台音频时叠上去的封面必须清掉，否则封面会一直盖住视频
+                mVideoView.clearArtwork();
+            }
+            GlassTip.show(mContext, "后台音频已关闭 · 恢复画面");
+        }
+    }
+
+    /** @param audioOnly true = 关闭视频轨只留声音，false = 恢复视频轨 */
+    private void applyAudioOnlyTrack(boolean audioOnly) {
+        if (mVideoView == null) return;
+        AbstractPlayer player = mVideoView.getMediaPlayer();
+        boolean applied = false;
+        if (player instanceof IjkMediaPlayer) {
+            ((IjkMediaPlayer) player).setVideoTrackEnabled(!audioOnly);
+            applied = true;
+        } else if (player instanceof ExoPlayer) {
+            ((ExoPlayer) player).setVideoTrackEnabled(!audioOnly);
+            applied = true;
+        }
+        // 播放器还没就绪时不要标记成已应用，等 STATE_PREPARED 后由状态监听补一次
+        audioOnlyTrackApplied = applied && audioOnly;
+    }
+
     private boolean hasAudioOnlyPlayback() {
-        return Boolean.TRUE.equals(getAudioOnlyPlayback());
+        // 用户显式打开的后台音频也算纯音频播放：退到后台时不暂停，由前台 Service 继续放音
+        return audioOnlyRequested || Boolean.TRUE.equals(getAudioOnlyPlayback());
     }
 
     private Boolean getAudioOnlyPlayback() {
@@ -1688,6 +1907,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         if (switchingPlayback) return;
         Boolean audioOnly = getAudioOnlyPlayback();
         if (audioOnly != null) audioPlayback = audioOnly;
+        if (audioOnlyRequested) audioPlayback = true;
         if (audioPlayback && TextUtils.isEmpty(playArtwork) && mVodInfo != null && !TextUtils.isEmpty(mVodInfo.pic)) {
             playArtwork = mVodInfo.pic;
             mVideoView.setArtwork(playArtwork);
@@ -1788,6 +2008,10 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
         if (mVideoView != null) {
             mVideoView.resume();
         }
+        if (sleepTimerWarningPending) {
+            // 让播放页先完成恢复，再弹「已到定时时间」提醒
+            sleepTimerHandler.postDelayed(this::showSleepTimerWarning, 300L);
+        }
     }
 
     @Override
@@ -1808,6 +2032,7 @@ public class PlayFragment extends BaseLazyFragment implements FloatPlayWindow.Ow
     public void onDestroyView() {
         audioPlayback = false;
         switchingPlayback = false;
+        sleepTimerHandler.removeCallbacks(sleepTimerTick);
         MusicPlaybackService.stop(getContext(), this);
         if (sourceViewModel != null && playResultObserver != null) {
             sourceViewModel.playResult.removeObserver(playResultObserver);

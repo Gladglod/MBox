@@ -22,8 +22,7 @@
         <item name="android:keepScreenOn">true</item>
         <item name="android:statusBarColor">@color/ui_bg</item>
         <item name="android:windowLightStatusBar">true</item>
-        <!-- windowBackground 由 BaseActivity.changeWallpaper() 在运行时接管：
-             自定义配图 > 纯色 > 主题默认底色 -->
+        <!-- windowBackground 跟随 AppTheme 的 @color/ui_bg，日间 / 夜间自动切换 -->
     </style>
     <!-- 自定义dialog样式 -->
     <style name="CustomDialogStyle" parent="@android:style/Theme.Dialog">

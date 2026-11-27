@@ -1,9 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#F2141414" />
-    <corners android:radius="14dp" />
-    <stroke
-        android:width="1dp"
-        android:color="#26FFFFFF" />
-</shape>
+<!--
+  「更多 → 播放设置」抽屉底：跟随日/夜间主题的玻璃材质。
+  与菜单面板共用 glass_menu_* 语义色：日间浅色玻璃、夜间深色玻璃；
+  顶部一层极淡高光模拟玻璃上沿反光。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/glass_menu_bg" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/glass_menu_stroke" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <item
+        android:left="1dp"
+        android:right="1dp"
+        android:top="1dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:endColor="#00FFFFFF"
+                android:startColor="@color/glass_bar_highlight"
+                android:type="linear" />
+            <corners android:radius="13dp" />
+        </shape>
+    </item>
+</layer-list>
