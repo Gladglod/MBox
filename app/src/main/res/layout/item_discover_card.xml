@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  发现页海报卡片。
+  海报固定 2:3（TMDB 海报标准比例），用 ConstraintLayout 的 dimensionRatio 让宽度
+  变化时高度自动跟着走，不依赖数据源返回的 style。右上角类型、左上角评分都压在图片上，
+  和首页推荐卡的视觉语言保持一致。
+-->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <FrameLayout
+        android:id="@+id/posterFrame"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_poster"
+        android:clipToOutline="true"
+        app:layout_constraintDimensionRatio="H,2:3"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/ivPoster"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/tvRating"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_margin="@dimen/vs_6"
+            android:background="@drawable/bg_chip_on_image"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:paddingStart="@dimen/vs_6"
+            android:paddingLeft="@dimen/vs_6"
+            android:paddingTop="@dimen/vs_2"
+            android:paddingEnd="@dimen/vs_6"
+            android:paddingRight="@dimen/vs_6"
+            android:paddingBottom="@dimen/vs_2"
+            android:singleLine="true"
+            android:textColor="@color/discover_rating"
+            android:textSize="@dimen/ts_14"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvMediaType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="@dimen/vs_6"
+            android:background="@drawable/bg_chip_on_image"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:paddingStart="@dimen/vs_6"
+            android:paddingLeft="@dimen/vs_6"
+            android:paddingTop="@dimen/vs_2"
+            android:paddingEnd="@dimen/vs_6"
+            android:paddingRight="@dimen/vs_6"
+            android:paddingBottom="@dimen/vs_2"
+            android:singleLine="true"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/ts_14" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/vs_5"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/ui_text_primary"
+        android:textSize="@dimen/ts_18"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/posterFrame" />
+
+    <TextView
+        android:id="@+id/tvMeta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/ui_text_secondary"
+        android:textSize="@dimen/ts_14"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvTitle" />
+</androidx.constraintlayout.widget.ConstraintLayout>

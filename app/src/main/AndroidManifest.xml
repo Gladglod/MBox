@@ -70,6 +70,9 @@
             android:name=".ui.activity.FastSearchActivity"
             />
         <activity
+            android:name=".ui.activity.DiscoverActivity"
+            />
+        <activity
             android:name=".ui.activity.SettingActivity"
             />
         <activity

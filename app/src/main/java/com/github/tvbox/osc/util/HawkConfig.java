@@ -175,5 +175,13 @@ public class HawkConfig {
     /** 片头片尾查询结果的缓存 TTL（毫秒）：7 天 */
     public static final long INTRO_SKIP_CACHE_TTL = 7 * 24 * 3600 * 1000L;
 
+    /* ===== 发现页（TMDB） ===== */
+    /** TMDB v3 API Key 或 v4 Read Access Token，只保存在本机 */
+    public static final String TMDB_API_KEY = "tmdb_api_key";
+    /** TMDB API 根地址，默认 https://api.themoviedb.org（可填反向代理） */
+    public static final String TMDB_BASE_URL = "tmdb_base_url";
+    /** TMDB 图片根地址，默认 https://image.tmdb.org/t/p/ */
+    public static final String TMDB_IMAGE_BASE = "tmdb_image_base";
+
     public static boolean hotVodDelete;
 }

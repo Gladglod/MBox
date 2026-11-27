@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 发现页与首页长按菜单用到的文案。单独成文件，避免改动历史 strings.xml。 -->
+<resources>
+    <string name="discover_title">发现</string>
+    <string name="discover_attribution">数据来自 TMDB · 本产品非 TMDB 官方产品</string>
+
+    <string name="discover_tab_hot">热门</string>
+    <string name="discover_tab_movie">电影</string>
+    <string name="discover_tab_tv">剧集</string>
+    <string name="discover_tab_top">高分</string>
+    <string name="discover_genre_all">全部</string>
+
+    <string name="discover_state_loading">正在读取 TMDB…</string>
+    <string name="discover_state_empty_title">没有找到内容</string>
+    <string name="discover_state_empty_desc">换个分类，或者稍后再试。</string>
+    <string name="discover_state_retry">重试</string>
+    <string name="discover_state_error_title">加载失败</string>
+
+    <string name="discover_key_title">需要 TMDB API Key</string>
+    <string name="discover_key_desc">发现页的影视资料来自 TMDB。请先到 themoviedb.org 免费注册账号，在「设置 → API」复制 v3 Key 或 v4 Read Access Token。Key 只保存在本机。</string>
+    <string name="discover_key_action">填写 API Key</string>
+    <string name="discover_key_title_input">TMDB API Key</string>
+    <string name="discover_key_tip">支持 v3 API Key 或 v4 Read Access Token。保存后只存在这台设备的本地配置里，不会上传。</string>
+    <string name="discover_key_hint">粘贴 API Key / Access Token</string>
+    <string name="discover_key_empty">API Key 不能为空</string>
+    <string name="discover_key_saved">API Key 已保存</string>
+
+    <string name="discover_settings_title">TMDB 设置</string>
+    <string name="discover_settings_key">填写 / 更换 API Key</string>
+    <string name="discover_settings_api">接口地址（API）</string>
+    <string name="discover_settings_image">图片地址（Image）</string>
+    <string name="discover_settings_clear_key">清除 API Key</string>
+    <string name="discover_settings_clear_confirm">清除本机的 TMDB API Key？</string>
+    <string name="discover_settings_cleared">已清除 API Key</string>
+    <string name="discover_api_address_tip">默认 https://api.themoviedb.org。网络无法直连时，可填写可用的反向代理地址。</string>
+    <string name="discover_image_address_tip">默认 https://image.tmdb.org/t/p/。海报无法显示时，可填写图片反向代理地址。</string>
+    <string name="discover_address_invalid">地址无效，请填写 http(s) 开头的地址</string>
+    <string name="discover_address_saved">地址已保存</string>
+
+    <string name="discover_search_title">搜索影片</string>
+    <string name="discover_search_tip">输入片名、演员或导演，结果来自 TMDB。</string>
+    <string name="discover_search_hint">搜索电影 / 剧集</string>
+    <string name="discover_search_scope">搜索 “%1$s” · 点此返回发现</string>
+    <string name="discover_search_empty">请输入要搜索的片名</string>
+
+    <string name="discover_detail_close">关闭</string>
+    <string name="discover_detail_overview">简介</string>
+    <string name="discover_detail_cast">主演</string>
+    <string name="discover_detail_director_movie">导演</string>
+    <string name="discover_detail_director_tv">主创</string>
+    <string name="discover_detail_no_overview">TMDB 暂无这部片的中文简介。</string>
+    <string name="discover_detail_search">搜索片源</string>
+    <string name="discover_detail_tmdb">在 TMDB 查看</string>
+    <string name="discover_detail_no_browser">没有找到可用的浏览器</string>
+    <string name="discover_detail_vote">%1$d 人评分</string>
+
+    <string name="home_menu_title">首页快捷操作</string>
+    <string name="home_menu_discover">发现</string>
+    <string name="home_menu_discover_desc">TMDB 热门电影、剧集与高分榜</string>
+    <string name="home_menu_tabs">首页标签</string>
+    <string name="home_menu_tabs_desc">调整首页显示的分类与顺序</string>
+    <string name="home_menu_cancel">取消</string>
+    <string name="home_menu_hint">长按底部「首页」可再次打开快捷菜单</string>
+</resources>

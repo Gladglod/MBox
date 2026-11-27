@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.HapticFeedbackConstants;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.DecelerateInterpolator;
@@ -44,6 +45,7 @@ import com.github.tvbox.osc.ui.adapter.HomePageAdapter;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
 import com.github.tvbox.osc.ui.adapter.SortAdapter;
 import com.github.tvbox.osc.ui.dialog.TipDialog;
+import com.github.tvbox.osc.ui.dialog.HomeMenuSheetDialog;
 import com.github.tvbox.osc.ui.fragment.ShortDramaFragment;
 import com.github.tvbox.osc.ui.fragment.GridFragment;
 import com.github.tvbox.osc.ui.fragment.HotRecommendFragment;
@@ -218,6 +220,33 @@ public class HomeActivity extends BaseActivity {
         setLoadSir(this.homeContent);
     }
 
+    /**
+     * 底部「首页」长按弹出的快捷菜单。
+     *
+     * <p>入口只放在底部导航的「首页」上：首页内容区里的海报卡片有自己的长按行为
+     * （快速搜索 / 详情），在内容区再挂一套长按手势会和卡片抢同一个事件。</p>
+     */
+    private void showHomeMenu() {
+        mHomeMenuDialog = new HomeMenuSheetDialog(this, new HomeMenuSheetDialog.OnMenuClickListener() {
+            @Override
+            public void onDiscoverClick() {
+                jumpActivity(DiscoverActivity.class);
+            }
+
+            @Override
+            public void onHomeTabsClick() {
+                jumpActivity(HomeTabSettingActivity.class);
+            }
+        });
+        mHomeMenuDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                mHomeMenuDialog = null;
+            }
+        });
+        mHomeMenuDialog.show();
+    }
+
     private void selectPage(int position) {
         if (pageAdapter == null || position < 0 || position >= pageAdapter.getCount()) return;
         if (currentSelected == position) return;
@@ -301,6 +330,18 @@ public class HomeActivity extends BaseActivity {
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
                 selectBottomTab(0);
+            }
+        });
+        // 底部「首页」长按 = 首页快捷菜单（唯一入口）。放在导航上而不是内容区，
+        // 是因为首页海报卡片自己已经占用了长按（快速搜索 / 详情）。
+        findViewById(R.id.navHome).setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                if (currentBottomTab != 0) return false;
+                if (mHomeMenuDialog != null && mHomeMenuDialog.isShowing()) return true;
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                showHomeMenu();
+                return true;
             }
         });
         findViewById(R.id.navDrama).setOnClickListener(new View.OnClickListener() {
@@ -581,6 +622,7 @@ public class HomeActivity extends BaseActivity {
     private boolean jarInitOk = false;
     private boolean searchSpiderWarmStarted = false;
     private TipDialog mConfigErrorDialog;
+    private HomeMenuSheetDialog mHomeMenuDialog;
 
     private void initData() {
         if (dataInitOk && jarInitOk) {
@@ -1118,6 +1160,16 @@ public class HomeActivity extends BaseActivity {
     private void dismissHomeDialogs() {
         dismissConfigErrorDialog();
         dismissSiteSwitchDialog();
+        dismissHomeMenuDialog();
+    }
+
+    private void dismissHomeMenuDialog() {
+        if (mHomeMenuDialog != null) {
+            if (mHomeMenuDialog.isShowing()) {
+                mHomeMenuDialog.dismiss();
+            }
+            mHomeMenuDialog = null;
+        }
     }
 
     private void dismissConfigErrorDialog() {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 发现页空状态 / 配置提示的圆形图标底 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/ui_accent_soft" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/ui_accent_disabled" />
+</shape>

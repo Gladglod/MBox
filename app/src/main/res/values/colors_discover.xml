@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  发现页（TMDB）新增的语义色。
+  单独放在一个文件里，避免动到历史遗留的 colors.xml / values-night。
+  评分金色在日间和夜间都压在深色半透明胶囊上，因此不需要夜间覆盖。
+-->
+<resources>
+    <!-- 海报上的评分文字 -->
+    <color name="discover_rating">#FFFFC857</color>
+    <!-- 底部抽屉 / 详情浮层的遮罩 -->
+    <color name="discover_scrim">#8C000000</color>
+    <!-- 抽屉顶部的视觉指示条 -->
+    <color name="discover_handle">#33777777</color>
+</resources>
