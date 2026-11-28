@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 更新弹窗右上角版本号胶囊：品牌色淡底 + 品牌色文字 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="99dp" />
+    <solid android:color="@color/ui_accent_soft" />
+</shape>

@@ -315,6 +315,18 @@ public final class UpdateChecker {
     }
 
     /**
+     * 找出已经完整下载过的安装包（大小与 API 返回一致），没有则返回 null。
+     * 弹窗用它决定是否直接把主按钮显示成「立即安装」。
+     */
+    public static File findDownloadedApk(Context context, GithubRelease release, GithubRelease.Asset asset) {
+        if (context == null || release == null || asset == null) return null;
+        File target = new File(downloadDir(context), fileNameOf(release, asset));
+        if (!target.exists() || target.length() <= 0) return null;
+        if (asset.size > 0 && target.length() != asset.size) return null;
+        return target;
+    }
+
+    /**
      * 双通道下载：直连 GitHub 与 gh-proxy.org 加速各试一次，先后顺序按检查阶段走通的通道来，
      * 失败的通道会删掉半截文件再换下一条，全部失败才报错。
      */

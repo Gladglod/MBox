@@ -1,21 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 主按钮：品牌色实底，按下时稍微加深 -->
+<!-- 更新弹窗主按钮：品牌色实底，焦点加一圈反色描边，按下/禁用各有对应状态 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="12dp" />
+            <solid android:color="@color/ui_accent_pressed" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/ui_on_accent" />
+        </shape>
+    </item>
     <item android:state_pressed="true">
-        <shape>
-            <corners android:radius="@dimen/vs_6" />
+        <shape android:shape="rectangle">
+            <corners android:radius="12dp" />
             <solid android:color="@color/ui_accent_pressed" />
         </shape>
     </item>
     <item android:state_enabled="false">
-        <shape>
-            <corners android:radius="@dimen/vs_6" />
+        <shape android:shape="rectangle">
+            <corners android:radius="12dp" />
             <solid android:color="@color/ui_accent_disabled" />
         </shape>
     </item>
     <item>
-        <shape>
-            <corners android:radius="@dimen/vs_6" />
+        <shape android:shape="rectangle">
+            <corners android:radius="12dp" />
             <solid android:color="@color/ui_accent" />
         </shape>
     </item>
